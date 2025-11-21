@@ -1,0 +1,56 @@
+{
+    "_comment":[
+        "Describe the purpose of this config.",
+        "Can be multiline like this."
+    ],
+    "logging":{
+        "enabled": false,
+        "_comment": "write (debug) logging of calculation to stdout."
+    },
+    "sites":{
+        "value": 50,
+        "_comment":[
+            "The amount of sites in one dimension.",
+            "Set null when sizes are used."
+        ]
+    },
+    "xsize":{
+        "value": null,
+        "_comment":[
+            "The width in angstrom. Set null when sites are used."
+        ]
+    },
+    "ysize":{
+        "value": null,
+        "_comment":[
+            "The height in angstrom. Set null when sites are used."
+        ]
+    },
+    "zsize":{
+        "value": null,
+        "_comment":[
+            "The depth. Optional. Currently unused."
+        ]
+    },
+    "max_molecule_count":{
+        "value": 10000000,
+        "_comment":[
+            "The maximum amount of molecules that will be attempted to be placed.",
+            "Simulation terminates when this number is reached or when the surface is covered."
+        ]
+    },
+    "lattice_a":{
+        "value": 1.0,
+        "_comment": "The lattice spacing in angstrom."
+    },
+    "boundary_type":{
+        "value": "periodic",
+        "_comment": [
+            "The boundary type. Can be 'soft', 'hard', or 'periodic'."
+        ]
+    },
+    "sticking_probability":{
+        "value": 1,
+        "_comment": ["Probability of sticking after adsorption."]
+    }
+}

@@ -1,0 +1,171 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "AdsorPy"
+version = "1.0.0"
+description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
+authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICEN[CS]E.md"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy",
+    "numba>=0.63.0rc1",
+    "matplotlib",
+    "shapely",
+    "rtree",
+]
+
+[project.urls]
+Repository = "https://gitlab.tue.nl/s137316/rsa_mc"
+
+
+[project.optional-dependencies]
+testing = [
+    "pytest",
+    "pytest-cov",
+    "hypothesis",
+    "mypy",
+    "ruff",
+    "scipy==1.15.3; python_version <= '3.10'",
+    "scipy==1.16.3; python_version > '3.10'",
+]
+
+
+[tool.hatch.package_data]
+"rsa-mc" = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src/adsorpy"]
+addopts = ["--cov=src/adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers"]
+
+[tool.coverage.run]
+omit = [
+    "*/tests/*",
+    "*/Output/*",
+    "*/__main__.py",
+    "*/__init__.py",
+    "*/molecule_lib*.py", # There is no point in testing the individual molecules.
+    "*/rsa_config.py", # Cannot be tested properly. Will be reworked.
+    "*/sensitivity.py",  # Demonstrator, not included.
+    "*/Scripts/*",
+]
+
+[tool.coverage.report]
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "def main()",
+    "if False:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING",
+    "def plot_*",
+    "if print_*",
+    "if plot_*",
+    "while temp_results_folder.is_dir()",  # Checks for collision in saving folders. Nothing is saved for tests.
+    "if self.flux_flag:",  # Experimental feature, not yet usable.
+    "_run_flux_*",  # See above.
+    "if not self.simple_shape_flag",  # Idem ditto.
+    "if version_info",  # Is tested with Tox (between instances of Pytest). False negative.
+    "from datetime import",  # Used for compatibility between versions. Only tests for one version at a time.
+    "@njit",  # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
+]
+
+
+[tool.mypy]
+mypy_path = ["src", "optional"]
+ignore_missing_imports = true
+strict = true
+#no_implicit_reexport = true
+disallow_any_explicit = true
+#disallow_any_decorated = true  # Throws an error because geo.Polygon in a tuple is turned into Any for the @staticmethod.
+#warn_unreachable = true  # Set this to true when pushing to main?
+exclude = ['/Scripts']
+
+
+[tool.flake8]
+max-line-length = 120
+exclude = [
+    ".venv",
+    "venv",
+    "tests",
+    "Lib",
+]
+count = true
+
+[tool.isort]
+src_paths = ["src"]
+line_length = 88
+multi_line_output = 3
+sections = [
+    "FUTURE",
+    "STDLIB",
+    "THIRDPARTY",
+    "FIRSTPARTY",
+    "LOCALFOLDER"
+]
+include_trailing_comma = true
+#remove_unused_imports = true
+skip = [".json", ".venv", ".tox"]
+known_first_party = ["RandomSequentialAdsorption"]
+known_local_folder = ["molcule_lib", "RSA_Calculator", "rsa_config"]
+
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 120
+exclude = [
+    ".venv",
+    "venv",
+    "tests",
+    "Lib",
+    "__init__.py",
+    "*/Scripts/*"
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+
+[tool.ruff.lint]
+select = ['ALL']
+pylint.max-args = 10
+pylint.max-branches = 20
+pylint.max-statements = 80
+mccabe.max-complexity = 20
+
+
+ignore = [
+    "ERA001",
+    "TD",
+    "T201",
+    "FIX",  # This is for me to fix over several versions. These functions are never used unless they are fixed.
+    "DTZ003", # The datetime warning or  utcnow()
+    "FBT001", # Disallows booleans in functions. (I can see its use case, but no.)
+    "FBT002", # Disallows booleans default arguments in functions.
+    "ARG002", # Unused method argument.
+    "ARG001", # Unused function argument.
+    "D203",  # Conflicts with D211: no blank line before class.
+    "D213",  # Conflicts with D212: multi-line summary first line.
+
+]
