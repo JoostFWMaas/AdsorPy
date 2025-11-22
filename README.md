@@ -24,7 +24,7 @@ molecules more easily.
 Because AdsorPy has been made with scientific rigour in mind, the package is tested in multiple ways:
 - Unit tests (`Pytest`) of the code ensure correct behaviour for expected input.
 - Property tests (`Hypothesis`) of the most critical code components ensure correct behaviour for unexpected input as well.
-- `Mypy` (in `--strict`) mode ensures that the package is correctly-typed, as if it were static. The `py.typed` file--a promise that the code is type-hinted properly--is added because the code passes this test.
+- `Mypy` (in `--strict` mode) ensures that the package is correctly-typed, as if it were static. The `py.typed` file--a promise that the code is type-hinted properly--is added because the code passes this test.
 - `Ruff` is used as a linter with almost all rules enabled (see the pyproject.toml for the list of exlcusions and reasons).
 - `Tox` is used to run all of the aforementioned tests in parallel for multiple Python versions to ensure correct behaviour.
 - CI is used for automated testing every time the code is changed.
