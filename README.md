@@ -19,7 +19,7 @@ molecule string for repeated use.
 User friendliness will be updated at a later stage, allowing the user to define simulation modes, surfaces, and
 molecules more easily.
 
-## Design philosophy of AdsorPy
+## Design philosophy
 
 Because AdsorPy has been made with scientific rigour in mind, the package is tested in multiple ways:
 - Unit tests (`Pytest`) of the code ensure correct behaviour for expected input.
