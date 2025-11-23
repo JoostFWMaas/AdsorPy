@@ -34,7 +34,7 @@ jobs:
       - name: Install Sphinx and theme
         run: |
           python -m pip install --upgrade pip
-          python -m pip install sphinx sphinx-material
+          python -m pip install sphinx furo sphinx_design
 
       # Optional: configure Pages (sets up base_url, etc.)
       - name: Configure Pages
