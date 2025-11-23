@@ -43,8 +43,7 @@ jobs:
       - name: Build Sphinx docs
         run: |
           mkdir -p public
-          # If your conf.py is at docs/source/conf.py:
-          python -m sphinx -W -b html docs/source public
+          python -m sphinx-build -W -b html docs/source public
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
