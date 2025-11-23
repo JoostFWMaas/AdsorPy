@@ -408,9 +408,9 @@ def _error_checker(  # noqa: PLR0913
     :param bounding_x_coord: boundary x coordinate.
     :param bounding_y_coord: boundary y coordinate.
     :return: the custom grid flag.
-    :raises ValueError: 
+    :raises ValueError:
         1) if the length of the molecules, symmetries, reflections, and rotations are unequal,
-        2) if the dosing distribution is not the same length as the molecule list, 
+        2) if the dosing distribution is not the same length as the molecule list,
         3) if the provided boundary condition is not supported,
         4) if the custom grid x/y coordinates/boundaries are not all empty or not all provided.
     """
