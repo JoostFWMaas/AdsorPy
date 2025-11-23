@@ -43,7 +43,7 @@ jobs:
       - name: Build Sphinx docs
         run: |
           mkdir -p public
-          python -m sphinx-build -W -b html docs/source public
+          python -m sphinx-build -W docs/source public
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
