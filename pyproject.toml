@@ -32,7 +32,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://gitlab.tue.nl/s137316/rsa_mc"
+Repository = "https://github.com/JoostFWMaas/AdsorPy"
 
 
 [project.optional-dependencies]

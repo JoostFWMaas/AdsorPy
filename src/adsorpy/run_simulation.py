@@ -408,9 +408,11 @@ def _error_checker(  # noqa: PLR0913
     :param bounding_x_coord: boundary x coordinate.
     :param bounding_y_coord: boundary y coordinate.
     :return: the custom grid flag.
-    :raises ValueError: 1) if the length of the molecules, symmetries, reflections, and rotations are unequal,
-    2) if the dosing distribution is not the same length as the molecule list, 3) if the provided boundary condition is
-    not supported, or 4) if the custom grid x/y coordinates/boundaries are not all empty or not all provided.
+    :raises ValueError:
+        1) if the length of the molecules, symmetries, reflections, and rotations are unequal,
+        2) if the dosing distribution is not the same length as the molecule list,
+        3) if the provided boundary condition is not supported,
+        4) if the custom grid x/y coordinates/boundaries are not all empty or not all provided.
     """
     if not len(molecules_list) == len(rotation_symmetries) == len(reflection_symmetries) == len(rotation_counts):
         errmsg = "Number of molecules, symmetries, and/or rotation counts do not match."
