@@ -23,6 +23,8 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon", 
+    "sphinx_autodoc_typehints",
     "sphinx.ext.viewcode",
     "sphinx.ext.githubpages",
     "sphinx_design",
@@ -97,3 +99,4 @@ autodoc_mock_imports = module_names
 #
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+
