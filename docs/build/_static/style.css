@@ -1,0 +1,12 @@
+.md-container {
+    max-width: 50%;
+    width: auto;
+}
+
+/*@media (prefers-color-scheme: dark) {*/
+/*    !* Custom dark mode styles *!*/
+/*    body {*/
+/*        background-color: #2e2e2e;*/
+/*        color: #d1d1d1;*/
+/*    }*/
+/*}*/
