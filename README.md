@@ -1,6 +1,6 @@
 # AdsorPy
 
-[example workflow](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/github-ci.yml/badge.svg?branch=main)
+![example workflow](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/github-ci.yml/badge.svg?branch=main)
 
 
 Random Sequential Adsorption (RSA) Python 3.10+ script with Monte Carlo diffusion and desorption.
