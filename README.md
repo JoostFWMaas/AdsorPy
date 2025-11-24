@@ -11,13 +11,15 @@ gap size distribution.
 
 ## How to use
 
-Run the `main.py` in order to run a simple single run using the standard Hacac molecule on hexagonal aluminium oxide.
-New molecules can be created by running the `molecule_lib.py`or by calling the first_time_loader() function from that module. Molecules can be generated from `.xyz` files. It is
-recommended to run `molecule_lib.py` directly from command line to define the molecule orientation, then store the new
+Run the `adsorpy.main` in order to run a simple single run using the standard disk-shaped molecule on hexagonal aluminium oxide.
+New molecules can be created by running the `adsorpy.molecule_lib` or by calling the `adsorpy.molecule_lib.first_time_loader()` function. Molecules can be generated from `.xyz` files. It is
+recommended to run `adsorpy.molecule_lib` directly from command line to define the molecule orientation, then store the new
 molecule string for repeated use.
 
 User friendliness will be updated at a later stage, allowing the user to define simulation modes, surfaces, and
 molecules more easily.
+
+Documentation (generated with `Sphinx`): https://joostfwmaas.github.io/AdsorPy/
 
 ## Design philosophy
 
@@ -25,9 +27,9 @@ Because AdsorPy has been made with scientific rigour in mind, the package is tes
 - Unit tests (`Pytest`) of the code ensure correct behaviour for expected input.
 - Property tests (`Hypothesis`) of the most critical code components ensure correct behaviour for unexpected input as well.
 - `Mypy` (in `--strict` mode) ensures that the package is correctly-typed, as if it were static. The `py.typed` file--a promise that the code is type-hinted properly--is added because the code passes this test.
-- `Ruff` is used as a linter with almost all rules enabled (see the pyproject.toml for the list of exlcusions and reasons).
+- `Ruff` is used as a linter with almost all rules enabled (see the pyproject.toml for the list of exclusions and reasons).
 - `Tox` is used to run all of the aforementioned tests in parallel for multiple Python versions to ensure correct behaviour.
-- CI is used for automated testing every time the code is changed.
+- CI is used for automated testing.
 
 The package also makes use of an optional config file that falls back on standard behaviour, because configs are often used in scientific software (set-and-forget).
 
