@@ -1,9 +1,7 @@
 # AdsorPy
 
-!Build Status
-[![CI](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/github-ci.yml)]
-!Coverage
-!License
+[!CI(https://github.com/JoostFWMaas/AdsorPy/actions/workflows/github-ci.yml)]
+
 
 Random Sequential Adsorption (RSA) Python 3.10+ script with Monte Carlo diffusion and desorption.
 
