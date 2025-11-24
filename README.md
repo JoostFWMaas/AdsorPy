@@ -2,6 +2,7 @@
 
 ![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/github-ci.yml/badge.svg)
 
+![Output of an AdsorPy run, an image of a covered surface.](https://github.com/JoostFWMaas/AdsorPy/blob/badge_tester/AdsorPy_Covered_Surface.png)
 
 Random Sequential Adsorption (RSA) Python 3.10+ script with Monte Carlo diffusion and desorption.
 
