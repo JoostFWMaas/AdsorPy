@@ -33,6 +33,8 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/JoostFWMaas/AdsorPy"
+Documentation = "https://joostfwmaas.github.io/AdsorPy"
+Changelog = "https://github.com/JoostFWMaas/AdsorPy/blob/main/CHANGELOG.md"
 
 
 [project.optional-dependencies]
