@@ -16,6 +16,8 @@ New molecules can be created by running the `adsorpy.molecule_lib` or by calling
 recommended to run `adsorpy.molecule_lib` directly from command line to define the molecule orientation, then store the new
 molecule string for repeated use.
 
+Run the `adsorpy.run_simulation.run_simulation()` function with the molecule footprints generated in the previous step. Output can be printed to stdout, plotted, and saved.
+
 User friendliness will be updated at a later stage, allowing the user to define simulation modes, surfaces, and
 molecules more easily.
 
