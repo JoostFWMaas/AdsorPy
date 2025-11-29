@@ -48,7 +48,7 @@ DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
 def run_simulation(  # noqa: PLR0913
-    rsa_config: RsaConfig,
+    rsa_config: RsaConfig | None = None,
     molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,
     rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
@@ -102,6 +102,8 @@ def run_simulation(  # noqa: PLR0913
     :return: the amount of molecules on the surface per molecule group, the gap size distribution, and the RNG seed.
     :raises TypeError: If the sticking probability is an invalid type.
     """
+    rsa_config = RsaConfig(str(Path(__file__).parent / "config.json")) if rsa_config is None else rsa_config
+    
     molecules_list, rotation_symmetries, reflection_symmetries, rotation_counts = _initialise_run_parameters(
         molecules_list,
         rotation_symmetries,
