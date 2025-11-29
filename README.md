@@ -1,6 +1,6 @@
 # AdsorPy
 
-![Output of an AdsorPy run, an image of a covered surface.](https://github.com/JoostFWMaas/AdsorPy/blob/images/AdsorPy_Covered_Surface.png)
+![Output of an AdsorPy run, an image of a covered surface.](/images/AdsorPy_Covered_Surface.png)
 
 ![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/github-ci.yml/badge.svg)
 
