@@ -50,10 +50,10 @@ DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 
 def run_simulation(  # noqa: PLR0913
     rsa_config: RsaConfig | None = None,
-    molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,
-    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
-    reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
-    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
+    molecules_list: Polygon | list[Polygon] | GeoArray | None = None,
+    rotation_symmetries: int | list[int] | IdxArray | None = None,
+    reflection_symmetries: bool | list[bool] | BoolArray | None = None,
+    rotation_counts: int | list[int] | IdxArray | None = None,
     lattice_type: str = "triangular",
     site_count: int | None = None,
     lattice_a: float | None = None,
