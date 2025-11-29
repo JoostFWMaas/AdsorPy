@@ -1,7 +1,8 @@
 """Runs the simulation.
 
-run_simulation() should provide the user with enough customisability.
+run_simulation() should provide the user with customisability.
 Molecules can be generated from .xyz using molecule_lib.
+The config.json can be found in the adsorpy folder as well.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
 def run_simulation(  # noqa: PLR0913
-    rsa_config: RsaConfig,
+    rsa_config: RsaConfig | None = None,  # The rsa_config file can be found as config.json in adsorpy.
     molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,
     rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
@@ -102,6 +103,8 @@ def run_simulation(  # noqa: PLR0913
     :return: the amount of molecules on the surface per molecule group, the gap size distribution, and the RNG seed.
     :raises TypeError: If the sticking probability is an invalid type.
     """
+    rsa_config = RsaConfig(str(Path(__file__).parent / "config.json")) if rsa_config is None else rsa_config
+
     molecules_list, rotation_symmetries, reflection_symmetries, rotation_counts = _initialise_run_parameters(
         molecules_list,
         rotation_symmetries,

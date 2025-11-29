@@ -1,5 +1,10 @@
 # AdsorPy
 
+![Output of an AdsorPy run, an image of a covered surface.](/images/AdsorPy_Covered_Surface.png)
+
+![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/github-ci.yml/badge.svg)
+[![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
+
 Random Sequential Adsorption (RSA) Python 3.10+ script with Monte Carlo diffusion and desorption.
 
 In RSA, molecules arrive one by one at a surface. Adsorption takes place if the molecule does not overlap with molecules
