@@ -49,7 +49,7 @@ DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
 def run_simulation(  # noqa: PLR0913
-    rsa_config: RsaConfig | None = None,  # The rsa_config file can be found as config.json in adsorpy.
+    rsa_config: RsaConfig | None = None,
     molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,
     rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
@@ -83,7 +83,7 @@ def run_simulation(  # noqa: PLR0913
     :param rotation_symmetries: Rotation symmetries. 0 for circle, 1 for no symmetry, 2 twofold, 3 threefold, etc.
     :param reflection_symmetries: Mirror symmetries. True means mirror symmetry, False means no mirror symmetry.
     :param rotation_counts: Number of rotations to be considered. Preferably numbers that divide 360.
-    :param lattice_type: The lattice type. "triangular", "hexagonal", or "square".
+    :param lattice_type: The lattice type. "triangular", "honeycomb", or "square".
     :param site_count: The site count along one axis. Optional. If None, defaults to the value in config.json.
     :param lattice_a: The lattice spacing in Angstrom. If None, defaults to the value in config.json.
     :param boundary_condition: The boundary condition. Optional, can be soft/hard/periodic. If None, defaults to config.
