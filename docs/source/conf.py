@@ -27,8 +27,14 @@ extensions = [
     "sphinx_autodoc_typehints",
     "sphinx.ext.viewcode",
     "sphinx.ext.githubpages",
+    'sphinx.ext.intersphinx',
     "sphinx_design",
 ]
+
+intersphinx_mapping = {
+    'numpy': ('https://numpy.org/doc/stable/', None),
+}
+
 
 sd_custom_directives = {
     "dropdown-syntax": {
@@ -99,4 +105,5 @@ autodoc_mock_imports = module_names
 #
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+
 
