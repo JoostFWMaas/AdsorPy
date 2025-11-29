@@ -103,7 +103,7 @@ def run_simulation(  # noqa: PLR0913
     :raises TypeError: If the sticking probability is an invalid type.
     """
     rsa_config = RsaConfig(str(Path(__file__).parent / "config.json")) if rsa_config is None else rsa_config
-    
+
     molecules_list, rotation_symmetries, reflection_symmetries, rotation_counts = _initialise_run_parameters(
         molecules_list,
         rotation_symmetries,
