@@ -48,7 +48,7 @@ DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
 def run_simulation(  # noqa: PLR0913
-    rsa_config: RsaConfig | None = None,
+    rsa_config: RsaConfig | None = None,  # The rsa_config file can be found as config.json in adsorpy.
     molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,
     rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
