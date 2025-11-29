@@ -43,5 +43,3 @@ The package also makes use of an optional config file that falls back on standar
 
 The script was made public for the sake of openness and academic collaboration. If your paper makes use of this script, feel free to contact me if there are questions. 
 At the end of this file, I will place a list of papers that make use of this work. Feel free to contact me if you want your work to be added to the list as well.
-
-![Demonstration of periodic boundary conditions, looping video.](https://github.com/JoostFWMaas/AdsorPy/blob/badge_tester/images/RSA_Looping_rotated.mp4)
