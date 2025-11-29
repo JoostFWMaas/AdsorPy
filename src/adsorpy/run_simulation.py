@@ -1,7 +1,8 @@
 """Runs the simulation.
 
-run_simulation() should provide the user with enough customisability.
+run_simulation() should provide the user with customisability.
 Molecules can be generated from .xyz using molecule_lib.
+The config.json can be found in the adsorpy folder as well.
 """
 
 from __future__ import annotations
