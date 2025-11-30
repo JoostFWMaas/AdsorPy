@@ -5,7 +5,7 @@
 ![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/tests-ci.yml/badge.svg)
 [![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
 
-Random Sequential Adsorption (RSA) Python 3.10+ script with Monte Carlo diffusion and desorption.
+Lattice-based random sequential adsorption (RSA) Python 3.10+ script.
 
 In RSA, molecules arrive one by one at a surface. Adsorption takes place if the molecule does not overlap with molecules
 already on the surface.
@@ -28,6 +28,10 @@ molecules more easily.
 
 Documentation (generated with `Sphinx`): https://joostfwmaas.github.io/AdsorPy/
 
+## Future additions
+
+In a future update, the code will be expanded with diffusion, desorption, and species conversion (changing from one molecule on the surface to another).
+
 ## Design philosophy
 
 Because AdsorPy has been made with scientific rigour in mind, the package is tested in multiple ways:
@@ -42,5 +46,5 @@ The package also makes use of an optional config file that falls back on standar
 
 # Openness and academic collaboration
 
-The script was made public for the sake of openness and academic collaboration. If your paper makes use of this script, feel free to contact me if there are questions. 
+The script was made public for the sake of openness and academic collaboration. Please let me know if you have questions about the script, or if you have discovered any issues/bugs. 
 At the end of this file, I will place a list of papers that make use of this work. Feel free to contact me if you want your work to be added to the list as well.
