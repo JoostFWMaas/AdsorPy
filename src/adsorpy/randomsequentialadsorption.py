@@ -483,7 +483,7 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     "Grid index value. Defaults to -1, an invalid value."
     coordinates: CoordPair = cast("CoordPair", field(default_factory=lambda: np.empty((2, 1), dtype=np.float64)))  # noqa: RUF009
     "Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.float64)."
-    molecule: Polygon = field(default_factory=lambda: Polygon())
+    molecule: Polygon = field(default_factory=Polygon)
     "Candidate molecule. Initially empty."
     rot_idx: int = -1
     "Rotation index value. Defaults to -1, an invalid value."
@@ -1271,8 +1271,8 @@ class Surface:
         :param x_all: All x coordinates.
         :param y_all: All y coordinates.
         """
-        self.x_max += cast("float", np.max(x_all)) if self.x_max == 0.0 else 0.0
-        self.y_max += cast("float", np.max(y_all)) if self.y_max == 0.0 else 0.0
+        self.x_max += cast("float", np.max(x_all)) if self.x_max == 0 else 0.0
+        self.y_max += cast("float", np.max(y_all)) if self.y_max == 0 else 0.0
         if self.bp.periodic_flag:  # A periodic grid needs to be extended a little bit.
             if self.lattice_type in {"triangular", "hexagonal"}:
                 self.y_max += 0.5 * self.lattice_a * sqrt3  # Half a unit is added in the max x and y size.
@@ -1312,7 +1312,7 @@ class Surface:
         if len(site_x_coords) != len(site_y_coords):
             errval += "Length of site_x_coords and site_y_coords do not match.\n"
 
-        if errval != "":  # If there are errors, raise.
+        if errval:  # If there are errors, raise.
             raise ValueError(errval)
 
         self.x_max = bounding_x_coord

@@ -2,6 +2,7 @@
 
 There is no real reason for the user to need to use any of this, but the functions are accessible just in case.
 """
+from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, ParamSpec, cast
 
@@ -9,11 +10,13 @@ import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff  # Install shapely via https://www.lfd.uci.edu/~gohlke/pythonlibs/#shapely
 from numba import njit, prange
 from numpy.typing import NDArray
-from rtree.index import Index
 from shapely import Polygon, STRtree
-from shapely.prepared import PreparedGeometry, prep
+from shapely.prepared import prep
 
 if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
+    from rtree.index import Index
+    from shapely.prepared import PreparedGeometry
+
     from .randomsequentialadsorption import CandidateMolecule, MoleculeGroup, Simulator
 
 P = ParamSpec("P")  # Helps with static type checkers.
@@ -31,7 +34,7 @@ FloatArray = NDArray[np.float64]
 DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
-@njit("float64[:, :](float64[:, :], float64[:, :])", parallel=True, cache=True)  # type: ignore[misc]
+@njit("float64[:, :](float64[:, :], float64[:, :])", parallel=True, cache=True)  # type: ignore[untyped-decorator]
 def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
     """Calculate the square distance between two sets of coordinates.
 
@@ -157,7 +160,7 @@ def check_hard_molecule(
     candidate_coords: CoordPair,
     x_max: float,
     y_max: float,
-    fmg: "MoleculeGroup",
+    fmg: MoleculeGroup,
 ) -> BoolArray:
     """Check whether positioned molecules fit within the hard boundaries.
 
@@ -183,12 +186,12 @@ def check_hard_molecule(
 
 
 def check_shape_overlap(
-    cand: "CandidateMolecule",
+    cand: CandidateMolecule,
     neighbour_index: IdxArray,
-    simul: "Simulator",
-    pmg: "MoleculeGroup",
+    simul: Simulator,
+    pmg: MoleculeGroup,
     try_angle_first: int | None = None,
-) -> tuple[bool, "CandidateMolecule"]:
+) -> tuple[bool, CandidateMolecule]:
     """Check whether there the new molecule overlaps with existing molecules.
 
     If molecules are in the intermediate range between guaranteed clearance and guaranteed overlap,

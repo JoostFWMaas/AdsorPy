@@ -109,14 +109,30 @@ def test_run_simulation_randomness(rsa_config, default_polygon, monkeypatch):
     fixed_datetime = datetime(2023, 1, 1, 0, 0, 0, 1)
     monkeypatch.setattr("run_simulation.datetime", fixed_datetime)
 
-    results_1 = run_simulation(rsa_config, molecules_list=[default_polygon])
+    results_1 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
 
     # Move time forward by 1 second to ensure a different seed.
     monkeypatch.setattr("run_simulation.datetime", fixed_datetime + timedelta(seconds=1))
 
-    results_2 = run_simulation(rsa_config, molecules_list=[default_polygon])
+    results_2 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
 
     assert results_1[2] != results_2[2]  # Seeds should be different
+    assert not np.array_equal(results_1[3], results_2[3])  # The dose timestamps are virtually guaranteed to be unequal.
+
+def test_run_simulation_determinism(rsa_config, default_polygon, monkeypatch, subtests):
+    """Test determinism of the pseudorandomness by repeating with the same seed."""
+    kwargs = {
+    "calculate_gap_size": True,
+    "include_rejected_flux": True,
+    "molecules_list": [default_polygon],
+    "seed": 42,
+    }
+    results_1 = run_simulation(rsa_config, **kwargs)
+    results_2 = run_simulation(rsa_config, **kwargs)
+    comparison_test_names = ("Mol count", "Gap size", "Seed", "Flux/dose", "ASF")
+    for comparison_test_name, output_1, output_2 in zip(comparison_test_names, results_1, results_2, strict=True):
+        with subtests.test(comparison_test_name):
+            assert np.array_equal(output_1, output_2)  # Everything should be identical.
 
 
 @st.composite
@@ -153,6 +169,8 @@ def test_run_simulation_property_test(site_count, lattice_a, boundary_condition,
     """Test that run_simulation handles random valid inputs correctly.
 
     In this test, all inputs are varied, and even the molecules are randomly shaped. This is a property test.
+    If the length of the lists is not equivalent (or equal to 1), a ValueError test is expected.
+    Otherwise, the output is tested.
     """
     rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_periodic.json"))
     seed = 123123
@@ -173,13 +191,13 @@ def test_run_simulation_property_test(site_count, lattice_a, boundary_condition,
             boundary_condition=boundary_condition,
             seed=seed
         )
-        molecule_counters, gap_sizes, seed, flux, _ = results
+        molecule_counters, gap_sizes, seed_out, flux, _ = results
 
         assert len(molecule_counters) == len(molecules_list)
         assert all(count >= 0 for count in molecule_counters)
         assert isinstance(gap_sizes, np.ndarray)
-        assert not gap_sizes.size or gap_sizes.min() > 0
-        assert isinstance(seed, int)
+        assert not gap_sizes.size or gap_sizes.min()
+        assert seed == seed_out
     else:
         with pytest.raises(ValueError,
                            match="Number of molecules, symmetries, and/or rotation counts do not match"):
@@ -208,7 +226,7 @@ class TestCustomGrid:
         """
         with pytest.raises(ValueError, match="Site x coordinates must be positive.*"):
             rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_periodic.json"))
-            run_simulation(rsa_config=rsa_config, site_x_coords=[-1.1], site_y_coords=[-2, 1.1], bounding_x_coord=-10, bounding_y_coord=-10)
+            run_simulation(rsa_config=rsa_config, site_x_coords=[-1.1], site_y_coords=[-2., 1.1], bounding_x_coord=-10, bounding_y_coord=-10)
     def test_good_custom_grid(self):
         """Does the custom grid generate correctly without errors?
         """

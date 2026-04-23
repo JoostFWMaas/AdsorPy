@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import shapely
 import shapely.affinity as aff
-from matplotlib import axes, figure
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Circle
 from matplotlib.widgets import Slider, TextBox
@@ -23,6 +22,7 @@ from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 if TYPE_CHECKING:
+    from matplotlib import axes, figure
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 

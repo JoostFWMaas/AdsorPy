@@ -96,11 +96,16 @@ def run_simulation(  # noqa: PLR0913
     :param seed: The seed for the simulation. If None, takes the datetime in microseconds: YYYMMDDhhmmssuuuuuu.
     :param timestep_limit: The maximum number of timesteps to simulate for when the flux is taken into account.
     :param site_x_coords: x coordinates of the sites. If this and the next four arguments are provided, generate custom.
-    :param site_y_coords: y coordinates of the sites. Curstom surface overrides site_count and lattice_a.
+    :param site_y_coords: y coordinates of the sites. Custom surface overrides site_count and lattice_a.
     :param bounding_x_coord: The bounding box x coordinate value. Only use for custom surface. Leave None otherwise.
     :param bounding_y_coord: The bounding box y coordinate value. Ensure the previous three arguments are provided.
     :param sticking_probability: The sticking probability. Default is 1.0 from config. Per molecule or for all.
-    :return: the amount of molecules on the surface per molecule group, the gap size distribution, and the RNG seed.
+    :return:
+        0. The molecule count on the surface per molecule group.
+        1. The gap size distribution.
+        2. The RNG seed.
+        3. The fluxes/doses as a list of counts per stepcount of adsorption event.
+        4. The available surface function (ASF).
     :raises TypeError: If the sticking probability is an invalid type.
     """
     rsa_config = RsaConfig(str(Path(__file__).parent / "config.json")) if rsa_config is None else rsa_config
@@ -180,7 +185,7 @@ def run_simulation(  # noqa: PLR0913
             ),
         )
 
-    dbl_max_rad: float = 2.0 * max([cule.max_radius for cule in molecules])
+    dbl_max_rad: float = 2.0 * max(cule.max_radius for cule in molecules)
     surf.bp.biggest_radius = dbl_max_rad
 
     surf.bp.generate_boundary_conditions(surf)  # Generate the boundary conditions.
@@ -319,7 +324,6 @@ def _run_flux_fixedrotation(
             mol_flux.append(step)
             all_phis.append(np.max(phi))
 
-
     return np.array(mol_flux, dtype=np.int_), np.array(all_phis, dtype=np.int_)
 
 
@@ -384,7 +388,7 @@ def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explic
     return cast("Tn", np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array)  # type: ignore[explicit-any]
 
 
-def _error_checker(  # noqa: PLR0913
+def _error_checker(
     molecules_list: GeoArray,
     rotation_symmetries: IdxArray,
     reflection_symmetries: BoolArray,
@@ -530,8 +534,11 @@ def _select_and_run(
     return all_flux, phis
 
 
-def main() -> int:
-    """Run the RSA script, for demonstration purposes."""
+def main() -> Literal[0]:
+    """Run the RSA script, for demonstration purposes.
+
+    :return: 0 on success.
+    """
     config_path = Path(__file__).parent / "config.json"
     rsa_config = RsaConfig(str(config_path))
     start = time.perf_counter()
