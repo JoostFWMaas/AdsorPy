@@ -382,7 +382,7 @@ def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explic
     :param comparison_len: length of the repetition.
     :return: the array repeated to the proper length.
     """
-    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array  # type: ignore[return]
+    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array  # type: ignore[return-value]
 
 
 def _error_checker(
