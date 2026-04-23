@@ -196,7 +196,6 @@ class TestWithParameters:
             polygons = simulator.sim.mol_data.stored_data["polygon"][existing]
 
         ii: Polygon
-        jj: Polygon
         overlap = False
         for idx, ii in enumerate(polygons):  # TODO: Add STRtree to speed up?
             prepared_multipolygon = prep(unary_union(polygons[idx + 1:]))
@@ -208,7 +207,7 @@ class TestWithParameters:
 
     def test_no_large_gaps(self, simulator, configname, molgr_count, surf_type):
         """Tests whether there are sites with gaps larger than the molecule's circumradius.
-        In that case, a molecule should be able to fit, and the simulation terminated before saturation.
+        If gaps are larger, a molecule should be able to fit, and the simulation terminated before saturation.
         """
         gaps = simulator.sim.analyse_gap_size(simulator.sim.surf)
         circumradius = simulator.sim.molgroups[0].max_radius

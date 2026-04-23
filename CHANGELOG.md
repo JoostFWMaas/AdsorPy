@@ -1,14 +1,25 @@
 # Change Log
-All important changes to this project will be documented in this file.
+All important changes to ``AdsorPy`` will be documented in this file.
 
 This format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
+
+## [unreleased]
+
+### Added
+- Add the ``Simulator`` class as 6th return value of ``run_simulation()``.
+- Add overlap and gap size subtests to the dosing scheme tests of ``run_simulation_test``.
+### Changed
+- Update CI action/deploy-pages to v5.
+### Fixed
+### Removed
+
 
 ## 1.0.2 - 2026-04-23
 
 ### Added
 
 ### Changed
-- Update CI actions to move from node.js 20 to 24.
+- Update CI actions to move from ``node.js`` 20 to 24.
 
 ### Fixed
 
@@ -20,7 +31,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Added
 - Implement subtests for the test_run_alt (a test for the RSA simulator on an alternative seed).
 - Add a determinism test to show identical outcome for identical seeds. 
-- In tool.ruff.lint: use future-annotations = true, this correctly checks \_\_future\_\_ annotation.
+- In ``tool.ruff.lint``: use ``future-annotations = true``, this correctly checks ``__future__`` annotation.
 ### Changed 
 - Update version dependencies. 
 - Strengthen seed comparison test. 
