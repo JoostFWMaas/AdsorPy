@@ -119,13 +119,14 @@ def test_run_simulation_randomness(rsa_config, default_polygon, monkeypatch):
     assert results_1[2] != results_2[2]  # Seeds should be different
     assert not np.array_equal(results_1[3], results_2[3])  # The dose timestamps are virtually guaranteed to be unequal.
 
+
 def test_run_simulation_determinism(rsa_config, default_polygon, monkeypatch, subtests):
     """Test determinism of the pseudorandomness by repeating with the same seed."""
     kwargs = {
-    "calculate_gap_size": True,
-    "include_rejected_flux": True,
-    "molecules_list": [default_polygon],
-    "seed": 42,
+        "calculate_gap_size": True,
+        "include_rejected_flux": True,
+        "molecules_list": [default_polygon],
+        "seed": 42,
     }
     results_1 = run_simulation(rsa_config, **kwargs)
     results_2 = run_simulation(rsa_config, **kwargs)
@@ -178,8 +179,8 @@ def test_run_simulation_property_test(site_count, lattice_a, boundary_condition,
     num_mols = len(molecules_list)
 
     if ((rotation_symmetries is None or len(rotation_symmetries) in {1, num_mols}) and
-        (reflection_symmetries is None or len(reflection_symmetries) in {1, num_mols}) and
-        (rotation_counts is None or len(rotation_counts) in {1, num_mols})):
+            (reflection_symmetries is None or len(reflection_symmetries) in {1, num_mols}) and
+            (rotation_counts is None or len(rotation_counts) in {1, num_mols})):
         results = run_simulation(
             rsa_config,
             molecules_list=molecules_list,
@@ -212,26 +213,34 @@ def test_run_simulation_property_test(site_count, lattice_a, boundary_condition,
                 boundary_condition=boundary_condition,
             )
 
+
 class TestCustomGrid:
     """Class to test errors related to custom grid generation.
     """
+
     def test_bad_custom_grid(self):
         """Does the custom grid raise an error when either x or y (not both) is missing?
         """
-        with pytest.raises(ValueError, match="A custom grid will only be generated if 'site_x_coords', 'site_y_coords',*"):
+        with pytest.raises(ValueError,
+                           match="A custom grid will only be generated if 'site_x_coords', 'site_y_coords',*"):
             rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_periodic.json"))
             run_simulation(rsa_config=rsa_config, site_x_coords=[1.1])
+
     def test_bad_xcoords(self):
         """Raise an error when the x coordinates are negative. Same effect as the y coordinates.
         """
         with pytest.raises(ValueError, match="Site x coordinates must be positive.*"):
             rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_periodic.json"))
-            run_simulation(rsa_config=rsa_config, site_x_coords=[-1.1], site_y_coords=[-2., 1.1], bounding_x_coord=-10, bounding_y_coord=-10)
+            run_simulation(rsa_config=rsa_config, site_x_coords=[-1.1], site_y_coords=[-2., 1.1], bounding_x_coord=-10,
+                           bounding_y_coord=-10)
+
     def test_good_custom_grid(self):
         """Does the custom grid generate correctly without errors?
         """
         rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_periodic.json"))
-        run_simulation(rsa_config=rsa_config, site_x_coords=0.9 * np.repeat(np.arange(10),10), site_y_coords=0.9 * np.tile(np.arange(10), 10), bounding_x_coord=10, bounding_y_coord=10)
+        run_simulation(rsa_config=rsa_config, site_x_coords=0.9 * np.repeat(np.arange(10), 10),
+                       site_y_coords=0.9 * np.tile(np.arange(10), 10), bounding_x_coord=10, bounding_y_coord=10)
+
 
 def test_sequential_fluxreject():
     """Does the code handle flux-based simulation correctly?
@@ -242,13 +251,16 @@ def test_sequential_fluxreject():
     assert isinstance(flux, np.ndarray)  # It should be a numpy array.
     assert flux.size  # The numpy array should not be empty.
 
+
 def test__select_and_run():
     """When a bad simulation type/dosing scheme is selected, an error should be raised.
     """
     bad_simulation_type = "potato"
     flux = True
-    with pytest.raises(ValueError, match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported."):
+    with pytest.raises(ValueError,
+                       match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported."):
         _select_and_run(None, None, None, bad_simulation_type, flux, None, None)
+
 
 def test_wrong_stickingprobability():
     """When the wrong sticking probability type is used, an error should be raised.
