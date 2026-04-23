@@ -14,7 +14,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import shapely
 import shapely.affinity as aff
-from matplotlib import axes, figure
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Circle
 from matplotlib.widgets import Slider, TextBox
@@ -23,6 +22,7 @@ from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 if TYPE_CHECKING:
+    from matplotlib import axes, figure
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
@@ -506,7 +506,7 @@ def _update(  # noqa: PLR0913
     yawmat[0, [0, 1]] = np.cos(yaw * fac), -np.sin(yaw * fac)
     yawmat[1, [0, 1]] = np.sin(yaw * fac), np.cos(yaw * fac)
 
-    ident_mat = cast("RotMatrix", ident_mat @ yawmat @ pitchmat @ rollmat)
+    ident_mat = ident_mat @ yawmat @ pitchmat @ rollmat
 
     newatompos = atompos.copy()
 
@@ -621,7 +621,7 @@ def _initialise_reader(
         errmsg = f"The file type is not .xyz but {badtype}"
         raise ValueError(errmsg)
     data = np.loadtxt(file_path, dtype=str, skiprows=2)
-    atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]] = cast("np.ndarray[tuple[int], np.dtype[np.str_]]", data[:, 0])
+    atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]] = data[:, 0]
     atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]] = cast(
         "np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]",
         data[:, 1:].astype(np.float64),
@@ -642,8 +642,8 @@ def _initialise_reader(
         mask &= atompos[:, 2] > z_trim
 
     if mask is not None:
-        atomkeys = cast("np.ndarray[tuple[int], np.dtype[np.str_]]", atomkeys[mask])
-        atompos = cast("np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]", atompos[mask])
+        atomkeys = atomkeys[mask]
+        atompos = atompos[mask]
 
     if not atomkeys.size:
         errmsg = "The current settings result in an empty molecule."

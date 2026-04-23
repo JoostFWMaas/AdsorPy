@@ -1,1 +1,34 @@
-v1.0.0 Full release.
+# Change Log
+All important changes to this project will be documented in this file.
+
+This format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
+
+## 1.0.2 - 2026-04-23
+
+### Added
+
+### Changed
+- Update CI actions to move from node.js 20 to 24.
+
+### Fixed
+
+### Removed
+- Remove unnecessary type casts.
+
+## 1.0.1 - 2026-04-23
+
+### Added
+- Implement subtests for the test_run_alt (a test for the RSA simulator on an alternative seed).
+- Add a determinism test to show identical outcome for identical seeds. 
+- In tool.ruff.lint: use future-annotations = true, this correctly checks \_\_future\_\_ annotation.
+### Changed 
+- Update version dependencies. 
+- Strengthen seed comparison test. 
+- Vectorise (remove a for-loop) from overlap test.
+
+### Fixed
+
+### Removed
+
+## 1.0.0 - 2025-11-29
+- Full release

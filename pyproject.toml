@@ -25,7 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy",
-    "numba>=0.63.0rc1",
+    "numba",
     "matplotlib",
     "shapely",
     "rtree",
@@ -133,14 +133,7 @@ line-length = 88
 
 [tool.ruff]
 line-length = 120
-exclude = [
-    ".venv",
-    "venv",
-    "tests",
-    "Lib",
-    "__init__.py",
-    "*/Scripts/*"
-]
+include = ["pyproject.toml", "src/**/*.py"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -151,10 +144,11 @@ line-ending = "auto"
 
 [tool.ruff.lint]
 select = ['ALL']
-pylint.max-args = 10
+pylint.max-args = 11
 pylint.max-branches = 20
 pylint.max-statements = 80
 mccabe.max-complexity = 20
+future-annotations = true  # Future annotations enabled.
 
 
 ignore = [
@@ -169,5 +163,8 @@ ignore = [
     "ARG001", # Unused function argument.
     "D203",  # Conflicts with D211: no blank line before class.
     "D213",  # Conflicts with D212: multi-line summary first line.
-
+#    "DOC",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["D104"]  # Missing docstring in public package. Not needed, package is empty.

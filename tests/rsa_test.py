@@ -7,13 +7,13 @@ from hypothesis import given, strategies as st, settings
 from hypothesis.extra.numpy import arrays
 from numpy.random import PCG64DXSM, Generator  # New random generator.
 from scipy.spatial.distance import cdist
-from shapely import Polygon
+from shapely import Polygon, unary_union
+from shapely.prepared import prep
 
 import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
 import src.adsorpy.randomsequentialadsorption as rsarun
 from src.adsorpy.rsa_calculator import squared_cdist
 from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-
 
 
 class ExampleSimulation:
@@ -111,15 +111,13 @@ class TestWithParameters:
                 )
             )
 
-        assert len(simulator.molecules) == molgr_count and all(
-            [cule is not None for cule in simulator.molecules]
-        )
+        assert len(simulator.molecules) == molgr_count and all(cule is not None for cule in simulator.molecules)
 
     def test_boundaryparameters_creation(
             self, simulator, configname, molgr_count, surf_type
     ):
         """Do the boundary parameters initialise correctly?"""
-        dbl_max_rad = 2.0 * max([ii.max_radius for ii in simulator.molecules])
+        dbl_max_rad = 2.0 * max(ii.max_radius for ii in simulator.molecules)
         simulator.surf.bp.biggest_radius = dbl_max_rad
         simulator.surf.bp.generate_boundary_conditions(simulator.surf)
         for mdx, molec in enumerate(simulator.molecules):
@@ -131,7 +129,7 @@ class TestWithParameters:
         assert np.count_nonzero([sb.periodic_flag, sb.hard_flag, sb.soft_flag]) == 1
 
     def test_generate_simulation(self, simulator, configname, molgr_count, surf_type):
-        """Does the simulation gneerate correctly?"""
+        """Does the simulation generate correctly?"""
         simulator.sim = rsarun.Simulator(
             simulator.rsa_config,
             False,
@@ -142,7 +140,7 @@ class TestWithParameters:
         assert simulator.sim is not None
 
     def test_place_fist_molecule(self, simulator, configname, molgr_count, surf_type):
-        """Is the first moelcule placed correctly?"""
+        """Is the first molecule placed correctly?"""
         succ, *_ = simulator.sim.attempt_place_molecule(
             simulator.surf, simulator.molecules[0]
         )
@@ -201,10 +199,8 @@ class TestWithParameters:
         jj: Polygon
         overlap = False
         for idx, ii in enumerate(polygons):  # TODO: Add STRtree to speed up?
-            for jj in polygons[idx + 1:]:
-                overlap = ii.intersects(jj)
-                if overlap:
-                    break
+            prepared_multipolygon = prep(unary_union(polygons[idx + 1:]))
+            overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this test fails.
             if overlap:
                 break
 
@@ -216,7 +212,6 @@ class TestWithParameters:
         """
         gaps = simulator.sim.analyse_gap_size(simulator.sim.surf)
         circumradius = simulator.sim.molgroups[0].max_radius
-        # raise NotImplementedError(simulator.sim.mol_data.orig_to_mirrors['mirr_ids'])
         assert np.all(gaps <= circumradius)
 
     @pytest.fixture(scope="class")
@@ -225,20 +220,17 @@ class TestWithParameters:
         return ExampleSimulation(123124)
 
     def test_run_alt(
-            self, simulator, alt_simulator, configname, molgr_count, surf_type
+            self, simulator, alt_simulator, configname, molgr_count, surf_type, subtests
     ):
         """Run the aforementioned tests for the alternative simulation as well."""
+
         arguments = (configname, molgr_count, surf_type)
-        self.test_load_config(alt_simulator, *arguments)
-        self.test_create_surface(alt_simulator, *arguments)
-        self.test_create_molecules(alt_simulator, *arguments)
-        self.test_boundaryparameters_creation(alt_simulator, *arguments)
-        self.test_generate_simulation(alt_simulator, *arguments)
-        self.test_place_fist_molecule(alt_simulator, *arguments)
-        self.test_buffer_trimming(alt_simulator, *arguments)
-        self.test_random_placement(alt_simulator, *arguments)
-        self.test_try_placement(alt_simulator, *arguments)
-        self.test_run_simulation(alt_simulator, *arguments)
+        for alt_test in [self.test_load_config, self.test_create_surface, self.test_create_molecules,
+                         self.test_boundaryparameters_creation, self.test_generate_simulation,
+                         self.test_place_fist_molecule, self.test_buffer_trimming, self.test_random_placement,
+                         self.test_try_placement, self.test_run_simulation]:
+            with subtests.test(f"{alt_test.__name__}"):
+                alt_test(alt_simulator, *arguments)
 
     def test_randomness_comparison(
             self, simulator, alt_simulator, configname, molgr_count, surf_type
@@ -252,10 +244,7 @@ class TestWithParameters:
             alt_simulator.sim.mol_data.stored_data["exists"]
         ]
 
-        if (
-                existing_sim_mols.size == existing_altsim_mols.size
-        ):  # If unequal, results are guaranteed to differ.
-            assert not np.all(existing_sim_mols == existing_altsim_mols)
+        assert not np.array_equal(existing_sim_mols, existing_altsim_mols)
 
     def test_alt_nooverlap(self, alt_simulator, configname, molgr_count, surf_type):
         """Is there no overlap for the alternative simulation as well?"""
@@ -278,12 +267,13 @@ def test_surfacetype_invalid_input():
 
 
 def test_boundarytype_invalid_input():
-    """Is an error raised for invalid bounary types?"""
+    """Is an error raised for invalid boundary types?"""
     with pytest.raises(TypeError):
         rsarun.BoundaryParameters(10)
 
     with pytest.raises(ValueError):
         rsarun.BoundaryParameters("Dogbonium")
+
 
 def test_molecules_invalid_input():
     """Is an error raised for invalid input of the molecules?"""
@@ -293,6 +283,7 @@ def test_molecules_invalid_input():
         sim.rsa_config = RsaConfig(join(dirname(__file__), "test_data", sim.configname))
 
         rsarun.Simulator(sim.rsa_config, None, None, [], None)
+
 
 @pytest.fixture(scope="class")
 def simple_simulator() -> ExampleSimulation:
@@ -345,6 +336,7 @@ def simple_simulator() -> ExampleSimulation:
 
 class TestMiscSettings:
     """For the testing of miscellaneous settings."""
+
     def test_adsorption_chance(self, simple_simulator):
         """Does the adsorption fail when the sticking probability is 0?
         """
@@ -396,9 +388,7 @@ class TestMiscSettings:
         for idx, ii in enumerate(polygons):
             for jj in polygons[idx + 1:]:
                 overlap = ii.intersects(jj)
-                if (
-                        overlap
-                ):  # If it fails, do not check any other molecules. Just break.
+                if overlap:  # If it fails, do not check any other molecules. Just break.
                     break
             if overlap:
                 break
@@ -415,13 +405,13 @@ class TestMiscSettings:
 
 
 @settings(deadline=None)
-@given(arr1 =
-    arrays(
-        dtype=np.float64,
-        shape=st.tuples(st.just(2), st.integers(min_value=1, max_value=2000)),
-        elements=st.floats(allow_infinity=False, allow_nan=False),
-    ),
-    arr2 =
+@given(arr1=
+arrays(
+    dtype=np.float64,
+    shape=st.tuples(st.just(2), st.integers(min_value=1, max_value=2000)),
+    elements=st.floats(allow_infinity=False, allow_nan=False),
+),
+    arr2=
     arrays(
         dtype=np.float64,
         shape=st.tuples(st.just(2), st.integers(min_value=1, max_value=2000)),
@@ -524,7 +514,7 @@ def test_gapsize_analysis(gapsim: ExampleSimulation, idx_radius: tuple[int, floa
 
     my_gaps = cdist(
         simrad.sim.mol_data.mirror_coords[
-        :, simrad.sim.mol_data.stored_mirr_data["exists"]
+            :, simrad.sim.mol_data.stored_mirr_data["exists"]
         ].T,
         simrad.surf.grid_coordinates.T,
     )
@@ -540,5 +530,3 @@ def test_gapsize_analysis(gapsim: ExampleSimulation, idx_radius: tuple[int, floa
 
     assert np.all(out_gaps <= gaps + tolerance)
     assert np.all(gaps <= in_gaps + tolerance)
-
-
