@@ -54,13 +54,13 @@ def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tupl
 
 
 def calculate_square_distance(
-    candidate_coords: CoordPair,
-    other_coords: CoordsArray,
-    placed_index: IdxArray,
-    molgridx: IdxArray,
-    max_interdist: float,
-    rtree: Index,
-    existing: BoolArray,
+        candidate_coords: CoordPair,
+        other_coords: CoordsArray,
+        placed_index: IdxArray,
+        molgridx: IdxArray,
+        max_interdist: float,
+        rtree: Index,
+        existing: BoolArray,
 ) -> tuple[FloatArray, IdxArray, IdxArray]:
     """Compute the square distance for the coordinates.
 
@@ -78,17 +78,12 @@ def calculate_square_distance(
 
     :returns: Squared distance of molecule centre to other molecule centres, indices of nearby molecules, molgroup idx.
     """
-    distance_boolidx_array = make_rtree_filter(
-        cast("np.ndarray[tuple[Literal[2]], np.dtype[np.float64]]", candidate_coords[:, 0]),
-        rtree,
-        max_interdist,
-        existing,
-    )
+    distance_boolidx_array = make_rtree_filter(candidate_coords[:, 0], rtree, max_interdist, existing)
 
     # The coordinates and molecules are filtered using the window.
-    filtered_coords: CoordsArray = cast("CoordsArray", other_coords[:, distance_boolidx_array])
-    neighbour_index: IdxArray = cast("IdxArray", placed_index[distance_boolidx_array])
-    mol_group_index: IdxArray = cast("IdxArray", molgridx[distance_boolidx_array])
+    filtered_coords: CoordsArray = other_coords[:, distance_boolidx_array]
+    neighbour_index: IdxArray = placed_index[distance_boolidx_array]
+    mol_group_index: IdxArray = molgridx[distance_boolidx_array]
 
     distance_squared: DistArray
     if filtered_coords.size != 0:  # If the list of nearby coordinates is not empty, proceed.
@@ -99,10 +94,10 @@ def calculate_square_distance(
 
 
 def check_outer_radius(
-    distance_squared: DistArray,
-    mol_gr_idx: IdxArray,
-    near_index: IdxArray,
-    gap_dists: DistArray,
+        distance_squared: DistArray,
+        mol_gr_idx: IdxArray,
+        near_index: IdxArray,
+        gap_dists: DistArray,
 ) -> tuple[np.bool_, IdxArray, FloatArray]:
     """Check whether the outer radius is clear.
 
@@ -118,14 +113,11 @@ def check_outer_radius(
     """
     # The first step makes a boolean array, trimming values that are too far away.
     # Molecules cannot touch under any orientation if the distance between them is more than twice the minimum
-    radvals: DistArray = cast("DistArray", gap_dists[mol_gr_idx])
-    outer_clearflag_array: BoolArray = cast("BoolArray", distance_squared < np.square(radvals))
+    radvals: DistArray = gap_dists[mol_gr_idx]
+    outer_clearflag_array: BoolArray = distance_squared < np.square(radvals)
 
-    neighbour_index: IdxArray = cast("IdxArray", near_index[outer_clearflag_array])
-    close_distance_squared: DistArray = cast(
-        "DistArray",
-        distance_squared[outer_clearflag_array],
-    )
+    neighbour_index: IdxArray = near_index[outer_clearflag_array]
+    close_distance_squared: DistArray = distance_squared[outer_clearflag_array]
     # The outer radius is empty if there are no nearby neighbours (size == 0, aka False).
     outer_radius_empty: np.bool_ = np.logical_not(close_distance_squared.size)
 
@@ -133,10 +125,10 @@ def check_outer_radius(
 
 
 def check_hard_border(
-    candidate_coords: CoordPair,
-    x_max: float,
-    y_max: float,
-    max_radius: float,
+        candidate_coords: CoordPair,
+        x_max: float,
+        y_max: float,
+        max_radius: float,
 ) -> np.bool_:
     """Check whether there is guaranteed clearance between the molecule candidate and the hard border.
 
@@ -157,10 +149,10 @@ def check_hard_border(
 
 
 def check_hard_molecule(
-    candidate_coords: CoordPair,
-    x_max: float,
-    y_max: float,
-    fmg: MoleculeGroup,
+        candidate_coords: CoordPair,
+        x_max: float,
+        y_max: float,
+        fmg: MoleculeGroup,
 ) -> BoolArray:
     """Check whether positioned molecules fit within the hard boundaries.
 
@@ -186,11 +178,11 @@ def check_hard_molecule(
 
 
 def check_shape_overlap(
-    cand: CandidateMolecule,
-    neighbour_index: IdxArray,
-    simul: Simulator,
-    pmg: MoleculeGroup,
-    try_angle_first: int | None = None,
+        cand: CandidateMolecule,
+        neighbour_index: IdxArray,
+        simul: Simulator,
+        pmg: MoleculeGroup,
+        try_angle_first: int | None = None,
 ) -> tuple[bool, CandidateMolecule]:
     """Check whether there the new molecule overlaps with existing molecules.
 
@@ -210,20 +202,17 @@ def check_shape_overlap(
     :returns: Bool flag that indicates whether the candidate is fully disjoint, and the candidate molecule.
     """
     no_overlap: bool = False  # Initially assume overlap is not allowed. Only changes if the contrary is proven!
-    available_rotations: IdxArray = cast("IdxArray", pmg.bp.allowed_idx[pmg.bp.allowed_bools])
+    available_rotations: IdxArray = pmg.bp.allowed_idx[pmg.bp.allowed_bools]
     positioned_molecules: GeoArray = (
         simul.mol_data.stored_mirr_data["polygon"] if simul.bp.periodic_flag else simul.mol_data.stored_data["polygon"]
     )
     pos_tree = STRtree(positioned_molecules[neighbour_index])
 
     # Go through this in a random order.
-    random_angle_order: IdxArray = cast("IdxArray", simul.rng.permutation(available_rotations))
+    random_angle_order: IdxArray = simul.rng.permutation(available_rotations)
     if try_angle_first is not None:
-        random_angle_order = cast(
-            "IdxArray",
-            np.delete(random_angle_order, np.nonzero(available_rotations == try_angle_first)),
-        )
-        random_angle_order = cast("IdxArray", np.insert(random_angle_order, 0, try_angle_first))
+        random_angle_order = np.delete(random_angle_order, np.nonzero(available_rotations == try_angle_first))
+        random_angle_order = np.insert(random_angle_order, 0, try_angle_first)
     ii: np.int_
     for ii in random_angle_order:
         candidate_molecule: Polygon = aff.translate(
@@ -251,10 +240,10 @@ def check_shape_overlap(
 
 
 def make_rtree_filter(
-    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
-    rtree: Index,
-    circumradius: float,
-    existing: BoolArray,
+        candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
+        rtree: Index,
+        circumradius: float,
+        existing: BoolArray,
 ) -> IdxArray:
     """Filter on nearby polygons using the RTree index.
 
@@ -279,10 +268,10 @@ def make_rtree_filter(
 
 
 def make_rectangular_filter(
-    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
-    other_coordinates: CoordsArray,
-    x_offset: float,
-    y_offset: float | None = None,
+        candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
+        other_coordinates: CoordsArray,
+        x_offset: float,
+        y_offset: float | None = None,
 ) -> BoolArray:
     """Make a rectangular boolean list out of x and y coordinates. Can be used to make a window.
 
@@ -313,10 +302,10 @@ def make_rectangular_filter(
 
 
 def create_periodic_images(
-    coordinates: CoordsArray23D,
-    x_max: float,
-    y_max: float,
-    z_max: float | None = None,
+        coordinates: CoordsArray23D,
+        x_max: float,
+        y_max: float,
+        z_max: float | None = None,
 ) -> CoordsArray23D:
     """Create a padding of coordinates.
 
@@ -335,16 +324,14 @@ def create_periodic_images(
         "np.ndarray[tuple[Literal[2, 3], Literal[2, 3]], np.dtype[np.float64]]",
         np.diag([x_max, y_max]).reshape((2, 2)) if z_max is None else np.diag([x_max, y_max, z_max]),
     )
-    offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]] = cast(
-        "np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]]",
-        temp_offset[:, :, np.newaxis],
-    )
+    offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]] = temp_offset[
+        :, :, np.newaxis]
 
     ii: NDArray[np.float64]
     for ii in offset:  # The first pass creates padding in x dir, the second pads in y.
-        sliced_offset = cast("np.ndarray[tuple[Literal[2, 3], Literal[1]], np.dtype[np.float64]]", ii)
-        extended_coordinates1: CoordsArray23D = cast("CoordsArray23D", extended_coordinates + sliced_offset)
-        extended_coordinates2: CoordsArray23D = cast("CoordsArray23D", extended_coordinates - sliced_offset)
+        sliced_offset = ii
+        extended_coordinates1: CoordsArray23D = extended_coordinates + sliced_offset
+        extended_coordinates2: CoordsArray23D = extended_coordinates - sliced_offset
         extended_coordinates = cast(
             "CoordsArray23D",
             np.hstack((extended_coordinates, extended_coordinates1, extended_coordinates2), dtype=np.float64),

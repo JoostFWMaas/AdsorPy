@@ -264,7 +264,7 @@ class BoundaryParameters:
             self.extended_idx = temp_idx
             self.extended_occupied_by = np.zeros_like(self.extended_idx, dtype=np.int_).ravel()
             # This grid has duplicate indices at mirrors.
-            self.extended_grid = cast("CoordsArray", extended_grid[:, extended_grid_boolsout])
+            self.extended_grid = extended_grid[:, extended_grid_boolsout]
             self.tree = STRtree([Point(coord) for coord in self.extended_grid.T])
             if self.molecules_flag:
                 self.extended_vacant = cast("BoolArray", np.ones_like(temp_idx, dtype=np.bool_))
@@ -380,12 +380,9 @@ class MoleculeGroup:
         "Rotations for the molecule."
         if not self.reflection_symmetry:
             self.allowed_rotations = np.tile(self.allowed_rotations, 2)
-        self.rotated_molecules: Final[GeoArray] = cast(
-            "GeoArray",
-            np.empty_like(self.allowed_rotations, dtype=Polygon),
-        )
+        self.rotated_molecules: Final[GeoArray] = np.empty_like(self.allowed_rotations, dtype=Polygon)
         "Array of rotated molecules. Used as templates, only translation is needed to get into position."
-        self.rotated_buffer_molecules: GeoArray = cast("GeoArray", np.empty_like(0, dtype=Polygon))
+        self.rotated_buffer_molecules: GeoArray = np.empty_like(0, dtype=Polygon)
         """Buffer molecules are a special type of polygon used for vectorised calculations.
         They are used to determine whether surface sites are covered by these polygons."""
 
@@ -677,7 +674,7 @@ class Simulator:
                     [mol.vacancy_count for mol in self.molgroups],
                 )
         elif grid_idx is None:
-            free_indices: IdxArray = cast("IdxArray", surf.grid_index[pmg.vacant])
+            free_indices: IdxArray = surf.grid_index[pmg.vacant]
             if not free_indices.size:  # If no free sites, placement is impossible.
                 return (
                     placed_flag,
@@ -702,13 +699,13 @@ class Simulator:
             placed_index = cast("IdxArray", self.mol_data.stored_mirr_data["self_id"][existing])
             mol_groups = cast("IdxArray", self.mol_data.stored_mirr_data["mol_group"][existing])
             # Take coords of molecules + images
-            all_mol_coords = cast("CoordsArray", self.mol_data.mirror_coords[:, existing])
+            all_mol_coords = self.mol_data.mirror_coords[:, existing]
             pmg.bp.edge_flag = cand.close_to_border = pmg.bp.close_to_edge[cand.grid_index]
             tree = self.mol_data.mirr_tree
         else:
             existing = self.mol_data.stored_data["exists"]
             placed_index = cast("IdxArray", self.mol_data.stored_data["self_id"][existing])
-            all_mol_coords = cast("CoordsArray", self.mol_data.coords[:, existing])
+            all_mol_coords = self.mol_data.coords[:, existing]
             mol_groups = cast("IdxArray", self.mol_data.stored_data["mol_group"][existing])
             tree = self.mol_data.mol_tree
 
@@ -837,7 +834,7 @@ class Simulator:
             pmg.bp.mirror_counter += pmg.bp.mirrors.size
 
             for mdx, mirror in enumerate(pmg.bp.mirrors):
-                mirr_coords: CoordsArray = cast("CoordsArray", surf.bp.extended_grid[:, mirror])
+                mirr_coords: CoordsArray = surf.bp.extended_grid[:, mirror]
                 mirror_molecule: Polygon = aff.translate(
                     pmg.rotated_molecules[cand.rot_idx],
                     *mirr_coords.ravel(),
@@ -890,9 +887,9 @@ class Simulator:
         mirr_coors: CoordPair
         for ii in pmg.bp.mirrors:
             if boundparams.periodic_flag:
-                mirr_coors = cast("CoordPair", boundparams.extended_grid[:, ii, np.newaxis])
+                mirr_coors = boundparams.extended_grid[:, ii, np.newaxis]
             else:
-                mirr_coors = cast("CoordPair", surf.grid_coordinates[:, ii, np.newaxis])
+                mirr_coors = surf.grid_coordinates[:, ii, np.newaxis]
             nearby_bool_array: BoolArray = calc.make_rectangular_filter(
                 mirr_coors[:, 0],
                 surf.grid_coordinates,
@@ -901,8 +898,8 @@ class Simulator:
             nearby_bool_array &= (mol_group.occupied_by == -1) | (mol_group.occupied_by == self.__unclaimed)
 
             # Take only the nearby free sites.
-            nearby_index: IdxArray = cast("IdxArray", surf.grid_index[nearby_bool_array])
-            centered_coordinates: CoordsArray = cast("CoordsArray", surf.grid_coordinates[:, nearby_index] - mirr_coors)
+            nearby_index: IdxArray = surf.grid_index[nearby_bool_array]
+            centered_coordinates: CoordsArray = surf.grid_coordinates[:, nearby_index] - mirr_coors
             nearby_bool_array[nearby_index] &= contains_xy(buffered_shape, *centered_coordinates)
             mol_group.vacant[nearby_bool_array] = False
             mol_group.occupied_by[nearby_bool_array] = occupier_idx
@@ -1214,44 +1211,38 @@ class Surface:
 
         x1: DistArray = np.arange(self.sites, dtype=np.float64)
         x1 *= self.lattice_a  # Scale the range by the lattice constant.
-        y1: DistArray = cast("DistArray", x1 * sqrt3)  # Scale the y grid.
+        y1: DistArray = x1 * sqrt3  # Scale the y grid.
 
         if self.lattice_type in {"triangular", "hexagonal", "honeycomb"}:
-            x2: DistArray = cast("DistArray", x1 + 0.5 * self.lattice_a)  # Create an off-set grid.
-            y2: DistArray = cast("DistArray", x2 * sqrt3)
+            x2: DistArray = x1 + 0.5 * self.lattice_a  # Create an off-set grid.
+            y2: DistArray = x2 * sqrt3
 
-            x_all: DistArray = cast(
-                "DistArray",
-                np.hstack(
-                    (np.repeat(x1, self.sites), np.repeat(x2, self.sites)),
-                ),
+            x_all: DistArray = np.hstack(
+                (np.repeat(x1, self.sites), np.repeat(x2, self.sites)),
             )
-            y_all: DistArray = cast(
-                "DistArray",
-                np.hstack(
-                    (np.tile(y1, self.sites), np.tile(y2, self.sites)),
-                ),
+            y_all: DistArray = np.hstack(
+                (np.tile(y1, self.sites), np.tile(y2, self.sites)),
             )
 
             if self.lattice_type == "honeycomb":
-                x_shift: DistArray = cast("DistArray", x_all + 0.5 * self.lattice_a)
-                x_all = cast("DistArray", np.hstack((x_all, x_shift)))
+                x_shift: DistArray = x_all + 0.5 * self.lattice_a
+                x_all = np.hstack((x_all, x_shift))
 
-                y_shift0: DistArray = cast("DistArray", y_all + 0.5 * self.lattice_a / sqrt3)
-                y_all = cast("DistArray", np.hstack((y_shift0, y_all)))
+                y_shift0: DistArray = y_all + 0.5 * self.lattice_a / sqrt3
+                y_all = np.hstack((y_shift0, y_all))
 
                 x_all *= sqrt3
                 y_all *= sqrt3
 
         elif self.lattice_type == "square":
-            x_all = cast("DistArray", np.repeat(x1, self.sites))
-            y_all = cast("DistArray", np.tile(x1, self.sites))
+            x_all = np.repeat(x1, self.sites)
+            y_all = np.tile(x1, self.sites)
 
         else:
             errmsg: str = f"Unsupported lattice: {self.lattice_type} of type {type(self.lattice_type)}."
             raise ValueError(errmsg) if isinstance(self.lattice_type, str) else TypeError(errmsg)
 
-        self.grid_coordinates = cast("CoordsArray", np.vstack((x_all, y_all)))  # (2, 2N^2) Make a coordinate array.
+        self.grid_coordinates = np.vstack((x_all, y_all))  # (2, 2N^2) Make a coordinate array.
 
         self._set_xy_max(x_all, y_all, sqrt3)
 
@@ -1318,7 +1309,7 @@ class Surface:
         self.x_max = bounding_x_coord
         self.y_max = bounding_y_coord
         self.area = self.x_max * self.y_max
-        self.grid_coordinates = cast("CoordsArray", np.vstack((site_x_coords, site_y_coords)))
+        self.grid_coordinates = np.vstack((site_x_coords, site_y_coords))
         self.all_site_count = self.grid_coordinates.shape[1]
 
         self.grid_index = np.arange(

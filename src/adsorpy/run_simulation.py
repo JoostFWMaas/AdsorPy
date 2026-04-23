@@ -372,10 +372,7 @@ def _turn_into_list(val_or_list: T1 | list[T1], compare_to: type[T1]) -> np.ndar
     :param compare_to: comparison type. Should be either the type of the value or the type in the list.
     :return: the 1D array of the original variable or list.
     """
-    return cast(  # type: ignore[explicit-any]
-        "np.ndarray[tuple[int], np.dtype[T2]]",
-        np.asarray([val_or_list] if isinstance(val_or_list, compare_to) else val_or_list),
-    )
+    return np.asarray([val_or_list] if isinstance(val_or_list, compare_to) else val_or_list)
 
 
 def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explicit-any]
@@ -385,7 +382,7 @@ def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explic
     :param comparison_len: length of the repetition.
     :return: the array repeated to the proper length.
     """
-    return cast("Tn", np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array)  # type: ignore[explicit-any]
+    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array  # type: ignore[return]
 
 
 def _error_checker(
