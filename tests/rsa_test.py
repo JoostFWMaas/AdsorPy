@@ -227,7 +227,7 @@ class TestWithParameters:
         for alt_test in [self.test_load_config, self.test_create_surface, self.test_create_molecules,
                          self.test_boundaryparameters_creation, self.test_generate_simulation,
                          self.test_place_fist_molecule, self.test_buffer_trimming, self.test_random_placement,
-                         self.test_try_placement, self.test_run_simulation]:
+                         self.test_try_placement, self.test_run_simulation, self.test_no_overlap, self.test_no_large_gaps]:
             with subtests.test(f"{alt_test.__name__}"):
                 alt_test(alt_simulator, *arguments)
 
@@ -244,14 +244,6 @@ class TestWithParameters:
         ]
 
         assert not np.array_equal(existing_sim_mols, existing_altsim_mols)
-
-    def test_alt_nooverlap(self, alt_simulator, configname, molgr_count, surf_type):
-        """Is there no overlap for the alternative simulation as well?"""
-        self.test_no_overlap(alt_simulator, configname, molgr_count, surf_type)
-
-    def test_alt_gaps(self, alt_simulator, configname, molgr_count, surf_type):
-        """Test whether the gap size analysis succeeds for the alternative simulation as well."""
-        self.test_no_large_gaps(alt_simulator, configname, molgr_count, surf_type)
 
 
 def test_surfacetype_invalid_input():

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "AdsorPy"
-version = "1.0.0"
+version = "1.1.0"
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -93,7 +93,6 @@ exclude_also = [
 mypy_path = ["src", "optional"]
 ignore_missing_imports = true
 strict = true
-#no_implicit_reexport = true
 disallow_any_explicit = true
 #disallow_any_decorated = true  # Throws an error because geo.Polygon in a tuple is turned into Any for the @staticmethod.
 #warn_unreachable = true  # Set this to true when pushing to main?
