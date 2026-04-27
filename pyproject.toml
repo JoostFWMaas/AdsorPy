@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "AdsorPy"
-version = "1.1.0"
+version = "1.1.1"
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -45,12 +45,12 @@ testing = [
     "mypy",
     "ruff",
     "scipy==1.15.3; python_version <= '3.10'",
-    "scipy==1.16.3; python_version > '3.10'",
+    "scipy>=1.16.3; python_version > '3.10'",
 ]
 
 
 [tool.hatch.package_data]
-"rsa-mc" = ["py.typed"]
+"AdsorPy" = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

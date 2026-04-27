@@ -9,7 +9,15 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Fixed
 ### Removed
 
-## 1.1.0 2026-04-24
+## 1.1.1 - 2026-04-27
+### Added
+### Changed
+- Update dependency versions.
+### Fixed
+- Fix ``pyproject.toml``: ``"AdsorPy" = ["py.typed"]`` (from ``rsa-mc``, the old internal project name.)
+### Removed
+
+## 1.1.0 - 2026-04-24
 
 ### Added
 - Add the ``Simulator`` class as 6th return value of ``run_simulation()``.
