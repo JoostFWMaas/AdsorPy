@@ -71,7 +71,7 @@ def run_simulation(  # noqa: PLR0913
     bounding_x_coord: float | None = None,
     bounding_y_coord: float | None = None,
     sticking_probability: float | list[float] = 1.,
-) -> tuple[list[int], DistArray, int, IdxArray, IdxArray]:
+) -> tuple[list[int], DistArray, int, IdxArray, IdxArray, Simulator]:
     """Run the RSA simulation.
 
     If no molecule is provided, defaults to a circular molecule of radius 0.55 Angstrom.
@@ -106,6 +106,7 @@ def run_simulation(  # noqa: PLR0913
         2. The RNG seed.
         3. The fluxes/doses as a list of counts per stepcount of adsorption event.
         4. The available surface function (ASF).
+        5. The Simulator class.
     :raises TypeError: If the sticking probability is an invalid type.
     """
     rsa_config = RsaConfig(str(Path(__file__).parent / "config.json")) if rsa_config is None else rsa_config
@@ -145,7 +146,6 @@ def run_simulation(  # noqa: PLR0913
 
     temp_results_folder = results_folder
     attempt_count: int = 0
-    # while os.path.isdir(temp_results_folder):
     while temp_results_folder.is_dir():
         temp_results_folder = results_folder.parent / (results_folder.name + f"_{attempt_count}")
         # Add a counter to the end of the folder name.
@@ -223,7 +223,7 @@ def run_simulation(  # noqa: PLR0913
         timestr,
     )
 
-    return [mgr.molecule_counter for mgr in sim.molgroups], gaps, seed, all_flux, phi
+    return [mgr.molecule_counter for mgr in sim.molgroups], gaps, seed, all_flux, phi, sim
 
 
 def _run_sequential(

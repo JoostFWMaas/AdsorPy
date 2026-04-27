@@ -3,9 +3,13 @@ from datetime import datetime, timedelta
 import numpy as np
 from pathlib import Path
 from hypothesis import given, strategies as st, settings
-from shapely import Polygon
+from shapely import Polygon, unary_union
 from shapely.ops import orient
-from src.adsorpy.run_simulation import run_simulation, RsaConfig, _select_and_run
+from shapely.prepared import prep
+from src.adsorpy.run_simulation import run_simulation, RsaConfig, _select_and_run, Simulator
+from typing import Literal
+
+SEED = 123654789
 
 
 @pytest.fixture
@@ -21,22 +25,64 @@ def default_polygon():
     return Polygon([(-5, -5), (5, -5), (5, 5), (-5, 5)])
 
 
-def test_run_simulation_default_params(rsa_config, default_polygon):
-    """Test the simulation with default parameters."""
+def overlap_tester(simulator: Simulator) -> Literal[0]:
+    """Tests whether none of the molecules overlap. Solely for periodic boundary conditions."""
+    polygons: np.ndarray[Polygon]
+    existing = simulator.mol_data.stored_mirr_data["exists"]
+    polygons = simulator.mol_data.stored_mirr_data["polygon"][existing]
+
+    ii: Polygon
+    overlap = False
+    for idx, ii in enumerate(polygons):
+        prepared_multipolygon = prep(unary_union(polygons[idx + 1:]))
+        overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this test fails.
+        if overlap:
+            break
+
+    assert not overlap
+
+    return 0
+
+
+def gapsize_tester(simulator: Simulator) -> Literal[0]:
+    """Tests whether there are sites with gaps larger than the largest molecule's circumradius.
+    If gaps are larger, a molecule should be able to fit, and the simulation terminated before saturation.
+    """
+    gaps = simulator.analyse_gap_size(simulator.surf)
+    circumradius = max(molgr.max_radius for molgr in simulator.molgroups)
+    assert np.all(gaps <= circumradius)
+
+    return 0
+
+
+def simulation_end_tester(simulator: Simulator, subtests) -> Literal[0]:
+    test_functions = (overlap_tester, gapsize_tester)
+    for t_func in test_functions:
+        with subtests.test(f"{t_func.__name__}"):
+            t_func(simulator)
+
+    return 0
+
+
+def test_run_simulation_default_params(rsa_config, default_polygon, subtests):
+    """Test the simulation with default parameter return types."""
     results = run_simulation(rsa_config)
     assert isinstance(results, tuple)
-    assert len(results) == 5
+    assert len(results) == 6
     assert isinstance(results[0], list)
     assert isinstance(results[1], np.ndarray)
     assert isinstance(results[2], int)
     assert isinstance(results[3], np.ndarray)
     assert isinstance(results[4], np.ndarray)
+    assert isinstance(results[5], Simulator)
+    simulation_end_tester(results[5], subtests)
 
 
-def test_run_simulation_with_molecule(rsa_config, default_polygon):
+def test_run_simulation_with_molecule(rsa_config, default_polygon, subtests):
     """Test the simulation with a provided molecule."""
-    results = run_simulation(rsa_config, molecules_list=default_polygon)
+    results = run_simulation(rsa_config, seed=SEED, molecules_list=default_polygon)
     assert len(results[0]) == 1
+    simulation_end_tester(results[5], subtests)
 
 
 def test_run_simulation_invalid_simulation_type(rsa_config, default_polygon):
@@ -74,37 +120,41 @@ def test_run_simulation_codosing_mismatch_distribution(rsa_config, default_polyg
         )
 
 
-def test_run_simulation_sequential(rsa_config, default_polygon):
+def test_run_simulation_sequential(rsa_config, default_polygon, subtests):
     """Test the sequential simulation."""
-    results = run_simulation(rsa_config, molecules_list=[default_polygon], simulation_type="sequential")
+    results = run_simulation(rsa_config, seed=SEED, molecules_list=[default_polygon], simulation_type="sequential")
     assert len(results[0]) == 1
+    simulation_end_tester(results[5], subtests)
 
 
-def test_run_simulation_codosing(rsa_config, default_polygon):
+def test_run_simulation_codosing(rsa_config, default_polygon, subtests):
     """Test the codosing simulation."""
     results = run_simulation(
         rsa_config,
+        seed=SEED,
         molecules_list=[default_polygon, default_polygon],
         simulation_type="codosing",
         dosing_distribution=[0.5, 0.5]
     )
     assert len(results[0]) == 2
+    simulation_end_tester(results[5], subtests)
 
 
-def test_run_simulation_cascade(rsa_config, default_polygon):
+def test_run_simulation_cascade(rsa_config, default_polygon, subtests):
     """Test the cascade simulation."""
-    results = run_simulation(rsa_config, molecules_list=[default_polygon], simulation_type="cascade")
+    results = run_simulation(rsa_config, seed=SEED, molecules_list=[default_polygon], simulation_type="cascade")
     assert len(results[0]) == 1
+    simulation_end_tester(results[5], subtests)
 
 
 def test_run_simulation_boundary_conditions(rsa_config, default_polygon):
     """Test different boundary conditions."""
     for boundary in ["soft", "hard", "periodic"]:
-        results = run_simulation(rsa_config, molecules_list=[default_polygon], boundary_condition=boundary)
+        results = run_simulation(rsa_config, seed=SEED, molecules_list=[default_polygon], boundary_condition=boundary)
         assert len(results[0]) == 1
 
 
-def test_run_simulation_randomness(rsa_config, default_polygon, monkeypatch):
+def test_run_simulation_randomness(rsa_config, default_polygon, monkeypatch, subtests):
     """Test the randomness based on datetime seed."""
     fixed_datetime = datetime(2023, 1, 1, 0, 0, 0, 1)
     monkeypatch.setattr("run_simulation.datetime", fixed_datetime)
@@ -128,11 +178,11 @@ def test_run_simulation_determinism(rsa_config, default_polygon, monkeypatch, su
         "molecules_list": [default_polygon],
         "seed": 42,
     }
-    results_1 = run_simulation(rsa_config, **kwargs)
-    results_2 = run_simulation(rsa_config, **kwargs)
+    results_1 = run_simulation(rsa_config, **kwargs)[:-1]
+    results_2 = run_simulation(rsa_config, **kwargs)[:-1]
     comparison_test_names = ("Mol count", "Gap size", "Seed", "Flux/dose", "ASF")
     for comparison_test_name, output_1, output_2 in zip(comparison_test_names, results_1, results_2, strict=True):
-        with subtests.test(comparison_test_name):
+        with subtests.test(f"{comparison_test_name} equivalence"):
             assert np.array_equal(output_1, output_2)  # Everything should be identical.
 
 
@@ -192,7 +242,7 @@ def test_run_simulation_property_test(site_count, lattice_a, boundary_condition,
             boundary_condition=boundary_condition,
             seed=seed
         )
-        molecule_counters, gap_sizes, seed_out, flux, _ = results
+        molecule_counters, gap_sizes, seed_out, *_ = results
 
         assert len(molecule_counters) == len(molecules_list)
         assert all(count >= 0 for count in molecule_counters)
@@ -238,15 +288,16 @@ class TestCustomGrid:
         """Does the custom grid generate correctly without errors?
         """
         rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_periodic.json"))
-        run_simulation(rsa_config=rsa_config, site_x_coords=0.9 * np.repeat(np.arange(10), 10),
-                       site_y_coords=0.9 * np.tile(np.arange(10), 10), bounding_x_coord=10, bounding_y_coord=10)
+        *_, sim = run_simulation(rsa_config=rsa_config, seed=SEED, site_x_coords=0.9 * np.repeat(np.arange(10), 10),
+                                 site_y_coords=0.9 * np.tile(np.arange(10), 10), bounding_x_coord=10,
+                                 bounding_y_coord=10)
 
 
 def test_sequential_fluxreject():
     """Does the code handle flux-based simulation correctly?
     """
     rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_periodic.json"))
-    *_, flux, _ = run_simulation(rsa_config=rsa_config, simulation_type="sequential", include_rejected_flux=True)
+    flux = run_simulation(rsa_config=rsa_config, seed=SEED, simulation_type="sequential", include_rejected_flux=True)[3]
     assert flux is not None  # The flux return value has to exist.
     assert isinstance(flux, np.ndarray)  # It should be a numpy array.
     assert flux.size  # The numpy array should not be empty.
