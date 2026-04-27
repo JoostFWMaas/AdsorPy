@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "AdsorPy"
-version = "1.1.1"
+version = "1.1.2"
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
