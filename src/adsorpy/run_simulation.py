@@ -17,16 +17,17 @@ else:
 import time  # For timing of the script.
 from itertools import count  # A simple counter, iterates with next(...).
 from pathlib import Path  # For path handling in Python.
-from typing import Literal, ParamSpec, TypeVar, cast  # For type hinting.
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast  # For type hinting.
 
-import molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
 import numpy as np  # For vectorised computations (performed in C).
 from numpy.random import PCG64DXSM, Generator  # New random generator.
 from numpy.typing import NDArray
-from randomsequentialadsorption import MoleculeGroup, Simulator, Surface
-from rsa_config import RsaConfig  # Config of the simulation.
 from shapely import Polygon  # Shapely creates and manipulates polygons.
 from shapely.prepared import PreparedGeometry
+
+import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
+from src.adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Surface
+from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 P = ParamSpec("P")  # Helps with static type checkers.
 T1 = TypeVar("T1")
@@ -59,7 +60,7 @@ def run_simulation(  # noqa: PLR0913
     lattice_a: float | None = None,
     boundary_condition: str | None = None,
     simulation_type: str = "sequential",
-    dosing_distribution: list[float] | None = None,
+    dosing_distribution: list[float] | DistArray | None = None,
     include_rejected_flux: bool = False,
     calculate_gap_size: bool = False,
     print_output_flag: bool = False,
@@ -70,7 +71,7 @@ def run_simulation(  # noqa: PLR0913
     site_y_coords: DistArray | None = None,
     bounding_x_coord: float | None = None,
     bounding_y_coord: float | None = None,
-    sticking_probability: float | list[float] = 1.,
+    sticking_probability: float | list[float] | DistArray = 1.,
 ) -> tuple[list[int], DistArray, int, IdxArray, IdxArray, Simulator]:
     """Run the RSA simulation.
 
@@ -111,7 +112,12 @@ def run_simulation(  # noqa: PLR0913
     """
     rsa_config = RsaConfig(str(Path(__file__).parent / "config.json")) if rsa_config is None else rsa_config
 
-    molecules_list, rotation_symmetries, reflection_symmetries, rotation_counts = _initialise_run_parameters(
+    mol_lst: GeoArray
+    rot_syms: IdxArray
+    refl_syms: BoolArray
+    rot_cnts: IdxArray
+
+    mol_lst, rot_syms, refl_syms, rot_cnts = _initialise_run_parameters(
         molecules_list,
         rotation_symmetries,
         reflection_symmetries,
@@ -119,11 +125,19 @@ def run_simulation(  # noqa: PLR0913
         simulation_type,
     )
 
+    # molecules_list, rotation_symmetries, reflection_symmetries, rotation_counts = _initialise_run_parameters(
+    #     molecules_list,
+    #     rotation_symmetries,
+    #     reflection_symmetries,
+    #     rotation_counts,
+    #     simulation_type,
+    # )
+
     custom_grid_flg: bool = _error_checker(
-        molecules_list,
-        rotation_symmetries,
-        reflection_symmetries,
-        rotation_counts,
+        mol_lst,
+        rot_syms,
+        refl_syms,
+        rot_cnts,
         simulation_type,
         dosing_distribution,
         boundary_condition,
@@ -132,6 +146,8 @@ def run_simulation(  # noqa: PLR0913
         bounding_x_coord,
         bounding_y_coord,
     )
+
+
 
     # The seed is defined as the datetime in microseconds. The seed is stored so simulations can be verified.
     how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()
@@ -155,29 +171,35 @@ def run_simulation(  # noqa: PLR0913
 
     surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
     if custom_grid_flg:
+        if TYPE_CHECKING:
+            if site_x_coords is None or site_y_coords is None or bounding_x_coord is None or bounding_y_coord is None:
+                errmsg = "Site_x_coords, site_y_coords, bounding_x_coord, bounding_y_coord must be provided."
+                raise TypeError(errmsg)
+
         surf.generate_custom_surface(site_x_coords, site_y_coords, bounding_x_coord, bounding_y_coord)
     else:
         surf.generate_grid(rng)
 
     molecules = []  # Initially, there are none.
-    rot_syms = rotation_symmetries  # Rotation symmetry
-    mirror_syms = reflection_symmetries  # Mirror symmetry
-    rot_cnts = rotation_counts
     mgc: count[int] = count()
+    stick_prob: DistArray = np.array([1.])
     if isinstance(sticking_probability, float):
-        sticking_probability = [sticking_probability] * len(molecules_list)
-    elif not isinstance(sticking_probability, list | np.ndarray):
+        stick_prob = np.array([sticking_probability] * len(mol_lst))
+    elif isinstance(sticking_probability, list):
+        stick_prob = np.array(sticking_probability)
+    elif not isinstance(sticking_probability, np.ndarray) and sticking_probability is not None:
         errmsg = "sticking_probability must be a float, list, or np.ndarray"
         raise TypeError(errmsg)
 
+
     pp: Polygon
-    for idx, (pp, stick) in enumerate(zip(molecules_list, sticking_probability, strict=False)):
+    for idx, (pp, stick) in enumerate(zip(mol_lst, stick_prob, strict=True)):
         molecules.append(
             MoleculeGroup(
                 rsa_config,
                 pp,
                 rot_syms[idx],
-                mirror_syms[idx],
+                refl_syms[idx],
                 surf.all_site_count,
                 mgc,
                 rot_cnts[idx],
@@ -244,7 +266,7 @@ def _run_codosing(
     molecules: list[MoleculeGroup],
     time_count: count[int],
     timestep_limit: int,
-    dosing_distribution: list[float] | None = None,
+    dosing_distribution: list[float] | DistArray | None = None,
 ) -> None:
     for moldx, molgr in enumerate(sim.molgroups):
         while molgr.vacancy_count and next(time_count) < timestep_limit:
@@ -312,11 +334,12 @@ def _run_flux_fixedrotation(
     """
     mol_flux: list[int] = []
     all_phis: list[int] = []
+    mol_array: GeoArray = np.array(molecules)
     for step in range(timestep_limit):
         if not np.any([molgroup.vacancy_count for molgroup in molecules]):
             break  # If nothing is available, terminate.
 
-        randmol: MoleculeGroup = sim.rng.choice(molecules, p=distribution)
+        randmol: MoleculeGroup = sim.rng.choice(mol_array, p=distribution)  # mypy complains without np.array.
         if not randmol.vacancy_count:
             continue
         flag, *_, phi = sim.attempt_place_molecule(surf, randmol)
@@ -391,7 +414,7 @@ def _error_checker(
     reflection_symmetries: BoolArray,
     rotation_counts: IdxArray,
     simulation_type: str,
-    dosing_distribution: list[float] | None = None,
+    dosing_distribution: list[float] | DistArray | None = None,
     boundary_condition: str | None = None,
     site_x_coords: DistArray | None = None,
     site_y_coords: DistArray | None = None,
@@ -497,7 +520,7 @@ def _select_and_run(
     include_rejected_flux: bool,
     time_count: count[int],
     timestep_limit: int,
-    dosing_distribution: list[float] | None = None,
+    dosing_distribution: list[float] | DistArray | None = None,
 ) -> tuple[IdxArray, IdxArray]:
     """Select and run. A collection of the simulations. Putting them in one function helps streamline adjusting them.
 
