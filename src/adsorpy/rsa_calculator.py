@@ -4,7 +4,7 @@ There is no real reason for the user to need to use any of this, but the functio
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, ParamSpec, cast
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast
 
 import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff  # Install shapely via https://www.lfd.uci.edu/~gohlke/pythonlibs/#shapely
@@ -27,11 +27,13 @@ IdxArray = np.ndarray[tuple[int], np.dtype[np.int_]]  # Flat index aray of integ
 BoolArray = np.ndarray[tuple[int], np.dtype[np.bool_]]  # Flat Boolean array.
 CoordPair = np.ndarray[tuple[Literal[2], Literal[1]], np.dtype[np.float64]]  # 2x1 array of coordinates
 CoordsArray = np.ndarray[tuple[Literal[2], int], np.dtype[np.float64]]  # 2xN array of coords.
-CoordsArray23D = np.ndarray[tuple[Literal[2, 3], int], np.dtype[np.float64]]  # 2 or 3 x N array of coords.
+CoordsArray3D = np.ndarray[tuple[Literal[3], int], np.dtype[np.float64]]  # 2 or 3 x N array of coords.
 Bools2D = np.ndarray[tuple[int, int], np.dtype[np.bool_]]
 GeoArray = np.ndarray[tuple[int], np.dtype[Polygon]]
 FloatArray = NDArray[np.float64]
 DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
+
+T = TypeVar("T", CoordsArray, CoordsArray3D)
 
 
 @njit("float64[:, :](float64[:, :], float64[:, :])", parallel=True, cache=True)  # type: ignore[untyped-decorator]
@@ -182,7 +184,7 @@ def check_shape_overlap(
         neighbour_index: IdxArray,
         simul: Simulator,
         pmg: MoleculeGroup,
-        try_angle_first: int | None = None,
+        try_angle_first: int | np.int_ | None = None,
 ) -> tuple[bool, CandidateMolecule]:
     """Check whether there the new molecule overlaps with existing molecules.
 
@@ -302,11 +304,11 @@ def make_rectangular_filter(
 
 
 def create_periodic_images(
-        coordinates: CoordsArray23D,
+        coordinates: T,
         x_max: float,
         y_max: float,
         z_max: float | None = None,
-) -> CoordsArray23D:
+) -> T:
     """Create a padding of coordinates.
 
     Repeats the images above, below, and on the diagonals (9 tiles).
@@ -318,10 +320,12 @@ def create_periodic_images(
 
     :returns: 2 by 9*N coordinate array if 2D, otherwise 3 by 27*N array.
     """
-    extended_coordinates: CoordsArray23D = coordinates.copy()
+    extended_coordinates: T = coordinates.copy()
     # This creates an array of the form [[x_max, 0], [0, y_max]].
-    temp_offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3]], np.dtype[np.float64]] = cast(
-        "np.ndarray[tuple[Literal[2, 3], Literal[2, 3]], np.dtype[np.float64]]",
+    temp_offset: np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]] | np.ndarray[
+        tuple[Literal[3], Literal[3]], np.dtype[np.float64]] = cast(
+        """np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]] |
+        np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]""",
         np.diag([x_max, y_max]).reshape((2, 2)) if z_max is None else np.diag([x_max, y_max, z_max]),
     )
     offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]] = temp_offset[
@@ -330,10 +334,10 @@ def create_periodic_images(
     ii: NDArray[np.float64]
     for ii in offset:  # The first pass creates padding in x dir, the second pads in y.
         sliced_offset = ii
-        extended_coordinates1: CoordsArray23D = extended_coordinates + sliced_offset
-        extended_coordinates2: CoordsArray23D = extended_coordinates - sliced_offset
+        extended_coordinates1: T = extended_coordinates + sliced_offset
+        extended_coordinates2: T = extended_coordinates - sliced_offset
         extended_coordinates = cast(
-            "CoordsArray23D",
+            "T",
             np.hstack((extended_coordinates, extended_coordinates1, extended_coordinates2), dtype=np.float64),
         )
 

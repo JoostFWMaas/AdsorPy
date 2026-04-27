@@ -9,6 +9,14 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Fixed
 ### Removed
 
+## 1.1.2 - 2026-04-27
+### Added
+### Changed
+### Fixed
+- Turn relative imports into absolute imports to make the package pip-installable.
+- Fix the type hints that broke as a result of this.
+### Removed
+
 ## 1.1.1 - 2026-04-27
 ### Added
 ### Changed

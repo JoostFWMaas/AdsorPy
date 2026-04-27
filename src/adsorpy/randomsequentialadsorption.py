@@ -12,20 +12,22 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, ParamSpec, cast
 
 import numpy as np  # For vectorised computations (performed in C).
-import rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
 import shapely.affinity as aff
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
 from numpy.typing import NDArray
-from rsa_config import RsaConfig  # noqa: TC002  # Config of the simulation.
 from rtree.index import Index, Property  # RTree, helps lookups!
 from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare
 from shapely.prepared import PreparedGeometry  # For vectorised inclusion checks.
 
+import src.adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
+
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
+
+    from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 plt.rcParams.update(
     {
@@ -170,7 +172,7 @@ class BoundaryParameters:
         "A counter for the molecules + mirror molecules."
         self.mirrors: IdxArray = np.empty(0, dtype=np.int_)
         "Mirror indices."
-        self.biggest_radius: Final[float] = dbl_max_radius
+        self.biggest_radius: float = dbl_max_radius
         "The biggest radius between the two largest molecules in the simulation."
         self.tree: STRtree = STRtree([Point()])  # TODO: Figure out whether faster.
         "STRtree, currently unused."
@@ -332,14 +334,14 @@ class MoleculeGroup:
 
         self.config: Final[Config] = Config(
             rsa_config=rsa_config,
-            sites=rsa_config.get_value("sites", required=False),
-            xsize=rsa_config.get_value("xsize", required=False),
-            ysize=rsa_config.get_value("ysize", required=False),
-            zsize=rsa_config.get_value("zsize", required=False),
-            max_molecule_count=rsa_config.get_value("max_molecule_count"),
-            lattice_a=rsa_config.get_value("lattice_a"),
-            boundary_type=rsa_config.get_value("boundary_type"),
-            sticking_probability=rsa_config.get_value("sticking_probability"),
+            sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
+            xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
+            ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
+            zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
+            max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
+            lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
+            boundary_type=rsa_config.get_value("boundary_type"),  # type: ignore[arg-type]
+            sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
         )
         "Config values."
 
@@ -558,14 +560,14 @@ class Simulator:
         """
         self.config: Final[Config] = Config(
             rsa_config=rsa_config,
-            sites=rsa_config.get_value("sites", required=False),
-            xsize=rsa_config.get_value("xsize", required=False),
-            ysize=rsa_config.get_value("ysize", required=False),
-            zsize=rsa_config.get_value("zsize", required=False),
-            max_molecule_count=rsa_config.get_value("max_molecule_count"),
-            lattice_a=rsa_config.get_value("lattice_a"),
-            boundary_type=rsa_config.get_value("boundary_type") if boundary_type is None else boundary_type,
-            sticking_probability=rsa_config.get_value("sticking_probability"),
+            sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
+            xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
+            ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
+            zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
+            max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
+            lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
+            boundary_type=rsa_config.get_value("boundary_type") if boundary_type is None else boundary_type,  # type: ignore[arg-type]
+            sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
         )
         "Config values."
 
@@ -1025,7 +1027,7 @@ class Simulator:
         self,
         surf: Surface,
         *molgrs: MoleculeGroup,
-        weights: FloatArray | None = None,
+        weights: FloatArray | list[float] | None = None,
     ) -> tuple[bool, int, int, int, int, list[int]]:
         """Pick from a list of molecule groups and places a random one.
 
@@ -1035,6 +1037,7 @@ class Simulator:
 
         :return: The output of Simulator.attempt_place_molecule().
         """
+        weights = np.array(weights) if weights is not None else None
         distribution = None if weights is None or len(weights) != len(molgrs) else weights / np.sum(weights)
         return self.attempt_place_molecule(
             surf,
@@ -1078,7 +1081,7 @@ class Simulator:
 
         # Removes all gaps of 0. distance (in a molecule). Basically removes all inaccessible/occupied sites.
         if not keepzero:
-            distance_to_grid = cast("DistArray", distance_to_grid[np.nonzero(distance_to_grid)])
+            distance_to_grid = distance_to_grid[np.nonzero(distance_to_grid)]
 
         return distance_to_grid
 
@@ -1127,14 +1130,14 @@ class Surface:
         """
         self.config: Final[Config] = Config(
             rsa_config=rsa_config,
-            sites=rsa_config.get_value("sites", required=False),
-            xsize=rsa_config.get_value("xsize", required=False),
-            ysize=rsa_config.get_value("ysize", required=False),
-            zsize=rsa_config.get_value("zsize", required=False),
-            max_molecule_count=rsa_config.get_value("max_molecule_count"),
-            lattice_a=rsa_config.get_value("lattice_a"),
-            boundary_type=rsa_config.get_value("boundary_type") if boundary_type is None else boundary_type,
-            sticking_probability=rsa_config.get_value("sticking_probability"),
+            sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
+            xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
+            ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
+            zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
+            max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
+            lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
+            boundary_type=rsa_config.get_value("boundary_type") if boundary_type is None else boundary_type,  # type: ignore[arg-type]
+            sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
         )
         "Config values."
 

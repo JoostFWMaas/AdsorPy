@@ -250,7 +250,7 @@ def test_surfacetype_invalid_input():
     """Is an error raised when the lattice type is incorrect?"""
     with pytest.raises(ValueError):
         rsarun.Surface(
-            rsarun.RsaConfig(
+            RsaConfig(
                 join(dirname(__file__), "test_data", "config_test_soft.json")
             ),
             "Dogbonium",

@@ -153,6 +153,12 @@ def test_run_simulation_boundary_conditions(rsa_config, default_polygon):
         results = run_simulation(rsa_config, seed=SEED, molecules_list=[default_polygon], boundary_condition=boundary)
         assert len(results[0]) == 1
 
+def test_run_simulation_sticking_probability(rsa_config, default_polygon, subtests):
+    """Test different sticking probability types."""
+    for stck in (0.5, [0.5], np.array([0.5])):
+        with subtests.test(f"Sticking type {type(stck)}"):
+            results = run_simulation(rsa_config, seed=SEED, molecules_list=[default_polygon], sticking_probability=stck)
+            assert len(results[0]) == 1
 
 def test_run_simulation_randomness(rsa_config, default_polygon, monkeypatch, subtests):
     """Test the randomness based on datetime seed."""
