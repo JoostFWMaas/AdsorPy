@@ -58,7 +58,6 @@ GeoArray = np.ndarray[tuple[int], np.dtype[Polygon]]
 FloatArray = NDArray[np.float64]
 RotMatrix = np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]
 
-
 # Van der Waals radii of atoms. Source: https://doi.org/10.1039/C3DT50599E
 current_dir_file = Path(__file__).parent / "VdW_Radii.csv"
 RADII: dict[str, float] = dict(
@@ -72,9 +71,9 @@ RADII: dict[str, float] = dict(
 
 
 def discorectangle(
-    params: list[float],
-    offx: float = 0.0,
-    offy: float = 0.0,
+        params: list[float],
+        offx: float = 0.0,
+        offy: float = 0.0,
 ) -> Polygon:
     """Create a discorectangle using the union of two circles and a rectangle.
 
@@ -107,10 +106,10 @@ def discorectangle(
 
 
 def circulium(
-    radius: float,
-    x_offset: float = 0.0,
-    y_offset: float = 0.0,
-    quad_segs: int = 8,
+        radius: float,
+        x_offset: float = 0.0,
+        y_offset: float = 0.0,
+        quad_segs: int = 8,
 ) -> Polygon:
     """Create a simple circular polygon.
 
@@ -144,9 +143,9 @@ def dogbonium(scale: float = 1) -> Polygon:
 
 
 def polygonium(
-    verts: int = 3,
-    scale: float = 1.0,
-    roundedness: float = 0.0,
+        verts: int = 3,
+        scale: float = 1.0,
+        roundedness: float = 0.0,
 ) -> Polygon:
     """Create a simple regular polygon with optional rounding.
 
@@ -174,16 +173,16 @@ def polygonium(
 
 
 def xyz_reader(
-    file_name: str | Path,
-    ignore_atoms: str | list[str] | None = None,
-    x_offset: float = 0.0,
-    y_offset: float = 0.0,
-    roll: float = 0.0,
-    pitch: float = 0.0,
-    yaw: float = 0.0,
-    z_trim: float | None = None,
-    # *args: P.args,
-    # **kwargs: P.kwargs,
+        file_name: str | Path,
+        ignore_atoms: str | list[str] | None = None,
+        x_offset: float = 0.0,
+        y_offset: float = 0.0,
+        roll: float = 0.0,
+        pitch: float = 0.0,
+        yaw: float = 0.0,
+        z_trim: float | None = None,
+        # *args: P.args,
+        # **kwargs: P.kwargs,
 ) -> Polygon:
     """Read files in the xyz format of VASP.
 
@@ -238,15 +237,15 @@ def xyz_reader(
 
 
 def first_time_loader(  # noqa: PLR0915
-    file_name: str | Path,
-    ignore_atoms: str | list[str] | None = None,
-    x_offset: float | None = None,
-    y_offset: float | None = None,
-    roll: float | None = None,
-    pitch: float | None = None,
-    yaw: float | None = None,
-    z_trim: float | None = None,
-    reference_lattice_spacing: float = 4.74,
+        file_name: str | Path,
+        ignore_atoms: str | list[str] | None = None,
+        x_offset: float | None = None,
+        y_offset: float | None = None,
+        roll: float | None = None,
+        pitch: float | None = None,
+        yaw: float | None = None,
+        z_trim: float | None = None,
+        reference_lattice_spacing: float = 4.74,
 ) -> InDict:
     """Script to run when you first load the molecule. Shows the molecule in xy, zy, and xz perspective, and vdwaals.
 
@@ -463,23 +462,23 @@ def first_time_loader(  # noqa: PLR0915
 
 
 def _update(  # noqa: PLR0913
-    val: float,
-    ang_x: Slider,
-    ang_y: Slider,
-    ang_z: Slider,
-    translate_x: Slider,
-    translate_y: Slider,
-    box_x: TextBox,
-    box_y: TextBox,
-    box_z: TextBox,
-    box_xoff: TextBox,
-    box_yoff: TextBox,
-    atompos: FloatArray,
-    axs: list[axes.Axes],
-    fig: figure.Figure,
-    atomcolours: NDArray[np.str_],
-    atomkeys: NDArray[np.str_],
-    reference_lattice_spacing: float,
+        val: float,
+        ang_x: Slider,
+        ang_y: Slider,
+        ang_z: Slider,
+        translate_x: Slider,
+        translate_y: Slider,
+        box_x: TextBox,
+        box_y: TextBox,
+        box_z: TextBox,
+        box_xoff: TextBox,
+        box_yoff: TextBox,
+        atompos: FloatArray,
+        axs: list[axes.Axes],
+        fig: figure.Figure,
+        atomcolours: NDArray[np.str_],
+        atomkeys: NDArray[np.str_],
+        reference_lattice_spacing: float,
 ) -> None:
     roll = ang_z.val
     pitch = ang_y.val
@@ -604,9 +603,9 @@ def _update(  # noqa: PLR0913
 
 
 def _initialise_reader(
-    file_name: str | Path,
-    ignore_atoms: str | list[str] | None = None,
-    z_trim: float | None = None,
+        file_name: str | Path,
+        ignore_atoms: str | list[str] | None = None,
+        z_trim: float | None = None,
 ) -> tuple[np.ndarray[tuple[int], np.dtype[np.str_]], np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]]:
     """Initialise the xyz_reader and first_time_loader.
 
