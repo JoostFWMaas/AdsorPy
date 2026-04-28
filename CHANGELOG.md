@@ -9,39 +9,20 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Fixed
 ### Removed
 
-## 1.1.3 - 2026-04-28
-### Added
-- Add ``__version__``, ``__name__``, ``__author__``, and ``__author_email__`` to ``__init__.py``.
-### Changed
-### Fixed
-- Update ``pyproject.toml`` to have the appropriate keywords and classifiers. The project does not show up on the PyPI index but can be installed from it.
-### Removed
-
-## 1.1.2 - 2026-04-27
-### Added
-### Changed
-### Fixed
-- Turn relative imports into absolute imports to make the package pip-installable.
-- Fix the type hints that broke as a result of this.
-### Removed
-
-## 1.1.1 - 2026-04-27
-### Added
-### Changed
-- Update dependency versions.
-### Fixed
-- Fix ``pyproject.toml``: ``"AdsorPy" = ["py.typed"]`` (from ``rsa-mc``, the old internal project name.)
-### Removed
-
-## 1.1.0 - 2026-04-24
-
+## 1.0.3 - 2026-04-28
 ### Added
 - Add the ``Simulator`` class as 6th return value of ``run_simulation()``.
 - Add overlap and gap size subtests to the dosing scheme tests of ``run_simulation_test``.
+- Add ``__version__``, ``__name__``, ``__author__``, and ``__author_email__`` to ``__init__.py``.
 ### Changed
 - Update CI action/deploy-pages to v5. Update CI action/upload-artifact to v7.
 - Move overlap and gap size test for alt simulation to subtests.
+- Update dependency versions.
 ### Fixed
+- Fix ``pyproject.toml``: ``"AdsorPy" = ["py.typed"]`` (from ``rsa-mc``, the old internal project name.)
+- Turn relative imports into absolute imports to make the package pip-installable.
+- Fix the type hints that broke as a result of this.
+- Update ``pyproject.toml`` to have the appropriate keywords and classifiers. The project does not show up on the PyPI index but can be installed from it.
 ### Removed
 
 

@@ -55,34 +55,22 @@ def gapsize_tester(simulator: Simulator) -> Literal[0]:
     return 0
 
 
-def simulation_end_tester(simulator: Simulator, subtests) -> Literal[0]:
-    test_functions = (overlap_tester, gapsize_tester)
-    for t_func in test_functions:
-        with subtests.test(f"{t_func.__name__}"):
-            t_func(simulator)
-
-    return 0
-
-
 def test_run_simulation_default_params(rsa_config, default_polygon, subtests):
     """Test the simulation with default parameter return types."""
     results = run_simulation(rsa_config)
     assert isinstance(results, tuple)
-    assert len(results) == 6
+    assert len(results) == 5
     assert isinstance(results[0], list)
     assert isinstance(results[1], np.ndarray)
     assert isinstance(results[2], int)
     assert isinstance(results[3], np.ndarray)
     assert isinstance(results[4], np.ndarray)
-    assert isinstance(results[5], Simulator)
-    simulation_end_tester(results[5], subtests)
 
 
 def test_run_simulation_with_molecule(rsa_config, default_polygon, subtests):
     """Test the simulation with a provided molecule."""
     results = run_simulation(rsa_config, seed=SEED, molecules_list=default_polygon)
     assert len(results[0]) == 1
-    simulation_end_tester(results[5], subtests)
 
 
 def test_run_simulation_invalid_simulation_type(rsa_config, default_polygon):
@@ -124,7 +112,6 @@ def test_run_simulation_sequential(rsa_config, default_polygon, subtests):
     """Test the sequential simulation."""
     results = run_simulation(rsa_config, seed=SEED, molecules_list=[default_polygon], simulation_type="sequential")
     assert len(results[0]) == 1
-    simulation_end_tester(results[5], subtests)
 
 
 def test_run_simulation_codosing(rsa_config, default_polygon, subtests):
@@ -137,14 +124,12 @@ def test_run_simulation_codosing(rsa_config, default_polygon, subtests):
         dosing_distribution=[0.5, 0.5]
     )
     assert len(results[0]) == 2
-    simulation_end_tester(results[5], subtests)
 
 
 def test_run_simulation_cascade(rsa_config, default_polygon, subtests):
     """Test the cascade simulation."""
     results = run_simulation(rsa_config, seed=SEED, molecules_list=[default_polygon], simulation_type="cascade")
     assert len(results[0]) == 1
-    simulation_end_tester(results[5], subtests)
 
 
 def test_run_simulation_boundary_conditions(rsa_config, default_polygon):
@@ -184,8 +169,8 @@ def test_run_simulation_determinism(rsa_config, default_polygon, monkeypatch, su
         "molecules_list": [default_polygon],
         "seed": 42,
     }
-    results_1 = run_simulation(rsa_config, **kwargs)[:-1]
-    results_2 = run_simulation(rsa_config, **kwargs)[:-1]
+    results_1 = run_simulation(rsa_config, **kwargs)
+    results_2 = run_simulation(rsa_config, **kwargs)
     comparison_test_names = ("Mol count", "Gap size", "Seed", "Flux/dose", "ASF")
     for comparison_test_name, output_1, output_2 in zip(comparison_test_names, results_1, results_2, strict=True):
         with subtests.test(f"{comparison_test_name} equivalence"):

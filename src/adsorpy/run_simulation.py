@@ -72,7 +72,7 @@ def run_simulation(  # noqa: PLR0913
         bounding_x_coord: float | None = None,
         bounding_y_coord: float | None = None,
         sticking_probability: float | list[float] | DistArray = 1.,
-) -> tuple[list[int], DistArray, int, IdxArray, IdxArray, Simulator]:
+) -> tuple[list[int], DistArray, int, IdxArray, IdxArray]:
     """Run the RSA simulation.
 
     If no molecule is provided, defaults to a circular molecule of radius 0.55 Angstrom.
@@ -242,7 +242,7 @@ def run_simulation(  # noqa: PLR0913
         timestr,
     )
 
-    return [mgr.molecule_counter for mgr in sim.molgroups], gaps, seed, all_flux, phi, sim
+    return [mgr.molecule_counter for mgr in sim.molgroups], gaps, seed, all_flux, phi
 
 
 def _run_sequential(
