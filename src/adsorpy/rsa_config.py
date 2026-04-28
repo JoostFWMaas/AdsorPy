@@ -13,7 +13,6 @@ from typing import ParamSpec, TypeAlias
 
 P = ParamSpec("P")
 T: TypeAlias = float | str | int | list[float]
-# T = TypeVar("T", bound=float | str | list[float])
 
 
 class RsaConfig:
@@ -72,7 +71,7 @@ class RsaConfig:
         return result
 
     def __return_key_value(
-        self, config_value: dict[str, T] | T, keys: list[str],
+            self, config_value: dict[str, T] | T, keys: list[str],
     ) -> T | dict[str, T] | RsaConfig | None:
         if not len(keys):
             if isinstance(config_value, dict):
