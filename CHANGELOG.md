@@ -9,6 +9,13 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Fixed
 ### Removed
 
+## 1.1.4 - 2026-04-28
+### Added
+### Changed
+### Fixed
+- Fix default symmetry settings: no reflection symmetry, no rotation symmetry.
+### Removed
+
 ## 1.1.3 - 2026-04-28
 ### Added
 - Add ``__version__``, ``__name__``, ``__author__``, and ``__author_email__`` to ``__init__.py``.
