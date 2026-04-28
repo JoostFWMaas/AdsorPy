@@ -9,6 +9,14 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Fixed
 ### Removed
 
+## 1.1.3 - 2026-04-28
+### Added
+- Add ``__version__``, ``__name__``, ``__author__``, and ``__author_email__`` to ``__init__.py``.
+### Changed
+### Fixed
+- Update ``pyproject.toml`` to have the appropriate keywords and classifiers. The project does not show up on the PyPI index but can be installed from it.
+### Removed
+
 ## 1.1.2 - 2026-04-27
 ### Added
 ### Changed
