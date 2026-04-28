@@ -365,8 +365,8 @@ def _initialise_run_parameters(
     :raises ValueError: If the requested `simulation_type` does not exist.
     """
     molecules_list = [mol.circulium(0.55)] if molecules_list is None else molecules_list
-    rotation_symmetries = [0] if rotation_symmetries is None else rotation_symmetries
-    reflection_symmetries = [True] if reflection_symmetries is None else reflection_symmetries
+    rotation_symmetries = [1] if rotation_symmetries is None else rotation_symmetries
+    reflection_symmetries = [False] if reflection_symmetries is None else reflection_symmetries
     rotation_counts = [360] if rotation_counts is None else rotation_counts
     if simulation_type not in {"sequential", "codosing", "cascade"}:
         errmsg = "The simulation type must be either 'sequential', 'codosing', or 'cascade'."
