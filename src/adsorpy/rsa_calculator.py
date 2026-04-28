@@ -325,7 +325,7 @@ def create_periodic_images(
     temp_offset: np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]] | np.ndarray[
         tuple[Literal[3], Literal[3]], np.dtype[np.float64]] = cast(
         """np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]] |
-        np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]""",
+           np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]""",
         np.diag([x_max, y_max]).reshape((2, 2)) if z_max is None else np.diag([x_max, y_max, z_max]),
     )
     offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]] = temp_offset[
