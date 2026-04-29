@@ -7,6 +7,9 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Added
 - Add final ``ci-scucess`` step to the ``tests-ci.yml``.
 - Add ``dependabot.yml``.
+- Add ``CODE_OF_CONDUCT.md``.
+- Add ``CONTRIBUTING.md``.
+- Add ``SECURITY.md``.
 ### Changed
 - Change ``test-ci.yml`` order: first on pull_requests, then push. Change push filter from paths to paths-ignore. Now ignores all ``.md`` files and everything in docs. Tests run whenever anything else is changed. Also puts ``main`` on ignore for push. Direct pushing to ``main`` is not allowed, and not ignoring ``main`` would result in duplicate tests.
 - Lower ``test_gapsize_analysis()`` in ``rsa_test.py`` to 100.
