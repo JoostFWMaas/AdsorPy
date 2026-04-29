@@ -5,6 +5,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 
 ## [unreleased]
 ### Added
+- Add final ``ci-scucess`` step to the ``tests-ci.yml``.
 ### Changed
 - Change ``test-ci.yml`` order: first on pull_requests, then push. Change push filter from paths to paths-ignore. Now ignores all ``.md`` files and everything in docs. Tests run whenever anything else is changed. Also puts ``main`` on ignore for push. Direct pushing to ``main`` is not allowed, and not ignoring ``main`` would result in duplicate tests.
 ### Fixed
