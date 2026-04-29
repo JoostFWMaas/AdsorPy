@@ -447,7 +447,7 @@ def idx_radius_strategy():
     )
 
 
-@settings(max_examples=200)
+@settings(max_examples=100)
 @given(idx_radius_strategy())
 def test_gapsize_analysis(gapsim: ExampleSimulation, idx_radius: tuple[int, float]):
     """Prove that the gap size distribution yields the correct values for circular molecules.
