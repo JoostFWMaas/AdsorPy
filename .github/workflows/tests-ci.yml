@@ -1,12 +1,16 @@
-
 name: CI
 
 on:
-  push:
-    paths:
-      - "src/**"
-      - "tests/**"
   pull_request:
+    branches: [ main ]
+
+  push:
+    branches-ignore: [ main ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "images/**"
+
 
 jobs:
   test:
