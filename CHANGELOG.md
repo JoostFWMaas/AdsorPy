@@ -14,6 +14,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 - Change ``test-ci.yml`` order: first on pull_requests, then push. Change push filter from paths to paths-ignore. Now ignores all ``.md`` files and everything in docs. Tests run whenever anything else is changed. Also puts ``main`` on ignore for push. Direct pushing to ``main`` is not allowed, and not ignoring ``main`` would result in duplicate tests.
 - Lower ``test_gapsize_analysis()`` in ``rsa_test.py`` to 100.
 ### Fixed
+- Fix potential vulnerabilities in the CI by reducing the scope of permissions.
 ### Removed
 
 ## 1.1.4 - 2026-04-28
