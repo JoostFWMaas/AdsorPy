@@ -15,6 +15,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 - Lower ``test_gapsize_analysis()`` in ``rsa_test.py`` to 100.
 ### Fixed
 - Fix potential vulnerabilities in the CI by reducing the scope of permissions.
+- Move ``dependabot.yml`` to the correct folder.
 ### Removed
 
 ## 1.1.4 - 2026-04-28
