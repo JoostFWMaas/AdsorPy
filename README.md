@@ -1,8 +1,8 @@
 # AdsorPy
 
-![Output of an AdsorPy run, an image of a covered surface.](/images/AdsorPy_Covered_Surface.png)
+![Output of an AdsorPy run, an image of a covered surface.](https://github.com/JoostFWMaas/AdsorPy/images/AdsorPy_Covered_Surface.png)
 
-![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/tests-ci.yml/badge.svg)
+![test results badge](actions/workflows/tests-ci.yml/badge.svg)
 [![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
 
 Lattice-based random sequential adsorption (RSA) Python 3.10+ script.
