@@ -15,16 +15,16 @@ updates:
       python-dependencies:
         patterns:
           - "*"
-          -
+
     commit-message:
       prefix: "deps"
 
     labels:
       - "dependencies"
-      -
+
     rebase-strategy: "auto"
 
-    ignore:  # Does not automatically push major version updates. Those can break things.
+    ignore: # Does not automatically push major version updates. Those can break things.
       - dependency-name: "*"
         update-types: [ "version-update:semver-major" ]
 
