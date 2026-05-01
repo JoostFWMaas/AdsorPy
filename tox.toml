@@ -1,0 +1,30 @@
+min_version = "4.53.0"
+env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy"]
+isolated_build = true
+#labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy"] }
+
+[gh.python]
+  "310" = ["py310"]
+  "311" = ["py311"]
+  "312" = ["py312"]
+  "313" = ["ruff", "mypy", "py313"]
+  "314" = ["py314"]
+
+[env_run_base]
+set_env = { PYTHONPATH = "{toxinidir}" }
+pass_env = ["CI", "GITHUB_*", "CODECOV_*"]
+deps = ["-e .[test]"]
+commands = [["pytest", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
+  ["codecov"],
+]
+
+[env.ruff]
+base_python = "python3.13"
+deps = ["-e .[lint]"]
+commands = [["ruff", "check", "src"]]
+
+[env.mypy]
+base_python = "python3.13"
+deps = ["-e .[lint]"]
+commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--exclude", "/scripts/", "src"],
+]
