@@ -10,7 +10,7 @@ from sphinx_pyproject import SphinxConfig
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-config = SphinxConfig("../pyproject.toml", globalns=globals())
+config = SphinxConfig("../../pyproject.toml", globalns=globals())
 
 project = config.name
 copyright = f"2024-%Y, {config.author}"
