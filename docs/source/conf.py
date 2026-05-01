@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from sphinx_pyproject import SphinxConfig
 
 # Configuration file for the Sphinx documentation builder.
 #
@@ -9,11 +10,14 @@ from pathlib import Path
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "AdsorPy"
-copyright = "2025, J.F.W. Maas"
-author = "J.F.W. Maas"
-version = "1.0"
-release = "1.0.0"
+config = SphinxConfig("../pyproject.toml", globalns=globals())
+
+project = config.name
+copyright = f"2024-%Y, {config.author}"
+author = config.author
+version = config.version
+description = config.description
+# release = "1.0.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -23,7 +27,7 @@ extensions = [
     "sphinx.ext.doctest",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "sphinx.ext.napoleon", 
+    "sphinx.ext.napoleon",
     "sphinx_autodoc_typehints",
     "sphinx.ext.viewcode",
     "sphinx.ext.githubpages",
@@ -34,7 +38,6 @@ extensions = [
 intersphinx_mapping = {
     'numpy': ('https://numpy.org/doc/stable/', None),
 }
-
 
 sd_custom_directives = {
     "dropdown-syntax": {
@@ -81,7 +84,6 @@ suppress_warnings = ["config.cache"]
 html_theme = "furo"
 html_title = "AdsorPy 2D lattice-based random sequential adsorption (RSA)"
 
-
 # Get the path to the directory containing the Python modules to mock
 module_directory = Path("../../src/adsorpy/")
 
@@ -105,5 +107,3 @@ autodoc_mock_imports = module_names
 #
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-
-

@@ -58,34 +58,64 @@ keywords = [
     "stochastic simulation",
     "gap size distribution"
 ]
+
 dependencies = [
-    "numpy",
-    "numba",
-    "matplotlib",
-    "shapely",
-    "rtree",
+    "numpy>=2.4.4",
+    "numba>=0.65.1",
+    "matplotlib>=3.10.9",
+    "shapely>=2.1.2",
+    "rtree>=1.4.1",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "hypothesis>=6.152.4",
+    "scipy==1.15.3; python_version=='3.10'",
+    "scipy>=1.17.1; python_version>='3.11'",
+    "codecov==2.1.13",
+]
+lint = [
+    "mypy>=1.20.2",
+    "ruff>=0.15.12",
+]tox
+docs = [
+    "sphinx>=9.1.0",
+    "furo>=2025.12.19",
+    "sphinx_design>=0.7.0",
+    "sphinx-autodoc-typehints>=3.10.2",
+    "sphinx-pyproject>=0.3.0",
 ]
 
 [project.urls]
-Repository = "https://github.com/JoostFWMaas/AdsorPy"
+github = "https://github.com/JoostFWMaas/AdsorPy"
 Documentation = "https://joostfwmaas.github.io/AdsorPy"
 Changelog = "https://github.com/JoostFWMaas/AdsorPy/blob/main/CHANGELOG.md"
 
 
-[project.optional-dependencies]
-testing = [
-    "pytest",
-    "pytest-cov",
-    "hypothesis",
-    "mypy",
-    "ruff",
-    "scipy==1.15.3; python_version <= '3.10'",
-    "scipy>=1.16.3; python_version > '3.10'",
-]
+#[project.optional-dependencies]
+#testing = [
+#    "pytest",
+#    "pytest-cov",
+#    "hypothesis",
+#    "mypy",
+#    "ruff",
+#    "scipy==1.15.3; python_version <= '3.10'",
+#    "scipy>=1.16.3; python_version > '3.10'",
+#]
+#
+#docs = [
+#    "sphinx",
+#    "furo",
+#    "sphinx_design",
+#    "sphinx-autodoc-typehints",
+#    "sphinx-pyproject",
+#]
 
 
 [tool.hatch.package_data]
-"AdsorPy" = ["py.typed"]
+"adsorpy" = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
