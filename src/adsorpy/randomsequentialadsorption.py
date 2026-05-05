@@ -191,7 +191,7 @@ class BoundaryParameters:
         soft_flag, hard_flag, periodic_flag = False, False, False
 
         if not isinstance(boundary_type, str):
-            errmsg = f"The boundary_type of type {type(boundary_type)} is not a string."
+            errmsg = f"The boundary_type of type {type(boundary_type).__name__} is not a string."
             raise TypeError(errmsg)
         if boundary_type == "soft":
             soft_flag = True
@@ -1242,7 +1242,7 @@ class Surface:
             y_all = np.tile(x1, self.sites)
 
         else:
-            errmsg: str = f"Unsupported lattice: {self.lattice_type} of type {type(self.lattice_type)}."
+            errmsg: str = f"Unsupported lattice: {self.lattice_type} of type {type(self.lattice_type).__name__}."
             raise ValueError(errmsg) if isinstance(self.lattice_type, str) else TypeError(errmsg)
 
         self.grid_coordinates = np.vstack((x_all, y_all))  # (2, 2N^2) Make a coordinate array.
