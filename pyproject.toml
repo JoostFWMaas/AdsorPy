@@ -18,7 +18,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
     "Natural Language :: English",
-
     # Intended users of project:
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
@@ -27,7 +26,6 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Physics",
-
     # Supported Python versions:
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
@@ -37,7 +35,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-
     # This does not run on mobile because of Shapely.
     "Operating System :: OS Independent",
 ]
@@ -75,7 +72,7 @@ test = [
     "hypothesis>=6.152.4",
     "scipy==1.15.3; python_version=='3.10'",
     "scipy>=1.17.1; python_version>='3.11'",
-    "codecov==2.1.13",
+    "codecov>=2.1.13",
 ]
 lint = [
     "mypy>=1.20.2",
@@ -131,7 +128,7 @@ omit = [
     "*/__init__.py",
     "*/molecule_lib*.py", # There is no point in testing the individual molecules.
     "*/rsa_config.py", # Cannot be tested properly. Will be reworked.
-    "*/sensitivity.py",  # Demonstrator, not included.
+    "*/sensitivity.py", # Demonstrator, not included.
     "*/Scripts/*",
 ]
 
@@ -145,18 +142,18 @@ exclude_also = [
     "def plot_*",
     "if print_*",
     "if plot_*",
-    "while temp_results_folder.is_dir()",  # Checks for collision in saving folders. Nothing is saved for tests.
-    "if self.flux_flag:",  # Experimental feature, not yet usable.
-    "_run_flux_*",  # See above.
-    "if not self.simple_shape_flag",  # Idem ditto.
-    "if version_info",  # Is tested with Tox (between instances of Pytest). False negative.
-    "from datetime import",  # Used for compatibility between versions. Only tests for one version at a time.
-    "@njit",  # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
+    "while temp_results_folder.is_dir()", # Checks for collision in saving folders. Nothing is saved for tests.
+    "if self.flux_flag:", # Experimental feature, not yet usable.
+    "_run_flux_*", # See above.
+    "if not self.simple_shape_flag", # Idem ditto.
+    "if version_info", # Is tested with Tox (between instances of Pytest). False negative.
+    "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
+    "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
 ]
 
 
 [tool.mypy]
-mypy_path = ["src", "optional"]
+mypy_path = ["src", "optional", "tests"]
 ignore_missing_imports = true
 strict = true
 disallow_any_explicit = true
@@ -198,7 +195,7 @@ line-length = 88
 
 [tool.ruff]
 line-length = 120
-include = ["pyproject.toml", "src/**/*.py"]
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -220,16 +217,17 @@ ignore = [
     "ERA001",
     "TD",
     "T201",
-    "FIX",  # This is for me to fix over several versions. These functions are never used unless they are fixed.
+    "FIX", # This is for me to fix over several versions. These functions are never used unless they are fixed.
     "DTZ003", # The datetime warning or  utcnow()
     "FBT001", # Disallows booleans in functions. (I can see its use case, but no.)
     "FBT002", # Disallows booleans default arguments in functions.
     "ARG002", # Unused method argument.
     "ARG001", # Unused function argument.
-    "D203",  # Conflicts with D211: no blank line before class.
-    "D213",  # Conflicts with D212: multi-line summary first line.
-#    "DOC",
+    "D203", # Conflicts with D211: no blank line before class.
+    "D213", # Conflicts with D212: multi-line summary first line.
+    #    "DOC",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]  # Missing docstring in public package. Not needed, package is empty.
+"test*.py" = ["S101", "TC"]  # Assert should not be used in production code! But this is test code, so here it is expected.

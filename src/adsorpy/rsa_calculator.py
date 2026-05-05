@@ -36,7 +36,7 @@ DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 T = TypeVar("T", CoordsArray, CoordsArray3D)
 
 
-@njit("float64[:, :](float64[:, :], float64[:, :])", parallel=True, cache=True)  # type: ignore[untyped-decorator]
+@njit("float64[:, :](float64[:, :], float64[:, :])", parallel=True, cache=True)
 def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
     """Calculate the square distance between two sets of coordinates.
 
