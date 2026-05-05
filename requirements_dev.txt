@@ -1,6 +1,0 @@
-pytest==9.0.3
-pytest-cov==7.1.0
-hypothesis==6.152.4
-scipy==1.15.3;python_version=='3.10'
-scipy==1.17.1;python_version>='3.11'
-codecov==2.1.13

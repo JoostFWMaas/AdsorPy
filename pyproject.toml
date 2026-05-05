@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.1.4"  # The Python guide says that this will use the Git tag to fill it in.
+version = "1.1.5"  # The Python guide says that this will use the Git tag to fill it in.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"

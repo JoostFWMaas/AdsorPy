@@ -3,7 +3,14 @@ All important changes to ``AdsorPy`` will be documented in this file.
 
 This format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+
 ## [unreleased]
+### Added
+### Changed
+### Fixed
+### Removed
+
+## 1.1.5 - 2026-05-04
 ### Added
 - Add final ``ci-success`` step to the ``tests-ci.yml``.
 - Add ``dependabot.yml`` with permission for minor/patch update pull requests.
