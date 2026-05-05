@@ -1,5 +1,0 @@
-numpy==2.4.4
-matplotlib==3.10.9
-shapely==2.1.2
-numba==0.65.1
-rtree==1.4.1
