@@ -18,7 +18,7 @@ T: TypeAlias = float | str | int | list[float]
 class RsaConfig:
     """Load the RSA config json and parse it for the simulation."""
 
-    def __init__(self, config_path: str | None = None, config: dict[str, T] | None = None) -> None:
+    def __init__(self, config_path: str | Path | None = None, config: dict[str, T] | None = None) -> None:
         """Initialise the config reader.
 
         :param config_path: The path to the config file.
