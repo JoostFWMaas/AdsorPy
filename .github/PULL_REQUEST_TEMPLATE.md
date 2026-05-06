@@ -7,9 +7,9 @@
 
 ### New Feature Submissions:
 
-1. [ ] Does your submission pass tests?
+1. [ ] Does your submission pass all ``pytest`` tests?
 2. [ ] Have you lint your code locally before submission?
-3. [ ] Does your code pass the ``mypy`` and ``ruff`` checks?
+3. [ ] Does your code pass the ``mypy``, ``pyright``, and ``ruff`` checks?
 
 ### Changes to Core Features:
 
