@@ -16,10 +16,8 @@ import shapely.affinity as aff
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
-from numpy.typing import NDArray
 from rtree.index import Index, Property  # RTree, helps lookups!
 from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare
-from shapely.prepared import PreparedGeometry  # For vectorised inclusion checks.
 
 import src.adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
 
@@ -28,6 +26,19 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
     from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+    from src.adsorpy.typing import (
+        BoolArray,
+        BufferArray,
+        CoordPair,
+        CoordsArray,
+        DistArray,
+        FloatArray,
+        GeoArray,
+        IdxArray,
+    )
+
+    P = ParamSpec("P")  # Helps with static type checkers.
+
 
 plt.rcParams.update(
     {
@@ -45,20 +56,6 @@ plt.rcParams.update(
         "figure.constrained_layout.use": True,
     },
 )
-
-P = ParamSpec("P")  # Helps with static type checkers.
-
-# mypy: plugins = numpy.typing.mypy_plugin
-# Definition of some frequently-used types. Not used by the compiler, just for the user and mypy. Hello user!
-IdxArray = np.ndarray[tuple[int], np.dtype[np.int_]]  # Flat index aray of integers.
-BoolArray = np.ndarray[tuple[int], np.dtype[np.bool_]]  # Flat Boolean array.
-CoordPair = np.ndarray[tuple[Literal[2], Literal[1]], np.dtype[np.float64]]  # 2x1 array of coordinates
-CoordsArray = np.ndarray[tuple[Literal[2], int], np.dtype[np.float64]]  # 2xN array of coords.
-Bools2D = np.ndarray[tuple[int, int], np.dtype[np.bool_]]
-GeoArray = np.ndarray[tuple[int], np.dtype[Polygon]]
-PrepGeoArray = np.ndarray[tuple[int], np.dtype[PreparedGeometry]]
-FloatArray = NDArray[np.float64]
-DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,9 +379,9 @@ class MoleculeGroup:
         "Rotations for the molecule."
         if not self.reflection_symmetry:
             self.allowed_rotations = np.tile(self.allowed_rotations, 2)
-        self.rotated_molecules: Final[GeoArray] = np.empty_like(self.allowed_rotations, dtype=Polygon)
+        self.rotated_molecules: GeoArray = np.empty_like(self.allowed_rotations, dtype=Polygon)
         "Array of rotated molecules. Used as templates, only translation is needed to get into position."
-        self.rotated_buffer_molecules: GeoArray = np.empty_like(0, dtype=Polygon)
+        self.rotated_buffer_molecules: BufferArray = np.empty_like((0, 0), dtype=Polygon)
         """Buffer molecules are a special type of polygon used for vectorised calculations.
         They are used to determine whether surface sites are covered by these polygons."""
 
@@ -445,17 +442,15 @@ class MoleculeGroup:
                 temp_rotation: np.float64 = self.allowed_rotations[idx]
                 # Define the rotated molecules. Faster than rotating them every time they are called.
                 if not kk:  # On first pass, rotate the molecule.
-                    self.rotated_molecules[idx] = aff.rotate(
-                        self.molecule,
-                        angle=temp_rotation,
-                        origin=(0, 0),
-                    )
+                    self.rotated_molecules[idx] = aff.rotate(self.molecule, angle=temp_rotation, origin=(0, 0))  # pyright: ignore[reportArgumentType]
+
                 else:  # On second pass, mirror the rotated molecule.
                     self.rotated_molecules[idx] = aff.scale(
                         self.rotated_molecules[idx - 1],
                         xfact=-1,
                         origin=(0, 0),
                     )
+
                 if bopa.hard_flag:  # The bounding box helps check boundary.
                     bopa.molecules_bounding_coords[idx] = self.rotated_molecules[idx].bounds  # xmin, ymin, xmax, ymax
                 for jdx, jj in enumerate(amgs):
@@ -817,6 +812,7 @@ class Simulator:
         basic_data = cand.get_canddata()
         self.mol_data.add_entry(*basic_data)  # TODO: Make this a lot less ugly.
         cand.molecule_number = self.mol_data.last_accessed_idx
+        new_data: tuple[int, int, bool, int, int, int, np.float64, np.float64, Polygon]
 
         for grp in amgs:
             grp.vacant[cand.grid_index] = False  # The chosen site is occupied.
@@ -837,16 +833,19 @@ class Simulator:
 
             for mdx, mirror in enumerate(pmg.bp.mirrors):
                 mirr_coords: CoordsArray = surf.bp.extended_grid[:, mirror]
-                mirror_molecule: Polygon = aff.translate(
-                    pmg.rotated_molecules[cand.rot_idx],
-                    *mirr_coords.ravel(),
+                mirror_molecule: Polygon = cast(
+                    "Polygon",
+                    aff.translate(
+                        pmg.rotated_molecules[cand.rot_idx],
+                        *mirr_coords.ravel(),
+                    ),
                 )
-                new_data = (
+                new_data = (  # type: ignore[assignment]
                     mdx,
-                    *basic_data[:3],
+                    *cast("tuple[int, bool, int]", basic_data[:3]),  # type: ignore[redundant-cast]
                     mirror,
                     basic_data[4],
-                    *mirr_coords.ravel(),
+                    *cast("tuple[np.float64, np.float64]", mirr_coords.ravel()),
                     mirror_molecule,
                 )
                 self.mol_data.add_mirror(*new_data)
@@ -1067,9 +1066,9 @@ class Simulator:
                 surf.x_max + 0.1,
                 surf.y_max + 0.1,
             )
-            border = border.difference(inborder)
+            border = cast("Polygon", border.difference(inborder))
 
-            temp_molecules = np.append(temp_molecules, border)
+            temp_molecules = np.append(temp_molecules, np.array([border]))
 
         mol_tree = STRtree(temp_molecules)
 
@@ -1369,7 +1368,7 @@ class MoleculeData:
     "Current mirror index number."
     last_accessed_idx: int = -1
     "Last accessed molecule index."
-    __header_names = (
+    _header_names = (
         "self_id",
         "exists",
         "mol_group",
@@ -1381,17 +1380,17 @@ class MoleculeData:
         "polygon",
     )
     "Names of the headers."
-    __column_datatypes = (int, bool, int, int, int, bool, float, float, Polygon)
+    _column_datatypes = (int, bool, int, int, int, bool, float, float, Polygon)
     "Datatypes of the columns of the molecule struct array."
-    __heads_dtypes: list[tuple[str, type]] = field(init=False)
+    _heads_dtypes: list[tuple[str, type]] = field(init=False)
     "Data types + names for the molecule struct array."
-    __fill_vals = (-1, False, -1, -1, -1, False, 0.0, 0.0, Polygon())
+    _fill_vals = (-1, False, -1, -1, -1, False, 0.0, 0.0, Polygon())
     "Fill value for the new molecule. Defaults to strictly invalid values."
     stored_data: np.ndarray[tuple[int], np.dtype[np.void]] = field(init=False)
     "Molecule struct array. Here, all data for the molecules is stored."
     mol_tree: Index = field(default_factory=lambda: Index(properties=Property(dimension=2)))
     "Molecules RTree."
-    __mirr_names = (
+    _mirr_names = (
         "orig_id",
         "exists",
         "self_id",
@@ -1403,23 +1402,23 @@ class MoleculeData:
         "polygon",
     )
     "Names of the columns in the mirror molecule struct array."
-    __mirr_datatypes = (int, bool, int, int, int, int, float, float, Polygon)
+    _mirr_datatypes = (int, bool, int, int, int, int, float, float, Polygon)
     "Datatypes of the mirror molecule struct array."
-    __mirr_heads_dtypes: list[tuple[str, type]] = field(init=False)
+    _mirr_heads_dtypes: list[tuple[str, type]] = field(init=False)
     "Data types + names for the mirror molecules struct array."
-    __mirr_fill_vals = (-1, False, -1, -1, -1, -1, 0.0, 0.0, Polygon())
+    _mirr_fill_vals = (-1, False, -1, -1, -1, -1, 0.0, 0.0, Polygon())
     "Fill values for the new mirror molecule. Defaults to strictly invalid values."
     stored_mirr_data: np.ndarray[tuple[int], np.dtype[np.void]] = field(init=False)
     "Mirror molecule struct array. Here, all data for the mirror molecules is stored."
     mirr_tree: Index = field(default_factory=lambda: Index(properties=Property(dimension=2)))
     "Mirror molecules RTree."
-    __otomir_names = ("exists", "mirr_ids")
+    _otomir_names = ("exists", "mirr_ids")
     "Names for the origin to mirror array."
-    __otomir_types = (bool, object)
+    _otomir_types = (bool, object)
     "Types of the origin to mirror array."
-    __otomir_heads_dtypes: list[tuple[str, type]] = field(init=False)
+    _otomir_heads_dtypes: list[tuple[str, type]] = field(init=False)
     "Data types for the original molecule to mirror (otomir) struct array."
-    __otomir_fill_vals: Final[tuple[bool, list[int]]] = False, []
+    _otomir_fill_vals: Final[tuple[bool, list[int]]] = False, []
     "fill values for the origin to mirror array. Defaults to strictly invalid values."
     orig_to_mirrors: np.ndarray[tuple[int], np.dtype[np.void]] = field(init=False)
     "Origin to mirror struct array. Stores which mirror indices are associated with which original molecule."
@@ -1435,34 +1434,34 @@ class MoleculeData:
         self.current_mol_id = count()
         self.mirr_counter = count(0, 4)  # Take steps of 4.
 
-        self.__heads_dtypes = list(
-            zip(self.__header_names, self.__column_datatypes, strict=False),
+        self._heads_dtypes = list(
+            zip(self._header_names, self._column_datatypes, strict=False),
         )
-        self.__mirr_heads_dtypes = list(
-            zip(self.__mirr_names, self.__mirr_datatypes, strict=False),
+        self._mirr_heads_dtypes = list(
+            zip(self._mirr_names, self._mirr_datatypes, strict=False),
         )
-        self.__otomir_heads_dtypes = list(
-            zip(self.__otomir_names, self.__otomir_types, strict=False),
+        self._otomir_heads_dtypes = list(
+            zip(self._otomir_names, self._otomir_types, strict=False),
         )
 
         self.stored_data = self.make_struct_array(
             self.max_array_length,
-            self.__heads_dtypes,
-            self.__fill_vals,
+            self._heads_dtypes,
+            self._fill_vals,
         )
         self.stored_mirr_data = self.make_struct_array(
             self.max_array_length,
-            self.__mirr_heads_dtypes,
-            self.__mirr_fill_vals,
+            self._mirr_heads_dtypes,
+            self._mirr_fill_vals,
         )
         self.orig_to_mirrors = self.make_struct_array(
             self.max_array_length,
-            self.__otomir_heads_dtypes,
-            self.__otomir_fill_vals,
+            self._otomir_heads_dtypes,
+            self._otomir_fill_vals,
         )
 
-        self.coords = cast("CoordPair", np.empty((2, self.max_array_length), dtype=np.float64))
-        self.mirror_coords = cast("CoordPair", np.empty((2, self.max_array_length), dtype=np.float64))
+        self.coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
+        self.mirror_coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
 
     @staticmethod
     def make_struct_array(
@@ -1516,20 +1515,20 @@ class MoleculeData:
             new_length: int = self.max_array_length + self.stored_data.size
             new_stored_data = self.make_struct_array(
                 new_length,
-                self.__heads_dtypes,
-                self.__fill_vals,
+                self._heads_dtypes,
+                self._fill_vals,
             )
             new_stored_data[: self.stored_data.size] = self.stored_data
             self.stored_data = new_stored_data
 
             old_coords: CoordsArray = self.coords.copy()
-            self.coords = cast("CoordPair", np.empty((2, new_length)))
+            self.coords = cast("CoordsArray", np.empty((2, new_length)))
             self.coords[:, : old_coords.shape[1]] = old_coords
 
             new_stored_data2 = self.make_struct_array(
                 new_length,
-                self.__otomir_heads_dtypes,
-                self.__otomir_fill_vals,
+                self._otomir_heads_dtypes,
+                self._otomir_fill_vals,
             )
             new_stored_data2[: self.orig_to_mirrors.size] = self.orig_to_mirrors
             self.orig_to_mirrors = new_stored_data2
@@ -1586,14 +1585,14 @@ class MoleculeData:
             new_length: int = self.max_array_length + self.stored_mirr_data.size
             new_stored_data = self.make_struct_array(
                 new_length,
-                self.__mirr_heads_dtypes,
-                self.__mirr_fill_vals,
+                self._mirr_heads_dtypes,
+                self._mirr_fill_vals,
             )
             new_stored_data[: self.stored_mirr_data.size] = self.stored_mirr_data
             self.stored_mirr_data = new_stored_data
 
             old_coords: CoordsArray = self.mirror_coords.copy()
-            self.mirror_coords = cast("CoordPair", np.empty((2, new_length)))
+            self.mirror_coords = cast("CoordsArray", np.empty((2, new_length)))
             self.mirror_coords[:, : old_coords.shape[1]] = old_coords
 
         temp_data = (

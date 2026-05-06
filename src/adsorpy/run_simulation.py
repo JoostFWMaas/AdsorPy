@@ -17,62 +17,50 @@ else:
 import time  # For timing of the script.
 from itertools import count  # A simple counter, iterates with next(...).
 from pathlib import Path  # For path handling in Python.
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast  # For type hinting.
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeAlias, TypeVar, cast  # For type hinting.
 
 import numpy as np  # For vectorised computations (performed in C).
 from numpy.random import PCG64DXSM, Generator  # New random generator.
-from numpy.typing import NDArray
 from shapely import Polygon  # Shapely creates and manipulates polygons.
-from shapely.prepared import PreparedGeometry
 
 import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
 from src.adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Surface
 from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
-P = ParamSpec("P")  # Helps with static type checkers.
-T1 = TypeVar("T1")
-T2 = TypeVar("T2", bound=np.generic | Polygon)  # type: ignore[explicit-any]
-TargetType = np.generic | Polygon
-Tn = TypeVar("Tn", bound=np.ndarray[tuple[int], np.dtype[np.generic | Polygon]])  # type: ignore[explicit-any]
+if TYPE_CHECKING:
+    from src.adsorpy.typing import BoolArray, DistArray, GeoArray, IdxArray
 
-# mypy: plugins = numpy.typing.mypy_plugin
-# Definition of some frequently-used types. Not used by the compiler, just for the user and mypy. Hello user!
-
-IdxArray = np.ndarray[tuple[int], np.dtype[np.int_]]  # Flat index aray of integers.
-BoolArray = np.ndarray[tuple[int], np.dtype[np.bool_]]  # Flat Boolean array.
-CoordPair = np.ndarray[tuple[Literal[2], Literal[1]], np.dtype[np.float64]]  # 2x1 array of coordinates
-CoordsArray = np.ndarray[tuple[Literal[2], int], np.dtype[np.float64]]  # 2xN array of coords.
-Bools2D = np.ndarray[tuple[int, int], np.dtype[np.bool_]]
-GeoArray = np.ndarray[tuple[int], np.dtype[Polygon]]
-PrepGeoArray = np.ndarray[tuple[int], np.dtype[PreparedGeometry]]
-FloatArray = NDArray[np.float64]
-DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
+    P = ParamSpec("P")  # Helps with static type checkers.
+    T1 = TypeVar("T1")
+    T2 = TypeVar("T2", bound=np.generic | Polygon)  # type: ignore[explicit-any]
+    TargetType: TypeAlias = np.generic | Polygon  # type: ignore[explicit-any]
+    Tn = TypeVar("Tn", bound=np.ndarray[tuple[int], np.dtype[np.generic | Polygon]])  # type: ignore[explicit-any]
 
 
 def run_simulation(  # noqa: PLR0913
-        rsa_config: RsaConfig | None = None,
-        molecules_list: Polygon | list[Polygon] | GeoArray | None = None,
-        rotation_symmetries: int | list[int] | IdxArray | None = None,
-        reflection_symmetries: bool | list[bool] | BoolArray | None = None,
-        rotation_counts: int | list[int] | IdxArray | None = None,
-        lattice_type: str = "triangular",
-        site_count: int | None = None,
-        lattice_a: float | None = None,
-        boundary_condition: str | None = None,
-        simulation_type: str = "sequential",
-        dosing_distribution: list[float] | DistArray | None = None,
-        include_rejected_flux: bool = False,
-        calculate_gap_size: bool = False,
-        print_output_flag: bool = False,
-        plot_output_flag: bool = False,
-        seed: int | None = None,
-        timestep_limit: int = 1000000,
-        site_x_coords: DistArray | None = None,
-        site_y_coords: DistArray | None = None,
-        bounding_x_coord: float | None = None,
-        bounding_y_coord: float | None = None,
-        sticking_probability: float | list[float] | DistArray = 1.,
-) -> tuple[list[int], DistArray, int, IdxArray, IdxArray, Simulator]:
+    rsa_config: RsaConfig | None = None,
+    molecules_list: Polygon | list[Polygon] | GeoArray | None = None,
+    rotation_symmetries: int | list[int] | IdxArray | None = None,
+    reflection_symmetries: bool | list[bool] | BoolArray | None = None,
+    rotation_counts: int | list[int] | IdxArray | None = None,
+    lattice_type: str = "triangular",
+    site_count: int | None = None,
+    lattice_a: float | None = None,
+    boundary_condition: str | None = None,
+    simulation_type: str = "sequential",
+    dosing_distribution: list[float] | DistArray | None = None,
+    include_rejected_flux: bool = False,
+    calculate_gap_size: bool = False,
+    print_output_flag: bool = False,
+    plot_output_flag: bool = False,
+    seed: int | Generator | None = None,
+    timestep_limit: int = 1000000,
+    site_x_coords: DistArray | None = None,
+    site_y_coords: DistArray | None = None,
+    bounding_x_coord: float | None = None,
+    bounding_y_coord: float | None = None,
+    sticking_probability: float | list[float] | DistArray = 1.0,
+) -> tuple[list[int], DistArray, int | Generator, tuple[IdxArray, ...], IdxArray, Simulator]:
     """Run the RSA simulation.
 
     If no molecule is provided, defaults to a circular molecule of radius 0.55 Angstrom.
@@ -104,8 +92,8 @@ def run_simulation(  # noqa: PLR0913
     :return:
         0. The molecule count on the surface per molecule group.
         1. The gap size distribution.
-        2. The RNG seed.
-        3. The fluxes/doses as a list of counts per stepcount of adsorption event.
+        2. The RNG seed or Generator.
+        3. The fluxes/doses as a tuple of lists of counts per stepcount of adsorption event.
         4. The available surface function (ASF).
         5. The Simulator class.
     :raises TypeError: If the sticking probability is an invalid type.
@@ -125,14 +113,6 @@ def run_simulation(  # noqa: PLR0913
         simulation_type,
     )
 
-    # molecules_list, rotation_symmetries, reflection_symmetries, rotation_counts = _initialise_run_parameters(
-    #     molecules_list,
-    #     rotation_symmetries,
-    #     reflection_symmetries,
-    #     rotation_counts,
-    #     simulation_type,
-    # )
-
     custom_grid_flg: bool = _error_checker(
         mol_lst,
         rot_syms,
@@ -148,10 +128,10 @@ def run_simulation(  # noqa: PLR0913
     )
 
     # The seed is defined as the datetime in microseconds. The seed is stored so simulations can be verified.
-    how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()
+    how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
     seed = int(how_late.strftime("%Y%m%d%H%M%S%f")) if seed is None else seed
     # As long as the new safer PCG64DXSM generator is not the default, override the generator.
-    rng = Generator(PCG64DXSM(seed)) if isinstance(seed, int | np.int_) else seed
+    rng = Generator(PCG64DXSM(seed)) if isinstance(seed, (int, np.integer)) else seed
     # Output files of the script are datetime stamped.
     timestr = how_late.strftime("%Y%m%dT%H%M%S")
     results_folder = Path.cwd() / "Output" / f"{timestr}_RSA"
@@ -178,14 +158,14 @@ def run_simulation(  # noqa: PLR0913
     else:
         surf.generate_grid(rng)
 
-    molecules = []  # Initially, there are none.
+    molecules: list[MoleculeGroup] = []  # Initially, there are none.
     mgc: count[int] = count()
-    stick_prob: DistArray = np.array([1.])
-    if isinstance(sticking_probability, float):
+    stick_prob: DistArray = np.array([1.0])
+    if isinstance(sticking_probability, (float, int, np.integer)):
         stick_prob = np.array([sticking_probability] * len(mol_lst))
-    elif isinstance(sticking_probability, list):
+    elif isinstance(sticking_probability, (list, np.ndarray)):
         stick_prob = np.array(sticking_probability)
-    elif not isinstance(sticking_probability, np.ndarray) and sticking_probability is not None:
+    elif sticking_probability is not None:
         errmsg = "sticking_probability must be a float, list, or np.ndarray"
         raise TypeError(errmsg)
 
@@ -246,11 +226,11 @@ def run_simulation(  # noqa: PLR0913
 
 
 def _run_sequential(
-        sim: Simulator,
-        surf: Surface,
-        molecules: list[MoleculeGroup],
-        time_count: count[int],
-        timestep_limit: int,
+    sim: Simulator,
+    surf: Surface,
+    molecules: list[MoleculeGroup],
+    time_count: count[int],
+    timestep_limit: int,
 ) -> None:
     for moldx, molgr in enumerate(sim.molgroups):
         while molgr.vacancy_count and next(time_count) < timestep_limit:
@@ -258,12 +238,12 @@ def _run_sequential(
 
 
 def _run_codosing(
-        sim: Simulator,
-        surf: Surface,
-        molecules: list[MoleculeGroup],
-        time_count: count[int],
-        timestep_limit: int,
-        dosing_distribution: list[float] | DistArray | None = None,
+    sim: Simulator,
+    surf: Surface,
+    molecules: list[MoleculeGroup],
+    time_count: count[int],
+    timestep_limit: int,
+    dosing_distribution: list[float] | DistArray | None = None,
 ) -> None:
     for moldx, molgr in enumerate(sim.molgroups):
         while molgr.vacancy_count and next(time_count) < timestep_limit:
@@ -271,11 +251,11 @@ def _run_codosing(
 
 
 def _run_cascade(
-        sim: Simulator,
-        surf: Surface,
-        molecules: list[MoleculeGroup],
-        time_count: count[int],
-        timestep_limit: int,
+    sim: Simulator,
+    surf: Surface,
+    molecules: list[MoleculeGroup],
+    time_count: count[int],
+    timestep_limit: int,
 ) -> None:
     for moldx, molgr in enumerate(sim.molgroups):
         while molgr.vacancy_count and next(time_count) < timestep_limit:
@@ -283,11 +263,11 @@ def _run_cascade(
 
 
 def _run_flux(
-        sim: Simulator,
-        surf: Surface,
-        molecules: list[MoleculeGroup],
-        timestep_limit: int,
-) -> tuple[IdxArray, IdxArray]:
+    sim: Simulator,
+    surf: Surface,
+    molecules: list[MoleculeGroup],
+    timestep_limit: int,
+) -> tuple[tuple[IdxArray, ...], IdxArray]:
     """Adsorb while taking steps into account.
 
     :param sim: Simulator.
@@ -310,16 +290,16 @@ def _run_flux(
 
         all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.int_),))
 
-    return all_flux[0], np.array(all_phis, dtype=np.int_)  # FIXME: Fix the [0] later.
+    return all_flux, np.array(all_phis, dtype=np.int_)
 
 
 def _run_flux_fixedrotation(
-        sim: Simulator,
-        surf: Surface,
-        molecules: list[MoleculeGroup],
-        timestep_limit: int,
-        distribution: list[float] | None = None,
-) -> tuple[IdxArray, IdxArray]:
+    sim: Simulator,
+    surf: Surface,
+    molecules: list[MoleculeGroup],
+    timestep_limit: int,
+    distribution: list[float] | None = None,
+) -> tuple[tuple[IdxArray, ...], IdxArray]:
     """Adsorb while taking steps into account. Rotation is fixed and sites are varied instead.
 
     :param sim: Simulator.
@@ -329,9 +309,10 @@ def _run_flux_fixedrotation(
     :param distribution: list of floats indicating the distribution of the molecules. Empty for uniform distribution.
     :return: list of indices during which adsorption takes place.
     """
-    mol_flux: list[int] = []
+    all_flux: tuple[IdxArray, ...] = cast("tuple[IdxArray, ...]", tuple(np.empty(0, dtype=np.int_)))
     all_phis: list[int] = []
     mol_array: GeoArray = np.array(molecules)
+    all_phis = all_phis * mol_array.size
     for step in range(timestep_limit):
         if not np.any([molgroup.vacancy_count for molgroup in molecules]):
             break  # If nothing is available, terminate.
@@ -341,18 +322,18 @@ def _run_flux_fixedrotation(
             continue
         flag, *_, phi = sim.attempt_place_molecule(surf, randmol)
         if flag:
-            mol_flux.append(step)
+            np.append(all_flux[randmol.group_id], step)
             all_phis.append(np.max(phi))
 
-    return np.array(mol_flux, dtype=np.int_), np.array(all_phis, dtype=np.int_)
+    return all_flux, np.array(all_phis, dtype=np.int_)
 
 
 def _initialise_run_parameters(
-        molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,
-        rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
-        reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
-        rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
-        simulation_type: str = "sequential",
+    molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,  # pyright: ignore[reportInvalidTypeArguments]
+    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
+    reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
+    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
+    simulation_type: str = "sequential",
 ) -> tuple[GeoArray, IdxArray, BoolArray, IdxArray]:
     """Initialise run parameters.
 
@@ -385,8 +366,13 @@ def _initialise_run_parameters(
     return molecules_list, rot_syms, refl_syms, rot_cnts
 
 
-def _turn_into_list(val_or_list: T1 | list[T1], compare_to: type[T1]) -> np.ndarray[  # type: ignore[explicit-any]
-    tuple[int], np.dtype[T2]]:
+def _turn_into_list(  # type: ignore[explicit-any]
+    val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
+    compare_to: type[T1],
+) -> np.ndarray[
+    tuple[int],
+    np.dtype[T2],  # pyright: ignore[reportInvalidTypeArguments]
+]:
     """Turn a variable or a list into an array.
 
     :param val_or_list: value or list.
@@ -407,17 +393,17 @@ def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explic
 
 
 def _error_checker(
-        molecules_list: GeoArray,
-        rotation_symmetries: IdxArray,
-        reflection_symmetries: BoolArray,
-        rotation_counts: IdxArray,
-        simulation_type: str,
-        dosing_distribution: list[float] | DistArray | None = None,
-        boundary_condition: str | None = None,
-        site_x_coords: DistArray | None = None,
-        site_y_coords: DistArray | None = None,
-        bounding_x_coord: float | None = None,
-        bounding_y_coord: float | None = None,
+    molecules_list: GeoArray,
+    rotation_symmetries: IdxArray,
+    reflection_symmetries: BoolArray,
+    rotation_counts: IdxArray,
+    simulation_type: str,
+    dosing_distribution: list[float] | DistArray | None = None,
+    boundary_condition: str | None = None,
+    site_x_coords: DistArray | None = None,
+    site_y_coords: DistArray | None = None,
+    bounding_x_coord: float | None = None,
+    bounding_y_coord: float | None = None,
 ) -> bool:
     """Check the errors. Returns bool denoting custom grid (False if grid is not custom).
 
@@ -444,9 +430,9 @@ def _error_checker(
         raise ValueError(errmsg)
 
     if (
-            simulation_type == "codosing"
-            and dosing_distribution is not None
-            and len(molecules_list) != len(dosing_distribution)
+        simulation_type == "codosing"
+        and dosing_distribution is not None
+        and len(molecules_list) != len(dosing_distribution)
     ):
         errmsg = "Dosing distribution must be the same length as the molecule list."
         raise ValueError(errmsg)
@@ -469,14 +455,14 @@ def _error_checker(
 
 
 def _postprocessing(
-        sim: Simulator,
-        surf: Surface,
-        molecules: list[MoleculeGroup],
-        print_output_flag: bool,
-        plot_output_flag: bool,
-        calculate_gap_size: bool,
-        results_folder: str | Path,
-        timestr: str,
+    sim: Simulator,
+    surf: Surface,
+    molecules: list[MoleculeGroup],
+    print_output_flag: bool,
+    plot_output_flag: bool,
+    calculate_gap_size: bool,
+    results_folder: str | Path,
+    timestr: str,
 ) -> DistArray:
     """Perform post-processing of the data.
 
@@ -511,15 +497,15 @@ def _postprocessing(
 
 
 def _select_and_run(
-        sim: Simulator,
-        surf: Surface,
-        molecules: list[MoleculeGroup],
-        simulation_type: str,
-        include_rejected_flux: bool,
-        time_count: count[int],
-        timestep_limit: int,
-        dosing_distribution: list[float] | DistArray | None = None,
-) -> tuple[IdxArray, IdxArray]:
+    sim: Simulator,
+    surf: Surface,
+    molecules: list[MoleculeGroup],
+    simulation_type: str,
+    include_rejected_flux: bool,
+    time_count: count[int],
+    timestep_limit: int,
+    dosing_distribution: list[float] | DistArray | None = None,
+) -> tuple[tuple[IdxArray, ...], IdxArray]:
     """Select and run. A collection of the simulations. Putting them in one function helps streamline adjusting them.
 
     :param sim: simulator.
@@ -532,7 +518,7 @@ def _select_and_run(
     :return: Fluxes per molecule if selected.
     :raises ValueError: if the `simulation_type` (dosing scheme) and flux flag combination are not supported.
     """
-    all_flux: IdxArray = np.empty(0, dtype=np.int_)
+    all_flux: tuple[IdxArray, ...] = ()
     phis: IdxArray = np.empty(0, dtype=np.int_)
 
     match (simulation_type, include_rejected_flux):

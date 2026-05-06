@@ -2,6 +2,7 @@
 
 There is no real reason for the user to need to use any of this, but the functions are accessible just in case.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast
@@ -9,34 +10,33 @@ from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast
 import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff  # Install shapely via https://www.lfd.uci.edu/~gohlke/pythonlibs/#shapely
 from numba import njit, prange
-from numpy.typing import NDArray
-from shapely import Polygon, STRtree
+from shapely import STRtree
 from shapely.prepared import prep
 
 if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
+    from numpy.typing import NDArray
     from rtree.index import Index
+    from shapely import Polygon
     from shapely.prepared import PreparedGeometry
+
+    from src.adsorpy.typing import (
+        BoolArray,
+        CoordPair,
+        CoordsArray,
+        CoordsArray3D,
+        DistArray,
+        FloatArray,
+        GeoArray,
+        IdxArray,
+    )
 
     from .randomsequentialadsorption import CandidateMolecule, MoleculeGroup, Simulator
 
-P = ParamSpec("P")  # Helps with static type checkers.
-
-# mypy: plugins = numpy.typing.mypy_plugin
-# Definition of some frequently-used types. Not used by the compiler, just for the user and mypy. Hello user!
-IdxArray = np.ndarray[tuple[int], np.dtype[np.int_]]  # Flat index aray of integers.
-BoolArray = np.ndarray[tuple[int], np.dtype[np.bool_]]  # Flat Boolean array.
-CoordPair = np.ndarray[tuple[Literal[2], Literal[1]], np.dtype[np.float64]]  # 2x1 array of coordinates
-CoordsArray = np.ndarray[tuple[Literal[2], int], np.dtype[np.float64]]  # 2xN array of coords.
-CoordsArray3D = np.ndarray[tuple[Literal[3], int], np.dtype[np.float64]]  # 2 or 3 x N array of coords.
-Bools2D = np.ndarray[tuple[int, int], np.dtype[np.bool_]]
-GeoArray = np.ndarray[tuple[int], np.dtype[Polygon]]
-FloatArray = NDArray[np.float64]
-DistArray = np.ndarray[tuple[int], np.dtype[np.float64]]
-
-T = TypeVar("T", CoordsArray, CoordsArray3D)
+    T = TypeVar("T", CoordsArray, CoordsArray3D)
+    P = ParamSpec("P")  # Helps with static type checkers.
 
 
-@njit("float64[:, :](float64[:, :], float64[:, :])", parallel=True, cache=True)
+@njit("float64[:, :](float64[:, :], float64[:, :])", parallel=True, cache=True)  # pyright: ignore[reportUntypedFunctionDecorator]
 def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
     """Calculate the square distance between two sets of coordinates.
 
@@ -56,13 +56,13 @@ def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tupl
 
 
 def calculate_square_distance(
-        candidate_coords: CoordPair,
-        other_coords: CoordsArray,
-        placed_index: IdxArray,
-        molgridx: IdxArray,
-        max_interdist: float,
-        rtree: Index,
-        existing: BoolArray,
+    candidate_coords: CoordPair,
+    other_coords: CoordsArray,
+    placed_index: IdxArray,
+    molgridx: IdxArray,
+    max_interdist: float,
+    rtree: Index,
+    existing: BoolArray,
 ) -> tuple[FloatArray, IdxArray, IdxArray]:
     """Compute the square distance for the coordinates.
 
@@ -96,10 +96,10 @@ def calculate_square_distance(
 
 
 def check_outer_radius(
-        distance_squared: DistArray,
-        mol_gr_idx: IdxArray,
-        near_index: IdxArray,
-        gap_dists: DistArray,
+    distance_squared: DistArray,
+    mol_gr_idx: IdxArray,
+    near_index: IdxArray,
+    gap_dists: DistArray,
 ) -> tuple[np.bool_, IdxArray, FloatArray]:
     """Check whether the outer radius is clear.
 
@@ -127,10 +127,10 @@ def check_outer_radius(
 
 
 def check_hard_border(
-        candidate_coords: CoordPair,
-        x_max: float,
-        y_max: float,
-        max_radius: float,
+    candidate_coords: CoordPair,
+    x_max: float,
+    y_max: float,
+    max_radius: float,
 ) -> np.bool_:
     """Check whether there is guaranteed clearance between the molecule candidate and the hard border.
 
@@ -151,10 +151,10 @@ def check_hard_border(
 
 
 def check_hard_molecule(
-        candidate_coords: CoordPair,
-        x_max: float,
-        y_max: float,
-        fmg: MoleculeGroup,
+    candidate_coords: CoordPair,
+    x_max: float,
+    y_max: float,
+    fmg: MoleculeGroup,
 ) -> BoolArray:
     """Check whether positioned molecules fit within the hard boundaries.
 
@@ -180,11 +180,11 @@ def check_hard_molecule(
 
 
 def check_shape_overlap(
-        cand: CandidateMolecule,
-        neighbour_index: IdxArray,
-        simul: Simulator,
-        pmg: MoleculeGroup,
-        try_angle_first: int | np.int_ | None = None,
+    cand: CandidateMolecule,
+    neighbour_index: IdxArray,
+    simul: Simulator,
+    pmg: MoleculeGroup,
+    try_angle_first: int | np.int_ | None = None,
 ) -> tuple[bool, CandidateMolecule]:
     """Check whether there the new molecule overlaps with existing molecules.
 
@@ -221,7 +221,7 @@ def check_shape_overlap(
             pmg.rotated_molecules[ii],
             *cand.coordinates[:, 0],
         )
-        prepared_candidate: PreparedGeometry = prep(candidate_molecule)
+        prepared_candidate: PreparedGeometry[Polygon] = prep(candidate_molecule)
 
         overlap_indices = pos_tree.query(candidate_molecule)  # Returns the indices of overlapping bounding boxes.
 
@@ -242,10 +242,10 @@ def check_shape_overlap(
 
 
 def make_rtree_filter(
-        candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
-        rtree: Index,
-        circumradius: float,
-        existing: BoolArray,
+    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
+    rtree: Index,
+    circumradius: float,
+    existing: BoolArray,
 ) -> IdxArray:
     """Filter on nearby polygons using the RTree index.
 
@@ -270,10 +270,10 @@ def make_rtree_filter(
 
 
 def make_rectangular_filter(
-        candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
-        other_coordinates: CoordsArray,
-        x_offset: float,
-        y_offset: float | None = None,
+    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
+    other_coordinates: CoordsArray,
+    x_offset: float,
+    y_offset: float | None = None,
 ) -> BoolArray:
     """Make a rectangular boolean list out of x and y coordinates. Can be used to make a window.
 
@@ -304,10 +304,10 @@ def make_rectangular_filter(
 
 
 def create_periodic_images(
-        coordinates: T,
-        x_max: float,
-        y_max: float,
-        z_max: float | None = None,
+    coordinates: T,
+    x_max: float,
+    y_max: float,
+    z_max: float | None = None,
 ) -> T:
     """Create a padding of coordinates.
 
@@ -322,14 +322,19 @@ def create_periodic_images(
     """
     extended_coordinates: T = coordinates.copy()
     # This creates an array of the form [[x_max, 0], [0, y_max]].
-    temp_offset: np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]] | np.ndarray[
-        tuple[Literal[3], Literal[3]], np.dtype[np.float64]] = cast(
-        """np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]] |
-           np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]""",
-        np.diag([x_max, y_max]).reshape((2, 2)) if z_max is None else np.diag([x_max, y_max, z_max]),
+    temp_offset: (
+        np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]]
+        | np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]
+    ) = (
+        cast("np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]]", np.diag([x_max, y_max]).reshape((2, 2)))
+        if z_max is None
+        else cast("np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]", np.diag([x_max, y_max, z_max]))
     )
     offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]] = temp_offset[
-        :, :, np.newaxis]
+        :,
+        :,
+        np.newaxis,
+    ]
 
     ii: NDArray[np.float64]
     for ii in offset:  # The first pass creates padding in x dir, the second pads in y.

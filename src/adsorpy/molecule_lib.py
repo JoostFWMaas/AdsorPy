@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeAlias, cast
+from typing import TYPE_CHECKING, Literal, ParamSpec, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +17,6 @@ import shapely.affinity as aff
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Circle
 from matplotlib.widgets import Slider, TextBox
-from numpy.typing import NDArray
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
@@ -25,6 +24,12 @@ if TYPE_CHECKING:
     from matplotlib import axes, figure
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
+    from numpy.typing import NDArray
+
+    from src.adsorpy.typing import BoolArray, FloatArray, InDict, RotMatrix
+
+    P = ParamSpec("P")  # Helps with static type checkers.
+
 
 plt.rcParams.update(
     {
@@ -43,20 +48,6 @@ plt.rcParams.update(
     },
 )
 
-P = ParamSpec("P")  # Helps with static type checkers.
-InDict: TypeAlias = dict[str, str | float | list[str] | Path | None]
-InInDict: TypeAlias = dict[str, InDict]
-
-# mypy: plugins = numpy.typing.mypy_plugin
-# Definition of some frequently-used types. Not used by the compiler, just for the user and mypy. Hello user!
-IdxArray = np.ndarray[tuple[int], np.dtype[np.int_]]  # Flat index aray of integers.
-BoolArray = np.ndarray[tuple[int], np.dtype[np.bool_]]  # Flat Boolean array.
-CoordPair = np.ndarray[tuple[Literal[2], Literal[1]], np.dtype[np.float64]]  # 2x1 array of coordinates
-CoordsArray = np.ndarray[tuple[Literal[2], int], np.dtype[np.float64]]  # 2xN array of coords.
-Bools2D = np.ndarray[tuple[int, int], np.dtype[np.bool_]]
-GeoArray = np.ndarray[tuple[int], np.dtype[Polygon]]
-FloatArray = NDArray[np.float64]
-RotMatrix = np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]
 
 # Van der Waals radii of atoms. Source: https://doi.org/10.1039/C3DT50599E
 current_dir_file = Path(__file__).parent / "VdW_Radii.csv"
@@ -71,9 +62,9 @@ RADII: dict[str, float] = dict(
 
 
 def discorectangle(
-        params: list[float],
-        offx: float = 0.0,
-        offy: float = 0.0,
+    params: list[float],
+    offx: float = 0.0,
+    offy: float = 0.0,
 ) -> Polygon:
     """Create a discorectangle using the union of two circles and a rectangle.
 
@@ -102,14 +93,14 @@ def discorectangle(
         ],
     )
 
-    return unary_union([rectangle, circles])
+    return cast("Polygon", unary_union([rectangle, circles]))
 
 
 def circulium(
-        radius: float,
-        x_offset: float = 0.0,
-        y_offset: float = 0.0,
-        quad_segs: int = 8,
+    radius: float,
+    x_offset: float = 0.0,
+    y_offset: float = 0.0,
+    quad_segs: int = 8,
 ) -> Polygon:
     """Create a simple circular polygon.
 
@@ -135,17 +126,17 @@ def dogbonium(scale: float = 1) -> Polygon:
     positions[[1, 2], 0] *= -1.0
     positions[[2, 3], 1] *= -1.0
     positions[:, 1] *= 0.5
-    balls: MultiPolygon = MultiPoint(positions).buffer(0.5 * scale)
+    balls: MultiPolygon = cast("MultiPolygon", MultiPoint(positions).buffer(0.5 * scale))
     rod: Polygon = Polygon(positions)
-    dogbone: Polygon = unary_union((rod, balls))
+    dogbone: Polygon = cast("Polygon", unary_union((rod, balls)))
 
     return dogbone
 
 
 def polygonium(
-        verts: int = 3,
-        scale: float = 1.0,
-        roundedness: float = 0.0,
+    verts: int = 3,
+    scale: float = 1.0,
+    roundedness: float = 0.0,
 ) -> Polygon:
     """Create a simple regular polygon with optional rounding.
 
@@ -169,20 +160,20 @@ def polygonium(
         fact /= molecule.exterior.hausdorff_distance(center)
         molecule = aff.scale(molecule, xfact=fact, yfact=fact, origin=center)
 
-    return shapely.make_valid(molecule)
+    return cast("Polygon", shapely.make_valid(molecule))
 
 
 def xyz_reader(
-        file_name: str | Path,
-        ignore_atoms: str | list[str] | None = None,
-        x_offset: float = 0.0,
-        y_offset: float = 0.0,
-        roll: float = 0.0,
-        pitch: float = 0.0,
-        yaw: float = 0.0,
-        z_trim: float | None = None,
-        # *args: P.args,
-        # **kwargs: P.kwargs,
+    file_name: str | Path,
+    ignore_atoms: str | list[str] | None = None,
+    x_offset: float = 0.0,
+    y_offset: float = 0.0,
+    roll: float = 0.0,
+    pitch: float = 0.0,
+    yaw: float = 0.0,
+    z_trim: float | None = None,
+    # *args: P.args,
+    # **kwargs: P.kwargs,
 ) -> Polygon:
     """Read files in the xyz format of VASP.
 
@@ -225,27 +216,26 @@ def xyz_reader(
         atom_vdw: Polygon = Point(coords).buffer(RADII[atm])
         atom_list[idx] = atom_vdw
 
-    molecule = MultiPolygon(atom_list)
-    molecule = unary_union(molecule)
+    molecule: Polygon = cast("Polygon", unary_union(MultiPolygon(atom_list)))
     centre = -np.mean(atompos, axis=0)
     if x_offset is not None:
         centre[0] -= x_offset
     if y_offset is not None:
         centre[1] -= y_offset
 
-    return aff.translate(molecule, *centre)
+    return cast("Polygon", aff.translate(molecule, *centre))
 
 
 def first_time_loader(  # noqa: PLR0915
-        file_name: str | Path,
-        ignore_atoms: str | list[str] | None = None,
-        x_offset: float | None = None,
-        y_offset: float | None = None,
-        roll: float | None = None,
-        pitch: float | None = None,
-        yaw: float | None = None,
-        z_trim: float | None = None,
-        reference_lattice_spacing: float = 4.74,
+    file_name: str | Path,
+    ignore_atoms: str | list[str] | None = None,
+    x_offset: float | None = None,
+    y_offset: float | None = None,
+    roll: float | None = None,
+    pitch: float | None = None,
+    yaw: float | None = None,
+    z_trim: float | None = None,
+    reference_lattice_spacing: float = 4.74,
 ) -> InDict:
     """Script to run when you first load the molecule. Shows the molecule in xy, zy, and xz perspective, and vdwaals.
 
@@ -267,7 +257,15 @@ def first_time_loader(  # noqa: PLR0915
     with (Path(__file__).parent / "molecule_colour.json").open("r") as file:
         colourdict: dict[str, str] = dict(json.load(file))
 
-    map_to_colour = np.vectorize(lambda name: colourdict.get(name, "#FFFFFF"))
+    def _map_name_to_hexhtml(name: str) -> str:
+        """Map the molecule shorthand name string to the hexagonal HTML colour string.
+
+        :param name: Name of the molecule, e.g., H, He, Li, Be.
+        :returns: #FFFFFF by default, otherwise the valid colour code.
+        """
+        return colourdict.get(name, "#FFFFFF")
+
+    map_to_colour = np.vectorize(_map_name_to_hexhtml)
     atomcolours: NDArray[np.str_] = map_to_colour(atomkeys)
 
     roll = 0.0 if roll is None else roll
@@ -462,23 +460,23 @@ def first_time_loader(  # noqa: PLR0915
 
 
 def _update(  # noqa: PLR0913
-        val: float,
-        ang_x: Slider,
-        ang_y: Slider,
-        ang_z: Slider,
-        translate_x: Slider,
-        translate_y: Slider,
-        box_x: TextBox,
-        box_y: TextBox,
-        box_z: TextBox,
-        box_xoff: TextBox,
-        box_yoff: TextBox,
-        atompos: FloatArray,
-        axs: list[axes.Axes],
-        fig: figure.Figure,
-        atomcolours: NDArray[np.str_],
-        atomkeys: NDArray[np.str_],
-        reference_lattice_spacing: float,
+    val: float,
+    ang_x: Slider,
+    ang_y: Slider,
+    ang_z: Slider,
+    translate_x: Slider,
+    translate_y: Slider,
+    box_x: TextBox,
+    box_y: TextBox,
+    box_z: TextBox,
+    box_xoff: TextBox,
+    box_yoff: TextBox,
+    atompos: FloatArray,
+    axs: list[axes.Axes],
+    fig: figure.Figure,
+    atomcolours: NDArray[np.str_],
+    atomkeys: NDArray[np.str_],
+    reference_lattice_spacing: float,
 ) -> None:
     roll = ang_z.val
     pitch = ang_y.val
@@ -603,9 +601,9 @@ def _update(  # noqa: PLR0913
 
 
 def _initialise_reader(
-        file_name: str | Path,
-        ignore_atoms: str | list[str] | None = None,
-        z_trim: float | None = None,
+    file_name: str | Path,
+    ignore_atoms: str | list[str] | None = None,
+    z_trim: float | None = None,
 ) -> tuple[np.ndarray[tuple[int], np.dtype[np.str_]], np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]]:
     """Initialise the xyz_reader and first_time_loader.
 

@@ -10,8 +10,19 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 ### Fixed
 ### Removed
 
+## 1.2.0 - 2026-05-06
+### Added
+- Add ``pyright`` linting in strict mode.
+- Add ``typing.py``.
+### Changed
+- Move all ``TypeAlias`` to the new ``typing.py``.
+### Fixed
+- Fix flux: was an ``np.ndarray``, is now a tuple of arrays. Beware: this changes the type of that return value of ``run_simulation()``.
+### Removed
+
 ## 1.1.5 - 2026-05-04
 ### Added
+- Installation can now use ``[test]``, ``[lint]``, and ``[docs]`` as optional dependencies.
 - Add final ``ci-success`` step to the ``tests-ci.yml``.
 - Add ``dependabot.yml`` with permission for minor/patch update pull requests.
 - Add ``CODE_OF_CONDUCT.md``.
@@ -21,11 +32,16 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/) and this 
 - Change ``test-ci.yml`` order: first on pull_requests, then push. Change push filter from paths to paths-ignore. Now ignores all ``.md`` files and everything in docs. Tests run whenever anything else is changed. Also puts ``main`` on ignore for push. Direct pushing to ``main`` is not allowed, and not ignoring ``main`` would result in duplicate tests.
 - Lower ``test_gapsize_analysis()`` in ``rsa_test.py`` to 100.
 - Change parametrised tests in ``rsa_tests.py`` to improve readability of code and test results.
-- Move from ``tox.ini`` to ``tox.toml``. 
+- Move from ``tox.ini`` to ``tox.toml``.
 ### Fixed
 - Fix potential vulnerabilities in the CI by reducing the scope of permissions.
 - All tests are now ``mypy`` and ``ruff`` compliant.
+- Fix the link to the adsorpy image. The image can now be seen on PyPI.
 ### Removed
+- ``requirements.txt``
+- ``requirements_dev.txt``
+- ``requirements_lint.txt``
+- ``requirements_docs.txt``
 
 ## 1.1.4 - 2026-04-28
 ### Added

@@ -1,5 +1,5 @@
 min_version = "4.53.0"
-env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy"]
+env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "pyright"]
 isolated_build = true
 #labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy"] }
 
@@ -7,7 +7,7 @@ isolated_build = true
   "310" = ["py310"]
   "311" = ["py311"]
   "312" = ["py312"]
-  "313" = ["ruff", "mypy", "py313"]
+  "313" = ["ruff", "mypy", "pyright", "py313"]
   "314" = ["py314"]
 
 [env_run_base]
@@ -28,3 +28,8 @@ base_python = "python3.13"
 deps = ["-e .[lint]"]
 commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--exclude", "/scripts/", "src", "tests"],
 ]
+
+[env.pyright]
+base_python = "python3.13"
+deps = ["-e .[lint,test]"]
+commands = [["pyright"]]

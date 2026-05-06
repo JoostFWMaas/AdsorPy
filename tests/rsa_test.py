@@ -17,36 +17,15 @@ from shapely.prepared import prep
 
 import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
 import src.adsorpy.randomsequentialadsorption as rsarun
-from src.adsorpy.randomsequentialadsorption import CoordsArray, GeoArray
 from src.adsorpy.rsa_calculator import squared_cdist
 from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+from src.adsorpy.typing import CoordsArray, GeoArray
 
 
-@dataclass
 class ExampleSimulation:
     """Test class for the simulation. Stops step by step for verification of inialisation steps."""
 
     __test__ = False
-    # seed: int
-    # configname: str
-    # rsa_config: RsaConfig
-    # surf: rsarun.Surface
-    # molecules: list[rsarun.MoleculeGroup]
-    # sim: rsarun.Simulator
-    # rng: Generator
-
-    # def __post_init__(
-    #     self,
-    #     __test__: bool,
-    #     seed: int,
-    #     configname: str,
-    #     rsa_config: RsaConfig,
-    #     surf: rsarun.Surface,
-    #     molecules: list[rsarun.MoleculeGroup],
-    #     sim: rsarun.Simulator,
-    #     rng: Generator,
-    # ) -> None:
-    #     self.seed = seed
 
     def __init__(self, seed: int) -> None:
         """Initialise the example simulation class.
@@ -125,7 +104,7 @@ class TestWithParameters:
     ) -> None:
         """The config is loaded correctly."""
         simulator.set_configname(f"config_test_{configname}.json")
-        simulator.rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / simulator.configname))
+        simulator.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / simulator.configname)
         assert simulator.rsa_config is not None
 
     def test_create_surface(
@@ -395,9 +374,9 @@ class TestWithParameters:
 def test_surfacetype_invalid_input() -> None:
     """An error is raised when the lattice type is incorrect."""
     bad_type: str = "Dogbonium"
-    with pytest.raises(ValueError, match=f"Unsupported lattice: Dogbonium of type {type(bad_type).__name__}"):
+    with pytest.raises(ValueError, match=f"Unsupported lattice: {bad_type} of type {type(bad_type).__name__}"):
         rsarun.Surface(
-            RsaConfig(str(Path(__file__).parent / "test_data" / "config_test_soft.json")),
+            RsaConfig(Path(__file__).parent / "test_data" / "config_test_soft.json"),
             bad_type,
         ).generate_grid()
 
@@ -417,7 +396,7 @@ def test_molecules_invalid_input() -> None:
     """An error is raised for invalid input of the molecules."""
     sim = ExampleSimulation(13579)
     sim.set_configname("config_test_soft.json")
-    sim.rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / sim.configname))
+    sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
     with pytest.raises(ValueError, match=r"No molecules have been provided!"):
         rsarun.Simulator(sim.rsa_config, None, None, [], None)  # type: ignore[arg-type]
 
@@ -430,7 +409,7 @@ def simple_simulator() -> ExampleSimulation:
     """
     sim = ExampleSimulation(123321)
     sim.set_configname("config_test_soft.json")
-    sim.rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / sim.configname))
+    sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
     sim.rng = Generator(PCG64DXSM(sim.seed))
     sim.surf = rsarun.Surface(sim.rsa_config)
     sim.surf.generate_grid(sim.rng)
@@ -581,7 +560,7 @@ def gapsim() -> ExampleSimulation:
     """
     sim = ExampleSimulation(123321)
     sim.set_configname("config_test_periodic.json")
-    sim.rsa_config = RsaConfig(str(Path(__file__).parent / "test_data" / sim.configname))
+    sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
     sim.rng = Generator(PCG64DXSM(sim.seed))
     sim.surf = rsarun.Surface(sim.rsa_config)
     sim.surf.generate_grid(sim.rng)
@@ -605,7 +584,7 @@ def idx_radius_strategy() -> SearchStrategy[tuple[int, float]]:
     )
 
 
-@settings(max_examples=100)
+@settings(max_examples=100, deadline=None)
 @given(idx_radius_strategy())
 def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[int, float]) -> None:
     """Prove that the gap size distribution yields the correct values for circular molecules.

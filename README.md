@@ -25,7 +25,7 @@ Run the `adsorpy.run_simulation.run_simulation()` function with the molecule foo
 User friendliness will be updated at a later stage, allowing the user to define simulation modes, surfaces, and
 molecules more easily.
 
-Documentation (generated with `Sphinx`): https://joostfwmaas.github.io/AdsorPy/
+Documentation (generated with `sphinx`): https://joostfwmaas.github.io/AdsorPy/
 
 ## Future additions
 
@@ -34,11 +34,11 @@ In a future update, the code will be expanded with diffusion, desorption, and sp
 ## Design philosophy
 
 Because AdsorPy has been made with scientific rigour in mind, the package is tested in multiple ways:
-- Unit tests (`Pytest`) of the code ensure correct behaviour for expected input.
-- Property tests (`Hypothesis`) of the most critical code components ensure correct behaviour for unexpected input as well.
-- `Mypy` (in `--strict` mode) ensures that the package is correctly-typed, as if it were static. The `py.typed` file--a promise that the code is type-hinted properly--is added because the code passes this test.
-- `Ruff` is used as a linter with almost all rules enabled (see the pyproject.toml for the list of exclusions and reasons).
-- `Tox` is used to run all of the aforementioned tests in parallel for multiple Python versions to ensure correct behaviour.
+- Unit tests (`pytest`) of the code ensure correct behaviour for expected input.
+- Property tests (`hypothesis`) of the most critical code components ensure correct behaviour for unexpected input as well.
+- `mypy` (in `--strict` mode) and `pyright` (`strict`) ensure that the package is correctly-typed, as if it were static. The `py.typed` file, a promise that the code is type-hinted properly, is added because the code passes this test.
+- `ruff` is used as a linter with almost all rules enabled (see the pyproject.toml for the list of exclusions and reasons).
+- `tox` is used to run all of the aforementioned tests in parallel for multiple Python versions to ensure correct behaviour.
 - CI is used for automated testing.
 
 The package also makes use of an optional config file that falls back on standard behaviour, because configs are often used in scientific software (set-and-forget).
