@@ -1,15 +1,15 @@
 min_version = "4.53.1"
-env_list = ["py3.10", "py3.11", "py3.12", "py3.13", "py3.14", "ruff", "mypy", "pyright", "tach", "slotscheck"]
+env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "pyright", "tach", "slotscheck"]
 isolated_build = true
 recreate = true
-labels = { test = ["py3.10", "py3.11", "py3.12", "py3.13", "py3.14"], static = ["ruff", "mypy", "pyright", "tach", "slotscheck"] }
+labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "pyright", "tach", "slotscheck"] }
 
 [gh.python]
 #"310" = ["py310"]
 #"311" = ["py311"]
 #"312" = ["py312"]
 #"313" = ["py313"]
-"314" = ["ruff", "mypy", "pyright", "tach", "slotscheck", "py3.14"]
+"py3.14" = ["ruff", "mypy", "pyright", "tach", "slotscheck", "py314"]
 
 [env_run_base]
 pass_env = ["CI", "GITHUB_*", "CODECOV_*"]
