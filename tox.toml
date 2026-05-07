@@ -5,6 +5,10 @@ recreate = true
 labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "pyright", "tach", "slotscheck"] }
 
 [gh.python]
+"3.10" = ["py310"]
+"3.11" = ["py311"]
+"3.12" = ["py312"]
+"3.13" = ["py313"]
 "3.14" = ["ruff", "mypy", "pyright", "tach", "slotscheck", "py314"]
 
 [env_run_base]
