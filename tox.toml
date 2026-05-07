@@ -13,7 +13,7 @@ labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff
 
 [env_run_base]
 pass_env = ["CI", "GITHUB_*", "CODECOV_*"]
-set_env.COVERAGE_FILE = "{envtmpdir}/.coverage"
+#set_env.COVERAGE_FILE = "{envtmpdir}/.coverage"
 deps = ["-e .[test]"]
 commands = [["pytest", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
     ["codecov"],
