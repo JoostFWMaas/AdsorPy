@@ -136,7 +136,6 @@ exclude_also = [
     "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
 ]
 
-
 [tool.mypy]
 mypy_path = ["src", "optional", "tests"]
 ignore_missing_imports = true
