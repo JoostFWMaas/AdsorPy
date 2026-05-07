@@ -5,11 +5,7 @@ recreate = true
 labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "pyright", "tach", "slotscheck"] }
 
 [gh.python]
-#"310" = ["py310"]
-#"311" = ["py311"]
-#"312" = ["py312"]
-#"313" = ["py313"]
-"py3.14" = ["ruff", "mypy", "pyright", "tach", "slotscheck", "py314"]
+"3.14" = ["ruff", "mypy", "pyright", "tach", "slotscheck", "py314"]
 
 [env_run_base]
 pass_env = ["CI", "GITHUB_*", "CODECOV_*"]
