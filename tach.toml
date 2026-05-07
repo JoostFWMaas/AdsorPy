@@ -1,0 +1,35 @@
+interfaces = []
+exclude = [
+    "**/*__pycache__",
+    "**/*egg-info",
+    "**/docs",
+    "**/tests",
+    "**/venv",
+]
+source_roots = [
+    ".",
+]
+
+[[modules]]
+path = "src.adsorpy.rsa_calculator"
+depends_on = []
+
+[[modules]]
+path = "src.adsorpy.randomsequentialadsorption"
+depends_on = ["src.adsorpy.rsa_calculator"]
+
+[[modules]]
+path = "src.adsorpy.rsa_config"
+depends_on = []
+
+[[modules]]
+path = "src.adsorpy.molecule_lib"
+depends_on = []
+
+[[modules]]
+path = "src.adsorpy.run_simulation"
+depends_on = [
+    "src.adsorpy.randomsequentialadsorption",
+    "src.adsorpy.rsa_config",
+    "src.adsorpy.molecule_lib"
+]
