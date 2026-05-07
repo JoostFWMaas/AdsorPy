@@ -78,6 +78,8 @@ lint = [
     "mypy>=2.0.0",
     "ruff>=0.15.12",
     "pyright>=1.1.409",
+    "tach>=0.34.1",
+    "slotscheck>=0.19.1",
 ]
 docs = [
     "sphinx>=9.1.0",
@@ -91,7 +93,9 @@ docs = [
 github = "https://github.com/JoostFWMaas/AdsorPy"
 Documentation = "https://joostfwmaas.github.io/AdsorPy"
 Changelog = "https://github.com/JoostFWMaas/AdsorPy/blob/main/CHANGELOG.md"
-
+homepage = "https://pypi.org/project/adsorpy/"
+issues = "https://github.com/JoostFWMaas/AdsorPy/issues"
+download = "https://pypi.org/project/adsorpy/#files"
 
 [tool.hatch.package_data]
 "adsorpy" = ["py.typed"]
@@ -206,7 +210,6 @@ ignore = [
     "ARG001", # Unused function argument.
     "D203", # Conflicts with D211: no blank line before class.
     "D213", # Conflicts with D212: multi-line summary first line.
-    #    "DOC",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -238,3 +241,12 @@ reportPrivateUsage = "warning"
 reportUnnecessaryTypeIgnoreComment = "warning"
 reportUnnecessaryComparison = "warning"  # These are usually included to prevent the user from breaking things.
 
+
+[tool.slotscheck]
+strict-imports = true
+include-modules = """
+(
+    src
+#    |tests
+)
+"""

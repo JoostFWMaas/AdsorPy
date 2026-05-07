@@ -98,7 +98,7 @@ def run_simulation(  # noqa: PLR0913
         5. The Simulator class.
     :raises TypeError: If the sticking probability is an invalid type.
     """
-    rsa_config = RsaConfig(str(Path(__file__).parent / "config.json")) if rsa_config is None else rsa_config
+    rsa_config = RsaConfig(Path(__file__).parent / "config.json") if rsa_config is None else rsa_config
 
     mol_lst: GeoArray
     rot_syms: IdxArray
@@ -544,7 +544,7 @@ def main() -> Literal[0]:
     :return: 0 on success.
     """
     config_path = Path(__file__).parent / "config.json"
-    rsa_config = RsaConfig(str(config_path))
+    rsa_config = RsaConfig(config_path)
     start = time.perf_counter()
     run_simulation(rsa_config, plot_output_flag=True, include_rejected_flux=False)
     end = time.perf_counter()

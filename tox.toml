@@ -1,35 +1,44 @@
-min_version = "4.53.0"
-env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "pyright"]
+min_version = "4.53.1"
+env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "pyright", "tach", "slotscheck"]
 isolated_build = true
-#labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy"] }
+recreate = true
+labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "pyright", "tach", "slotscheck"] }
 
 [gh.python]
-  "310" = ["py310"]
-  "311" = ["py311"]
-  "312" = ["py312"]
-  "313" = ["ruff", "mypy", "pyright", "py313"]
-  "314" = ["py314"]
+"310" = ["py310"]
+"311" = ["py311"]
+"312" = ["py312"]
+"313" = ["py313"]
+"314" = ["ruff", "mypy", "pyright", "tach", "slotscheck", "py314"]
 
 [env_run_base]
-set_env = { PYTHONPATH = "{toxinidir}" }
 pass_env = ["CI", "GITHUB_*", "CODECOV_*"]
+set_env.COVERAGE_FILE = "{envtmpdir}/.coverage"
 deps = ["-e .[test]"]
 commands = [["pytest", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
-  ["codecov"],
+    ["codecov"],
 ]
 
 [env.ruff]
-base_python = "python3.13"
-deps = ["-e .[lint]"]
+skip_install = true
+deps = ["ruff"]
 commands = [["ruff", "check", "src", "tests"]]
 
 [env.mypy]
-base_python = "python3.13"
-deps = ["-e .[lint]"]
+skip_install = true
+deps = ["mypy", "numpy"]
 commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--exclude", "/scripts/", "src", "tests"],
 ]
 
 [env.pyright]
-base_python = "python3.13"
-deps = ["-e .[lint,test]"]
+deps = ["pyright", "[test]"]
 commands = [["pyright"]]
+
+[env.slotscheck]
+deps = ["slotscheck"]
+commands = [["python", "-m", "slotscheck", "."]]
+
+[env.tach]
+skip_install = true
+deps = ["tach"]
+commands = [["tach", "check"]]
