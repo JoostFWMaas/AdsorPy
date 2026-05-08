@@ -1,13 +1,17 @@
 # Change Log
 All important changes to ``AdsorPy`` will be documented in this file.
 
-This format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
+This format is based on [Keep a Changelog](http://keepachangelog.com/). This project adheres to [Semantic Versioning](http://semver.org/).
 
 
 ## [unreleased]
 ### Added
+- Add ``tach`` for internal dependency sanitation.
+- Add ``slotscheck`` to ensure correct use of slots in dataclasses.
 ### Changed
+- Change version of Python from 3.13 to 3.14.
 ### Fixed
+- Reduce the complexity of the ``tests-ci.yml`` and ``tox.toml``.
 ### Removed
 
 ## 1.2.0 - 2026-05-06
