@@ -1,10 +1,11 @@
 # AdsorPy
 
-![Output of an AdsorPy run, an image of a covered surface.](https://raw.githubusercontent.com/JoostFWMaas/AdsorPy/ccedff9c0a4cca1e89c4d461dbfeb91c49e38b21/images/AdsorPy_Covered_Surface.png)
 ![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/tests-ci.yml/badge.svg)
 [![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
 
 Lattice-based random sequential adsorption (RSA) Python 3.10+ script.
+
+<img src="https://raw.githubusercontent.com/JoostFWMaas/AdsorPy/ccedff9c0a4cca1e89c4d461dbfeb91c49e38b21/images/AdsorPy_Covered_Surface.png" alt="Output of an AdsorPy run, an image of a covered surface." style="width:50%; height:auto;">
 
 In RSA, molecules arrive one by one at a surface. Adsorption takes place if the molecule does not overlap with molecules
 already on the surface.
@@ -15,14 +16,27 @@ gap size distribution.
 
 ## How to use
 
+The easiest way to run this package: 
+```bash 
+pip install adsorpy
+```
+
 Run the `adsorpy.main` in order to run a simple single run using the standard disk-shaped molecule on hexagonal aluminium oxide.
 New molecules can be created by running the `adsorpy.molecule_lib` or by calling the `adsorpy.molecule_lib.first_time_loader()` function. Molecules can be generated from `.xyz` files. It is
 recommended to run `adsorpy.molecule_lib` directly from command line to define the molecule orientation, then store the new
 molecule string for repeated use.
 
 Run the `adsorpy.run_simulation.run_simulation()` function with the molecule footprints generated in the previous step. Output can be printed to stdout, plotted, and saved.
+An example for dog-bone molecules with rotations of 360 // 12 = 30 degrees:
+```python
+from adsorpy.run_simulation import run_simulation
+from adsorpy.molecule_lib import dogbonium
+molecule = dogbonium()
+output = run_simulation(molecules_list=molecule, rotation_counts=12, plot_output_flag=True)
+```
 
-User friendliness will be updated at a later stage, allowing the user to define simulation modes, surfaces, and
+
+User-friendliness will be updated at a later stage, allowing the user to define simulation modes, surfaces, and
 molecules more easily.
 
 Documentation (generated with `sphinx`): https://joostfwmaas.github.io/AdsorPy/
@@ -37,13 +51,15 @@ Because AdsorPy has been made with scientific rigour in mind, the package is tes
 - Unit tests (`pytest`) of the code ensure correct behaviour for expected input.
 - Property tests (`hypothesis`) of the most critical code components ensure correct behaviour for unexpected input as well.
 - `mypy` (in `--strict` mode) and `pyright` (`strict`) ensure that the package is correctly-typed, as if it were static. The `py.typed` file, a promise that the code is type-hinted properly, is added because the code passes this test.
-- `ruff` is used as a linter with almost all rules enabled (see the pyproject.toml for the list of exclusions and reasons).
+- `ruff` is used as a linter with almost all rules enabled (see the `pyproject.toml` for the list of exclusions and reasons).
+- `slotscheck` ensures that all dataclass slots are set up correctly.
+- `tach` ensures that internal dependencies are handled correctly (from low level to high), preventing circular dependencies.
 - `tox` is used to run all of the aforementioned tests in parallel for multiple Python versions to ensure correct behaviour.
 - CI is used for automated testing.
 
 The package also makes use of an optional config file that falls back on standard behaviour, because configs are often used in scientific software (set-and-forget).
 
-# Openness and academic collaboration
+## Openness and academic collaboration
 
 The script was made public for the sake of openness and academic collaboration. Please let me know if you have questions about the script, or if you have discovered any issues/bugs. 
 At the end of this file, I will place a list of papers that make use of this work. Feel free to contact me if you want your work to be added to the list as well.

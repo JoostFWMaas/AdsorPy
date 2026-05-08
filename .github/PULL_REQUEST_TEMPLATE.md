@@ -9,7 +9,7 @@
 
 1. [ ] Does your submission pass all ``pytest`` tests?
 2. [ ] Have you lint your code locally before submission?
-3. [ ] Does your code pass the ``mypy``, ``pyright``, and ``ruff`` checks?
+3. [ ] Does your code pass the ``mypy``, ``pyright``, ``tach``, ``slotscheck``, and ``ruff`` checks?
 
 ### Changes to Core Features:
 

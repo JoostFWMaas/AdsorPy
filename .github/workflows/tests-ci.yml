@@ -36,7 +36,7 @@ jobs:
         run: pip install tox tox-gh
 
       - name: Run tests with tox
-        run: tox -c tox.toml
+        run: tox
 
       - name: Upload test results
         if: always() && matrix.python-version == '3.14'
