@@ -82,7 +82,11 @@ autodoc_default_options = {
 
 autodoc_member_order = "bysource"
 
-suppress_warnings = ["config.cache"]
+suppress_warnings = [
+    "config.cache",
+    "sphinx_autodoc_typehints.guarded_import",
+    "sphinx_autodoc_typehints.forward_reference",
+]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -101,6 +105,8 @@ py_files = module_directory.glob("*.py")
 # Extract the module names from the filenames
 module_names = [f.stem for f in py_files]
 print(module_names)
+
+autodoc_typehints = "description"
 
 # List of modules to mock during documentation build
 autodoc_mock_imports = module_names
