@@ -6,10 +6,18 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 
 ## [unreleased]
 ### Added
+### Changed
+### Fixed
+### Removed
+
+## 1.2.1 - 2026-05-08
+### Added
 - Add ``tach`` for internal dependency sanitation.
 - Add ``slotscheck`` to ensure correct use of slots in dataclasses.
+- Add ``pydantic`` to ensure correctness of ``config.json``.
+- Add intersphinx mapping for ``pydantic``, ``shapely``, ``numba``, ``matplotlib``, and ``rtree``.
 ### Changed
-- Change version of Python from 3.13 to 3.14.
+- Change lint checking version of Python from 3.13 to 3.14.
 ### Fixed
 - Reduce the complexity of the ``tests-ci.yml`` and ``tox.toml``.
 ### Removed

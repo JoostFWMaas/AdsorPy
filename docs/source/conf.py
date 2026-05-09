@@ -36,8 +36,13 @@ extensions = [
 ]
 
 intersphinx_mapping = {
-    'numpy': ('https://numpy.org/doc/stable/', None),
-    'python': ('https://docs.python.org/3', None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "python": ("https://docs.python.org/3/", None),
+    "pydantic": ("https://docs.pydantic.dev/latest/", None),
+    "shapely": ("https://shapely.readthedocs.io/en/stable/", None),
+    "numba": ("https://numba.readthedocs.io/en/stable/", None),
+    "matplotlib": ("https://matplotlib.org/stable/", None),
+    "rtree": ("https://rtree.readthedocs.io/en/latest/", None),
 }
 
 sd_custom_directives = {

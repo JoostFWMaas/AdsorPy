@@ -16,6 +16,7 @@ import shapely.affinity as aff
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
+from pydantic import Field, PositiveFloat, PositiveInt, dataclasses
 from rtree.index import Index, Property  # RTree, helps lookups!
 from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare
 
@@ -58,28 +59,47 @@ plt.rcParams.update(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclasses.dataclass(frozen=True, slots=True)
 class Config:
     """Dataclass containing the config variables read from data/config."""
 
-    rsa_config: RsaConfig
-    "The RSA config."
-    sites: int | None  # Site count in the x-direction.
+    # rsa_config: RsaConfig
+    # "The RSA config."
+    sites: PositiveInt | None  # Site count in the x-direction.
     "The number of sites in the x-direction."
-    xsize: float | None  # The sizes are not yet properly implemented for this.
+    xsize: PositiveFloat | None  # The sizes are not yet properly implemented for this.
     "Under construction, do not use."
-    ysize: float | None
+    ysize: PositiveFloat | None
     "Under construction, do not use."
-    zsize: float | None
+    zsize: PositiveFloat | None
     "Under construction, do not use."
-    max_molecule_count: int  # Maximum amount of molecules to attempt.
+    max_molecule_count: PositiveInt  # Maximum amount of molecules to attempt.
     "The maximum amount of molecule placements to attempt."
-    lattice_a: float  # The lattice constant. Spacing between nearest points.
+    lattice_a: PositiveFloat  # The lattice constant. Spacing between nearest points.
     "The lattice spacing in Angstrom."
-    boundary_type: str  # Boundary condition: soft, hard, or periodic.
+    boundary_type: Literal["soft", "hard", "periodic"]  # Boundary condition: soft, hard, or periodic.
     "The boundary type. 'soft', 'hard', or 'periodic'."
-    sticking_probability: float  # Sticking probability between 0 and 1. Lower probability means more rejection.
+    sticking_probability: PositiveFloat = Field(le=1.)  # Lower probability means more rejection.
     "The sticking probability of the molecules, between 0 and 1."
+
+
+def _config_loader(rsa_config: RsaConfig) -> Config:
+    """Load the RsaConfig into the Config class.
+
+    :param rsa_config: The RsaConfig.
+    :returns: The Config.
+    """
+    return Config(
+        # rsa_config=rsa_config,
+        sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
+        xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
+        ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
+        zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
+        max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
+        lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
+        boundary_type=rsa_config.get_value("boundary_type"),  # type: ignore[arg-type]
+        sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
+    )
 
 
 class BoundaryParameters:
@@ -329,17 +349,7 @@ class MoleculeGroup:
         self.group_id: Final[int] = next(mgc)  # Automatically assigns next mol number.
         "ID value of the molecule group. Automatically iterates when making new molecule groups."
 
-        self.config: Final[Config] = Config(
-            rsa_config=rsa_config,
-            sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
-            xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
-            ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
-            zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
-            max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
-            lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
-            boundary_type=rsa_config.get_value("boundary_type"),  # type: ignore[arg-type]
-            sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
-        )
+        self.config: Final[Config] = _config_loader(rsa_config)
         "Config values."
 
         self.molecule: Final[Polygon] = molecule  # The molecule polygon data.
@@ -462,7 +472,7 @@ class MoleculeGroup:
         return bopa  # If the boundary condition was hard, bounding box coordinates have been added.
 
 
-@dataclass(eq=False, slots=True)
+@dataclass(slots=True)
 class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     """Create a candidate molecule with temporary data.
 
@@ -553,17 +563,7 @@ class Simulator:
         :param boundary_type: type of boundary conditions, optional. If None, defaults to config.json (periodic).
         :raises ValueError: if no molecules are provided.
         """
-        self.config: Final[Config] = Config(
-            rsa_config=rsa_config,
-            sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
-            xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
-            ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
-            zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
-            max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
-            lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
-            boundary_type=rsa_config.get_value("boundary_type") if boundary_type is None else boundary_type,  # type: ignore[arg-type]
-            sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
-        )
+        self.config: Final[Config] = _config_loader(rsa_config)
         "Config values."
 
         self.rng: np.random.Generator = rng
@@ -1127,17 +1127,7 @@ class Surface:
         :param sticking_probability: Sticking probability. Default is 1.0 from config.
         :raise ValueError: If only x or y is provided for a custom surface. Currently unusable.
         """
-        self.config: Final[Config] = Config(
-            rsa_config=rsa_config,
-            sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
-            xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
-            ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
-            zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
-            max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
-            lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
-            boundary_type=rsa_config.get_value("boundary_type") if boundary_type is None else boundary_type,  # type: ignore[arg-type]
-            sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
-        )
+        self.config: Final[Config] = _config_loader(rsa_config)
         "Config values."
 
         # Constants:
