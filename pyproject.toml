@@ -62,6 +62,7 @@ dependencies = [
     "numba>=0.65.1",
     "matplotlib>=3.10.9",
     "shapely>=2.1.2",
+    "pydantic>=2.13.4",
     "rtree>=1.4.1",
 ]
 
@@ -144,7 +145,12 @@ disallow_any_explicit = true
 #disallow_any_decorated = true  # Throws an error because geo.Polygon in a tuple is turned into Any for the @staticmethod.
 #warn_unreachable = true  # Set this to true when pushing to main?
 exclude = ['/Scripts']
+plugins = ["pydantic.mypy"]
 
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
 
 [tool.flake8]
 max-line-length = 120
@@ -196,7 +202,6 @@ pylint.max-statements = 80
 mccabe.max-complexity = 20
 future-annotations = true  # Future annotations enabled.
 
-
 ignore = [
     "ERA001",
     "TD",
@@ -215,6 +220,8 @@ ignore = [
 "__init__.py" = ["D104"]  # Missing docstring in public package. Not needed, package is empty.
 "test*.py" = ["S101", "TC"]  # Assert should not be used in production code! But this is test code, so here it is expected.
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass"]
 
 [tool.pyright]
 include = ["src", "tests"]
