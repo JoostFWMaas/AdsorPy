@@ -5,6 +5,8 @@
 [![docs build results](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/docs-ci.yml/badge.svg)](https://joostfwmaas.github.io/AdsorPy/)
 [![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JoostFWMaas/AdsorPy/badge)](https://scorecard.dev/viewer/?uri=github.com/JoostFWMaas/AdsorPy)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12810/badge)](https://www.bestpractices.dev/projects/12810)
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/12810/baseline)](https://www.bestpractices.dev/projects/12810)
 
 
 Lattice-based random sequential adsorption (RSA) Python 3.10+ script.
