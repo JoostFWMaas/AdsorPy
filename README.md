@@ -1,11 +1,12 @@
 # AdsorPy
 
+[![pypi version](https://img.shields.io/pypi/v/adsorpy.svg)](https://pypi.python.org/pypi/adsorpy) <!-- [![Conda](https://img.shields.io/conda/vn/conda-forge/adsorpy)](https://anaconda.org/conda-forge/adsorpy) -->
 ![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/tests-ci.yml/badge.svg)
 [![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JoostFWMaas/AdsorPy/badge)](https://scorecard.dev/viewer/?uri=github.com/JoostFWMaas/AdsorPy)
+
 
 Lattice-based random sequential adsorption (RSA) Python 3.10+ script.
-
-<img src="https://raw.githubusercontent.com/JoostFWMaas/AdsorPy/ccedff9c0a4cca1e89c4d461dbfeb91c49e38b21/images/AdsorPy_Covered_Surface.png" alt="Output of an AdsorPy run, an image of a covered surface." style="width:50%; height:auto;">
 
 In RSA, molecules arrive one by one at a surface. Adsorption takes place if the molecule does not overlap with molecules
 already on the surface.
@@ -14,9 +15,11 @@ is found, or until the list is exhausted.
 All available sites are checked, and various metrics can be extracted afterwards such as the coverage, covered area, and
 gap size distribution.
 
+<img src="https://raw.githubusercontent.com/JoostFWMaas/AdsorPy/ccedff9c0a4cca1e89c4d461dbfeb91c49e38b21/images/AdsorPy_Covered_Surface.png" alt="Output of an AdsorPy run, an image of a covered surface." style="width:50%; height:auto;">
+
 ## How to use
 
-The easiest way to run this package: 
+This package can be found on PyPI as [adsorpy](https://pypi.org/project/adsorpy/), so we recommend the following: 
 ```bash 
 pip install adsorpy
 ```
