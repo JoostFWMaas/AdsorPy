@@ -101,6 +101,14 @@ download = "https://pypi.org/project/adsorpy/#files"
 [tool.hatch.package_data]
 "adsorpy" = ["py.typed"]
 
+[tool.hatch.env]
+requires = [
+    "hatch-pip-compile"
+]
+
+[tool.hatch.envs.default]
+type = "pip-compile"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src/adsorpy"]
