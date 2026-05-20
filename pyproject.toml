@@ -101,11 +101,11 @@ dev-misc = [
 ]
 
 [tool.uv.dependency-groups]
-test = ["test"]
-lint = ["lint"]
-docs = ["docs"]
-envs = ["envs"]
-dev-misc = ["dev-misc"]
+test = ["[test]"]
+lint = ["[lint]"]
+docs = ["[docs]"]
+envs = ["[envs]"]
+dev-misc = ["[dev-misc]"]
 
 [project.urls]
 github = "https://github.com/JoostFWMaas/AdsorPy"
