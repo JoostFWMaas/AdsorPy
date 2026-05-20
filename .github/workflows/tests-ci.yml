@@ -43,7 +43,7 @@ jobs:
         run: uv sync --frozen --extra envs --no-default-groups
 
       - name: Run tests with tox
-        run: tox
+        run: uv run tox
 
       - name: Upload test results
         if: always() && matrix.python-version == '3.14'
