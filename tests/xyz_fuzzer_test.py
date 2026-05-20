@@ -1,31 +1,35 @@
 """Test the .xyz file parsing by fuzzing input."""
 
-from src.adsorpy.molecule_lib import _xyz_verifier, RADII
+from typing import Literal
 
 import numpy as np
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
+from hypothesis.strategies import SearchStrategy
+
+from src.adsorpy.molecule_lib import RADII, _xyz_verifier
 
 VALID_KEYS = list(RADII.keys())
 
 # ---- Strategies ----
 
 @st.composite
-def valid_xyz_inputs(draw):
+def valid_xyz_inputs(draw) -> tuple[np.ndarray[tuple[int], np.dtype[np.str_]], tuple[np.ndarray[tuple[int, Literal[3]]], np.dtype[np.str_]], SearchStrategy[int]]:
     n = draw(st.integers(min_value=1, max_value=50))
 
     atomkeys = np.array(
         draw(st.lists(st.sampled_from(VALID_KEYS), min_size=n, max_size=n)),
-        dtype=str
+        dtype=str,
     )
 
     atompos = draw(
         arrays(
             dtype=np.float64,
             shape=(n, 3),
-            elements=st.floats(allow_nan=False, allow_infinity=False)
-        )
+            elements=st.floats(allow_nan=False, allow_infinity=False),
+        ),
     )
 
     return atomkeys, atompos, np.int_(n)
@@ -38,7 +42,7 @@ def invalid_xyz_inputs(draw):
     # Maybe invalid keys
     atomkeys = np.array(
         draw(st.lists(st.text(min_size=1, max_size=2), min_size=n, max_size=n)),
-        dtype=str
+        dtype=str,
     )
 
     # Random shape (may violate 3D rule)
@@ -47,15 +51,15 @@ def invalid_xyz_inputs(draw):
         arrays(
             dtype=np.float64,
             shape=(n, dim2),
-            elements=st.floats(allow_nan=True, allow_infinity=True)
-        )
+            elements=st.floats(allow_nan=True, allow_infinity=True),
+        ),
     )
 
     listed_count = draw(
         st.one_of(
             st.none(),
-            st.integers(min_value=-5, max_value=100)
-        )
+            st.integers(min_value=-5, max_value=100),
+        ),
     )
 
     return atomkeys, atompos, listed_count
@@ -76,5 +80,5 @@ def test_xyz_verifier_invalid(data):
     atomkeys, atompos, count = data
 
     # Most invalid combinations should raise
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError):  # noqa: PT011
         _xyz_verifier(atomkeys, atompos, count)

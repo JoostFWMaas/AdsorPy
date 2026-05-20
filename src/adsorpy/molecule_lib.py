@@ -602,7 +602,7 @@ def _update(  # noqa: PLR0913
 def _xyz_verifier(
         atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]],
         atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]],
-        listed_molecule_count: np.int_
+        listed_molecule_count: np.int_,
 ) -> None:
     """Check if the .xyz file is of the correct format.
 
@@ -639,7 +639,7 @@ def _xyz_verifier(
         errmsg = "The .xyz file contains invalid coordinates."
         raise ValueError(errmsg)
 
-    if not atompos.shape[1] == 3:
+    if atompos.shape[1] != 3:  # noqa: PLR2004
         errmsg = "The .xyz file must contain 3D coordinates."
         raise ValueError(errmsg)
 
