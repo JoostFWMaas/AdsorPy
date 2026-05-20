@@ -19,7 +19,7 @@ import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
 import src.adsorpy.randomsequentialadsorption as rsarun
 from src.adsorpy.rsa_calculator import squared_cdist
 from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-from src.adsorpy.typing import CoordsArray, GeoArray
+from src.adsorpy.types import CoordsArray, GeoArray
 
 
 class ExampleSimulation:

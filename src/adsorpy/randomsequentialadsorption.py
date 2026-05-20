@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
     from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-    from src.adsorpy.typing import (
+    from src.adsorpy.types import (
         BoolArray,
         BufferArray,
         CoordPair,

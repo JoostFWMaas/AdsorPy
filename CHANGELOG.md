@@ -6,9 +6,14 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 
 ## [unreleased]
 ### Added
+- Add attestation to PyPI.
 ### Changed
+- Change ``typing.py`` to ``types.py`` to prevent name clash.
 ### Fixed
+- Tighten permissions for CI
 ### Removed
+- Remove explicit token minting in PyPI CI. This is now implicit.
+- Remove pip upgrading from CI. Runners are up to date.
 
 ## 1.2.1 - 2026-05-08
 ### Added

@@ -19,7 +19,7 @@ if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
     from shapely import Polygon
     from shapely.prepared import PreparedGeometry
 
-    from src.adsorpy.typing import (
+    from src.adsorpy.types import (
         BoolArray,
         CoordPair,
         CoordsArray,

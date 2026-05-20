@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from numpy.typing import NDArray
 
-    from src.adsorpy.typing import BoolArray, FloatArray, InDict, RotMatrix
+    from src.adsorpy.types import BoolArray, FloatArray, InDict, RotMatrix
 
     P = ParamSpec("P")  # Helps with static type checkers.
 
