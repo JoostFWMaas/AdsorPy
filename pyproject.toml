@@ -101,11 +101,35 @@ dev-misc = [
 ]
 
 [tool.uv.dependency-groups]
-test = ["[test]"]
-lint = ["[lint]"]
-docs = ["[docs]"]
-envs = ["[envs]"]
-dev-misc = ["[dev-misc]"]
+test = [
+    "pytest>=9.0.3",
+    "pytest-cov>=7.1.0",
+    "hypothesis>=6.152.4",
+    "scipy>=1.15.3",
+    "codecov>=2.1.13",
+]
+lint = [
+    "mypy>=2.0.0",
+    "ruff>=0.15.12",
+    "pyright>=1.1.409",
+    "tach>=0.34.1",
+    "slotscheck>=0.19.1",
+]
+docs = [
+    "sphinx>=8.0",
+    "furo>=2025.12.19",
+    "sphinx_design>=0.6.0",
+    "sphinx-autodoc-typehints>=3.0",
+    "sphinx-pyproject>=0.3.0",
+]
+envs = [
+    "tox>=4.54",
+    "tox-gh-actions>=3.5",
+    "tox-uv>=1.35.2",
+]
+dev-misc = [
+    "build>=1.5.0",
+]
 
 [project.urls]
 github = "https://github.com/JoostFWMaas/AdsorPy"
