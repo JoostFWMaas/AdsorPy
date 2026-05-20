@@ -1,0 +1,13 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "library",
+      "name": "my-package",
+      "version": "0.0.0-placeholder"
+    }
+  },
+  "components": []
+}
