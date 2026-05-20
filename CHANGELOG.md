@@ -9,6 +9,8 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 - Add attestation to PyPI.
 - Add ``.xyz`` input validation
 - Add tests with fuzzer for input validation.
+- Add SBOM to PyPI CI.
+- Add uv to CI.
 ### Changed
 - Change ``typing.py`` to ``types.py`` to prevent name clash.
 ### Fixed
