@@ -40,7 +40,7 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
       - name: Install tox and plugins
-        run: uv sync --frozen --group envs --no-default-groups
+        run: uv sync --frozen --extra envs --no-default-groups
 
       - name: Run tests with tox
         run: tox

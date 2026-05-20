@@ -100,37 +100,6 @@ dev-misc = [
     "build>=1.5.0",
 ]
 
-[tool.uv.dependency-groups]
-test = [
-    "pytest",
-    "pytest-cov",
-    "hypothesis",
-    "scipy",
-    "codecov",
-]
-lint = [
-    "mypy",
-    "ruff",
-    "pyright",
-    "tach",
-    "slotscheck",
-]
-docs = [
-    "sphinx",
-    "furo",
-    "sphinx_design",
-    "sphinx-autodoc-typehints",
-    "sphinx-pyproject",
-]
-envs = [
-    "tox",
-    "tox-gh-actions",
-    "tox-uv",
-]
-dev-misc = [
-    "build",
-]
-
 [project.urls]
 github = "https://github.com/JoostFWMaas/AdsorPy"
 Documentation = "https://joostfwmaas.github.io/AdsorPy"
