@@ -102,33 +102,33 @@ dev-misc = [
 
 [tool.uv.dependency-groups]
 test = [
-    "pytest>=9.0.3",
-    "pytest-cov>=7.1.0",
-    "hypothesis>=6.152.4",
-    "scipy>=1.15.3",
-    "codecov>=2.1.13",
+    "pytest",
+    "pytest-cov",
+    "hypothesis",
+    "scipy",
+    "codecov",
 ]
 lint = [
-    "mypy>=2.0.0",
-    "ruff>=0.15.12",
-    "pyright>=1.1.409",
-    "tach>=0.34.1",
-    "slotscheck>=0.19.1",
+    "mypy",
+    "ruff",
+    "pyright",
+    "tach",
+    "slotscheck",
 ]
 docs = [
-    "sphinx>=8.0",
-    "furo>=2025.12.19",
-    "sphinx_design>=0.6.0",
-    "sphinx-autodoc-typehints>=3.0",
-    "sphinx-pyproject>=0.3.0",
+    "sphinx",
+    "furo",
+    "sphinx_design",
+    "sphinx-autodoc-typehints",
+    "sphinx-pyproject",
 ]
 envs = [
-    "tox>=4.54",
-    "tox-gh-actions>=3.5",
-    "tox-uv>=1.35.2",
+    "tox",
+    "tox-gh-actions",
+    "tox-uv",
 ]
 dev-misc = [
-    "build>=1.5.0",
+    "build",
 ]
 
 [project.urls]
