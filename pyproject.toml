@@ -100,6 +100,13 @@ dev-misc = [
     "build>=1.5.0",
 ]
 
+[tool.uv.dependency-groups]
+test = ["test"]
+lint = ["lint"]
+docs = ["docs"]
+envs = ["envs"]
+dev-misc = ["dev-misc"]
+
 [project.urls]
 github = "https://github.com/JoostFWMaas/AdsorPy"
 Documentation = "https://joostfwmaas.github.io/AdsorPy"
