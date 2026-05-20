@@ -599,6 +599,51 @@ def _update(  # noqa: PLR0913
     fig.canvas.blit(fig.bbox)
     fig.canvas.flush_events()
 
+def _xyz_verifier(
+        atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]],
+        atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]],
+        listed_molecule_count: np.int_,
+) -> None:
+    """Check if the .xyz file is of the correct format.
+
+    :param atomkeys: Atom key values (element abbreviations).
+    :param atompos: Atom positions in 3D.
+    :param listed_molecule_count: Number of molecules according to the file.
+    :raises ValueError:
+        1) If the .xyz file has no listed molecule count or an invalid count.
+        2) if the .xyz file's molecule count does not match the read molecule count.
+        3) if the .xyz file contains bad molecule names.
+        4) if the atom keys and atom coordinate lists are not equal in length.
+        5) if coordinates are nan or infinite.
+        6) if the coordinates are not 3D.
+    """
+    errmsg: str
+
+    if listed_molecule_count is None or listed_molecule_count < 1:
+        errmsg = "The .xyz file must contain a valid molecule count on line 1."
+        raise ValueError(errmsg)
+
+    if listed_molecule_count != atomkeys.size:
+        errmsg = f"The file promises {listed_molecule_count} molecules but gives {atomkeys.size}"
+        raise ValueError(errmsg)
+
+    if not np.all(badmols := np.isin(atomkeys, list(RADII.keys()))):
+        errmsg = f"Bad molecule types detected: {atomkeys[~badmols]}"
+        raise ValueError(errmsg)
+
+    if atomkeys.size != atompos.shape[0]:
+        errmsg = "The keys and molecule coordinate lists are not of equal length."
+        raise ValueError(errmsg)
+
+    if not np.isfinite(atompos).all():
+        errmsg = "The .xyz file contains invalid coordinates."
+        raise ValueError(errmsg)
+
+    if atompos.shape[1] != 3:  # noqa: PLR2004
+        errmsg = "The .xyz file must contain 3D coordinates."
+        raise ValueError(errmsg)
+
+
 
 def _initialise_reader(
     file_name: str | Path,
@@ -611,18 +656,23 @@ def _initialise_reader(
     :param ignore_atoms: list of atoms to ignore.
     :param z_trim: z value under which to remove the atoms.
     :return: a tuple of the atom keys and atom positions in 3D. Filtered.
-    :raises ValueError: 1) if the file type is not .xyz or 2) if the used settings would return an empty molecule.
+    :raises ValueError:
+        1) if the file type is not .xyz
+        2) if the used settings would return an empty molecule
     """
     file_path = Path(file_name)
     if (badtype := file_path.suffix) != ".xyz":
         errmsg = f"The file type is not .xyz but {badtype}"
         raise ValueError(errmsg)
     data = np.loadtxt(file_path, dtype=str, skiprows=2)
+    listed_molecule_count: np.int_ = cast("np.int_", np.loadtxt(file_path, dtype=np.int_, max_rows=1))
     atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]] = data[:, 0]
     atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]] = cast(
         "np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]",
         data[:, 1:].astype(np.float64),
     )
+
+    _xyz_verifier(atomkeys, atompos, listed_molecule_count)
 
     mask: BoolArray | None = None
     if isinstance(ignore_atoms, str):
