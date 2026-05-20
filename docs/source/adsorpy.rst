@@ -17,4 +17,4 @@ Submodules
    adsorpy.rsa_calculator
    adsorpy.rsa_config
    adsorpy.run_simulation
-   adsorpy.typing
+   adsorpy.types

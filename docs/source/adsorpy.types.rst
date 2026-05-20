@@ -1,7 +1,7 @@
-adsorpy.typing module
+adsorpy.types module
 =====================
 
-.. automodule:: adsorpy.typing
+.. automodule:: adsorpy.types
    :members:
    :show-inheritance:
    :undoc-members:

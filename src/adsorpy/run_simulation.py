@@ -28,7 +28,7 @@ from src.adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Sur
 from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 if TYPE_CHECKING:
-    from src.adsorpy.typing import BoolArray, DistArray, GeoArray, IdxArray
+    from src.adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
     T1 = TypeVar("T1")

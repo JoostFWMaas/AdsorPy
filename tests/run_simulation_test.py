@@ -19,7 +19,7 @@ from src.adsorpy.rsa_config import RsaConfig
 from src.adsorpy.run_simulation import _select_and_run, run_simulation
 
 if TYPE_CHECKING:
-    from src.adsorpy.typing import GeoArray
+    from src.adsorpy.types import GeoArray
 
 SEED = 123654789
 
