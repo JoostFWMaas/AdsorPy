@@ -1,0 +1,197 @@
+name: release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  PACKAGE_NAME: adsorpy
+
+jobs:
+  build:
+    name: build + validate artifacts
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.14"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+
+      - name: Cache uv
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ hashFiles('uv.lock') }}
+
+      - name: Install build deps
+        run: |
+          set -euo pipefail
+          uv sync --frozen --package build --no-default-groups
+
+      - name: Generate SBOM
+        uses: sbomify/sbomify-action@ac8b0d423c90447f3011ef8ab5f9ff2e854c6931
+        env:
+          LOCK_FILE: uv.lock
+          OUTPUT_FILE: sbom.cdx.json
+          UPLOAD: false
+          COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
+          COMPONENT_VERSION: ${{ github.ref_name }}
+          ENRICH: true
+
+      - name: Build distributions
+        run: |
+          set -euo pipefail
+          uv run build
+
+      - name: Install validation tools
+        run: |
+          set -euo pipefail
+          uv sync --frozen -extra dev-misc --no-default-groups
+
+      - name: Twine check
+        run: |
+          set -euo pipefail
+          uv run twine check dist/*
+
+      - name: Check wheel contents
+        run: |
+          set -euo pipefail
+          check-wheel-contents dist/*.whl
+
+      - name: Smoke test (wheel + sdist)
+        run: |
+          set -euo pipefail
+          python -m venv venv
+          source venv/bin/activate
+
+          uv pip install dist/*.whl
+          python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
+
+          uv pip uninstall -y ${PACKAGE_NAME}
+          uv pip install dist/*.tar.gz
+          python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
+
+      - name: Verify version matches tag
+        run: |
+          set -euo pipefail
+          python - <<EOF
+          import ${PACKAGE_NAME}, sys
+          expected = "${GITHUB_REF_NAME}"
+          actual = ${PACKAGE_NAME}.__version__
+          if actual != expected:
+              print(f"Version mismatch: {actual} != {expected}")
+              sys.exit(1)
+          print(f"Version OK: {actual}")
+          EOF
+
+      - name: Generate artifact hashes
+        run: |
+          set -euo pipefail
+          sha256sum dist/* > dist/hashes.txt
+          cat dist/hashes.txt
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: dist
+          path: dist/
+
+  publish-testpypi:
+    name: publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: dist
+          path: dist/
+
+      - name: Show hashes (pre-publish verification)
+        run: cat dist/hashes.txt
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          print-hash: true
+          attestations: true
+
+  verify-install:
+    name: verify install from TestPyPI
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install from TestPyPI
+        run: |
+          set -euo pipefail
+          python -m venv venv
+          source venv/bin/activate
+
+          uv pip install \
+            --index-url https://test.pypi.org/simple \
+            --extra-index-url https://pypi.org/simple \
+            ${PACKAGE_NAME}==${{ github.ref_name }}
+
+          python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
+
+      - name: Verify CLI/import edge case (optional)
+        run: |
+          set -euo pipefail
+          python - <<EOF
+          import ${PACKAGE_NAME}
+          print("Import OK")
+          EOF
+
+#  publish:
+#    name: publish to PyPI
+#    needs: verify-install
+#    runs-on: ubuntu-latest
+#
+#    environment:
+#      name: pypi
+#
+#    permissions:
+#      id-token: write
+#
+#    steps:
+#      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+#        with:
+#          name: dist
+#          path: dist/
+#
+#      - name: Verify hashes before publish
+#        run: |
+#          set -euo pipefail
+#          sha256sum -c dist/hashes.txt
+#
+#      - name: Publish to PyPI
+#        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
+#        with:
+#          attestations: true
+#          print-hash: true
