@@ -3,6 +3,7 @@ name: release
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -61,12 +62,13 @@ jobs:
       - name: Build distributions
         run: |
           set -euo pipefail
+          uv sync --frozen --package build --no-default-groups
           uv run build
 
       - name: Install validation tools
         run: |
           set -euo pipefail
-          uv sync --frozen -extra dev-misc --no-default-groups
+          uv sync --frozen --extra dev-misc --no-default-groups
 
       - name: Twine check
         run: |
