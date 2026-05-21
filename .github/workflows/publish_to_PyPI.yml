@@ -21,9 +21,12 @@ jobs:
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
 
+#    permissions:
+#      contents: read
+#      id-token: write  # Required for Sigstore signing + SLSA provenance
     permissions:
-      contents: read
-      id-token: write  # Required for Sigstore signing + SLSA provenance
+      contents: write     # <-- REQUIRED for release-signing-artifacts
+      id-token: write     # <-- REQUIRED for Sigstore
 
     steps:
       - name: Harden runner
