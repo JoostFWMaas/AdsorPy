@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           uv sync --frozen --package build --no-default-groups
-          uv run build
+          uv run python -m build
 
       - name: Install validation tools
         run: |
