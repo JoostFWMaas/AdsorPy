@@ -16,17 +16,19 @@ env:
 
 jobs:
   build:
-    name: build + validate artifacts
+    name: build + reproducible artifacts
     runs-on: ubuntu-latest
     outputs:
       hashes: ${{ steps.hash.outputs.hashes }}
 
-#    permissions:
-#      contents: read
-#      id-token: write  # Required for Sigstore signing + SLSA provenance
     permissions:
-      contents: write     # <-- REQUIRED for release-signing-artifacts
-      id-token: write     # <-- REQUIRED for Sigstore
+      contents: read
+      id-token: write
+
+    env:
+      SOURCE_DATE_EPOCH: "0"
+      PYTHONHASHSEED: "0"
+      UV_FROZEN: "1"
 
     steps:
       - name: Harden runner
@@ -38,7 +40,7 @@ jobs:
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
-          python-version: "3.14"
+          python-version: "3.12"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
@@ -50,7 +52,7 @@ jobs:
           key: uv-${{ hashFiles('uv.lock') }}
 
       # -------------------------------
-      # SBOM GENERATION + SIGNING
+      # SBOM GENERATION + SIGNING INPUT
       # -------------------------------
       - name: Generate SBOM
         uses: sbomify/sbomify-action@ac8b0d423c90447f3011ef8ab5f9ff2e854c6931
@@ -62,39 +64,48 @@ jobs:
           COMPONENT_VERSION: ${{ github.ref_name }}
           ENRICH: true
 
-      - name: Sign SBOM (Sigstore)
-        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
-        with:
-          inputs: sbom.cdx.json
-
-      - name: Upload SBOM + signature
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: sbom
-          path: |
-            sbom.cdx.json
-            sbom.cdx.json.sigstore
-
       # -------------------------------
-      # BUILD + VALIDATION
+      # INSTALL BUILD TOOLS
       # -------------------------------
       - name: Install build and validation tools
         run: |
           set -euo pipefail
           uv sync --frozen --extra dev-misc --no-default-groups
 
-      - name: Build distributions
-        id: build
+      # -------------------------------
+      # DETERMINISTIC DOUBLE BUILD
+      # -------------------------------
+      - name: Build #1
         run: |
           set -euo pipefail
-          uv run python -m build
+          rm -rf dist1 dist2 dist
+          mkdir dist1 dist2
+          uv run python -m build --outdir dist1
 
-      - name: Generate artifact hashes
-        id: hash
+      - name: Build #2 (candidate reproducible)
         run: |
-          sha256sum dist/* | base64 -w0 | \
-            sed 's/^/hashes=/' >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          uv run python -m build --outdir dist2
 
+      - name: Compare builds
+        run: |
+          set -euo pipefail
+          sha256sum dist1/* > dist1/hashes.txt
+          sha256sum dist2/* > dist2/hashes.txt
+          diff dist1/hashes.txt dist2/hashes.txt
+          echo "Reproducible build OK"
+
+      - name: Promote reproducible build to dist/
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mv dist2 dist
+          cp dist1/hashes.txt dist/hashes.txt
+          cat dist/hashes.txt
+
+      # -------------------------------
+      # VALIDATION ON REPRODUCIBLE BUILD
+      # -------------------------------
       - name: Twine check
         run: |
           set -euo pipefail
@@ -130,55 +141,87 @@ jobs:
           print(f"Version OK: {actual}")
           EOF
 
-      - name: Generate artifact hashes
+      - name: Generate base64 subject hashes
+        id: hash
         run: |
           set -euo pipefail
-          sha256sum dist/* > dist/hashes.txt
-          cat dist/hashes.txt
+          cd dist
+          HASHES=$(sha256sum * | base64 -w0)
+          echo "hashes=$HASHES" >> "$GITHUB_OUTPUT"
 
-      # -------------------------------
-      # REPRODUCIBLE BUILD CHECK
-      # -------------------------------
-      - name: Verify reproducible build
-        run: |
-          set -euo pipefail
-          rm -rf dist2
-          mkdir dist2
-          uv run python -m build --outdir dist2
-          sha256sum dist2/* > dist2/hashes2.txt
-          diff dist/hashes.txt dist2/hashes2.txt && echo "Reproducible build OK"
-
-      # -------------------------------
-      # SIGN ARTIFACTS (WHEELS + SDIST)
-      # -------------------------------
-      - name: Sign artifacts (Sigstore)
-        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
-        with:
-          inputs: dist/*
-
-      - name: Upload artifacts
+      - name: Upload dist artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dist
           path: dist/
 
-      # -------------------------------
-      # SLSA PROVENANCE (Python builder)
-      # -------------------------------
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
+  sign:
+    name: sign reproducible artifacts + SBOM
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: dist
+          path: dist/
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sbom
+          path: .
+
+      - name: Sign SBOM (Sigstore)
+        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        with:
+          inputs: sbom.cdx.json
+          staging: false
+          verify: false
+          upload-signing-artifacts: false
+          release-signing-artifacts: false
+
+      - name: Sign artifacts (Sigstore)
+        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        with:
+          inputs: dist/*
+          staging: false
+          verify: false
+          upload-signing-artifacts: false
+          release-signing-artifacts: false
+
+      - name: Upload signed artifacts + SBOM bundles
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: signed-dist
+          path: |
+            dist/
+            sbom.cdx.json
+            sbom.cdx.json.sigstore.json
+
   provenance:
     needs: [build]
     permissions:
-      actions: read # To read the workflow path.
-      id-token: write # To sign the provenance.
-      contents: write # To add assets to a release.
+      actions: read
+      id-token: write
+      contents: write
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a
     with:
       base64-subjects: "${{ needs.build.outputs.hashes }}"
-      upload-assets: true # Optional: Upload to a new release
+      upload-assets: true
 
   publish-testpypi:
     name: publish to TestPyPI
-    needs: build
+    needs: [build, sign]
     runs-on: ubuntu-latest
 
     permissions:
@@ -209,12 +252,10 @@ jobs:
       - name: Install from TestPyPI
         run: |
           set -euo pipefail
-
           uv run --no-project pip install \
             --index-url https://test.pypi.org/simple \
             --extra-index-url https://pypi.org/simple \
             ${PACKAGE_NAME}==${{ github.ref_name }}
-
           uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
       - name: Verify import outside project tree
@@ -251,3 +292,36 @@ jobs:
         with:
           attestations: true
           print-hash: true
+
+  create-release:
+    name: create immutable GitHub release
+    needs: [publish, sign, provenance]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: dist
+          path: dist/
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: signed-dist
+          path: signed/
+
+      - name: Collect release files
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          cp dist/* release-assets/
+          cp signed/* release-assets/ || true
+
+      - name: Create GitHub Release (immutable)
+        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe
+        with:
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
