@@ -78,7 +78,7 @@ jobs:
       - name: Check wheel contents
         run: |
           set -euo pipefail
-          check-wheel-contents dist/*.whl
+          uv run python -m check-wheel-contents dist/*.whl
 
       - name: Smoke test (wheel + sdist)
         run: |
