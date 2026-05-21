@@ -39,10 +39,7 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
       - name: Install Sphinx and theme
-        run: |
-          uv sync --frozen --extra docs --no-default-groups  # Installs adsorpy with [docs] optional requirements.
-          uv pip install -e .
-        
+        run: uv sync --frozen --extra docs  # Installs adsorpy with [docs] optional requirements.
 
       # Optional: configure Pages (sets up base_url, etc.)
       - name: Configure Pages
@@ -51,7 +48,7 @@ jobs:
       - name: Build Sphinx docs
         run: |
           mkdir -p public
-          uv run sphinx-build -W docs/source public
+          uv run python -m sphinx -W docs/source public
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
