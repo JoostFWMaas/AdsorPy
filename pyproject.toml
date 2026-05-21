@@ -113,6 +113,11 @@ download = "https://pypi.org/project/adsorpy/#files"
 [tool.hatch.package_data]
 "adsorpy" = ["py.typed"]
 
+[tool.hatch.build]
+include = ["src/**"]
+only-packages = true
+deterministic = true
+
 [tool.hatch.build.targets.wheel]
 sbom-files = ["sbom.cdx.json"]
 

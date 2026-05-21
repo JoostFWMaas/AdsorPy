@@ -17,5 +17,12 @@ Indices and tables
 
 * :ref:`genindex`
 * :ref:`modindex`
-* :ref:`search`
 
+
+Project links
+=============
+
+* PyPI: https://pypi.org/project/adsorpy/
+* github: https://github.com/JoostFWMaas/AdsorPy
+* Changelog: https://github.com/JoostFWMaas/AdsorPy/blob/main/CHANGELOG.md
+* Issues: https://github.com/JoostFWMaas/AdsorPy/issues

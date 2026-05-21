@@ -18,10 +18,12 @@ jobs:
   build:
     name: build + validate artifacts
     runs-on: ubuntu-latest
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
 
     permissions:
       contents: read
-      id-token: write
+      id-token: write  # Required for Sigstore signing + SLSA provenance
 
     steps:
       - name: Harden runner
@@ -44,11 +46,9 @@ jobs:
           path: ~/.cache/uv
           key: uv-${{ hashFiles('uv.lock') }}
 
-      - name: Install build deps
-        run: |
-          set -euo pipefail
-          uv sync --frozen --package build --no-default-groups
-
+      # -------------------------------
+      # SBOM GENERATION + SIGNING
+      # -------------------------------
       - name: Generate SBOM
         uses: sbomify/sbomify-action@ac8b0d423c90447f3011ef8ab5f9ff2e854c6931
         env:
@@ -59,16 +59,38 @@ jobs:
           COMPONENT_VERSION: ${{ github.ref_name }}
           ENRICH: true
 
-      - name: Build distributions
-        run: |
-          set -euo pipefail
-          uv sync --frozen --package build --no-default-groups
-          uv run python -m build
+      - name: Sign SBOM (Sigstore)
+        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        with:
+          inputs: sbom.cdx.json
 
-      - name: Install validation tools
+      - name: Upload SBOM + signature
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sbom
+          path: |
+            sbom.cdx.json
+            sbom.cdx.json.sigstore
+
+      # -------------------------------
+      # BUILD + VALIDATION
+      # -------------------------------
+      - name: Install build and validation tools
         run: |
           set -euo pipefail
           uv sync --frozen --extra dev-misc --no-default-groups
+
+      - name: Build distributions
+        id: build
+        run: |
+          set -euo pipefail
+          uv run python -m build
+
+      - name: Generate artifact hashes
+        id: hash
+        run: |
+          sha256sum dist/* | base64 -w0 | \
+            sed 's/^/hashes=/' >> "$GITHUB_OUTPUT"
 
       - name: Twine check
         run: |
@@ -80,18 +102,17 @@ jobs:
           set -euo pipefail
           uv run python -m check-wheel-contents dist/*.whl
 
-      - name: Smoke test (wheel + sdist)
+      - name: Smoke test (wheel)
         run: |
           set -euo pipefail
-          python -m venv venv
-          source venv/bin/activate
+          uv run --no-project pip install dist/*.whl
+          uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
-          uv pip install dist/*.whl
-          python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
-
-          uv pip uninstall -y ${PACKAGE_NAME}
-          uv pip install dist/*.tar.gz
-          python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
+      - name: Smoke test (sdist)
+        run: |
+          set -euo pipefail
+          uv run --no-project pip install dist/*.tar.gz
+          uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
       - name: Verify version matches tag
         run: |
@@ -112,11 +133,45 @@ jobs:
           sha256sum dist/* > dist/hashes.txt
           cat dist/hashes.txt
 
+      # -------------------------------
+      # REPRODUCIBLE BUILD CHECK
+      # -------------------------------
+      - name: Verify reproducible build
+        run: |
+          set -euo pipefail
+          rm -rf dist2
+          mkdir dist2
+          uv run python -m build --outdir dist2
+          sha256sum dist2/* > dist2/hashes2.txt
+          diff dist/hashes.txt dist2/hashes2.txt && echo "Reproducible build OK"
+
+      # -------------------------------
+      # SIGN ARTIFACTS (WHEELS + SDIST)
+      # -------------------------------
+      - name: Sign artifacts (Sigstore)
+        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        with:
+          inputs: dist/*
+
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dist
           path: dist/
+
+      # -------------------------------
+      # SLSA PROVENANCE (Python builder)
+      # -------------------------------
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read # To read the workflow path.
+      id-token: write # To sign the provenance.
+      contents: write # To add assets to a release.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      upload-assets: true # Optional: Upload to a new release
 
   publish-testpypi:
     name: publish to TestPyPI
@@ -151,23 +206,20 @@ jobs:
       - name: Install from TestPyPI
         run: |
           set -euo pipefail
-          python -m venv venv
-          source venv/bin/activate
 
-          uv pip install \
+          uv run --no-project pip install \
             --index-url https://test.pypi.org/simple \
             --extra-index-url https://pypi.org/simple \
             ${PACKAGE_NAME}==${{ github.ref_name }}
 
-          python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
+          uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
-      - name: Verify CLI/import edge case (optional)
+      - name: Verify import outside project tree
         run: |
           set -euo pipefail
-          python - <<EOF
-          import ${PACKAGE_NAME}
-          print("Import OK")
-          EOF
+          mkdir /tmp/testimport
+          cd /tmp/testimport
+          uv run --no-project python -c "import ${PACKAGE_NAME}; print('Import OK')"
 
   publish:
     name: publish to PyPI
