@@ -1,9 +1,9 @@
 name: release
 
 on:
-  release:
-    types: [published]
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 concurrency:
   group: release-${{ github.ref }}
@@ -31,29 +31,20 @@ jobs:
       UV_FROZEN: "1"
 
     steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5
-        with:
-          egress-policy: audit
-
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
-      - name: Setup uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
 
-      - name: Cache uv
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: ~/.cache/uv
           key: uv-${{ hashFiles('uv.lock') }}
 
-      # -------------------------------
-      # SBOM GENERATION + SIGNING INPUT
-      # -------------------------------
+      # SBOM
       - name: Generate SBOM
         uses: sbomify/sbomify-action@ac8b0d423c90447f3011ef8ab5f9ff2e854c6931
         env:
@@ -64,73 +55,54 @@ jobs:
           COMPONENT_VERSION: ${{ github.ref_name }}
           ENRICH: true
 
-      # -------------------------------
-      # INSTALL BUILD TOOLS
-      # -------------------------------
-      - name: Install build and validation tools
-        run: |
-          set -euo pipefail
-          uv sync --frozen --extra dev-misc --no-default-groups
+      - name: Install build tools
+        run: uv sync --frozen --extra dev-misc --no-default-groups
 
       # -------------------------------
-      # DETERMINISTIC DOUBLE BUILD
+      # DOUBLE BUILD FOR REPRODUCIBILITY
       # -------------------------------
       - name: Build #1
         run: |
-          set -euo pipefail
           rm -rf dist1 dist2 dist
           mkdir dist1 dist2
           uv run python -m build --outdir dist1
 
       - name: Build #2 (candidate reproducible)
-        run: |
-          set -euo pipefail
-          uv run python -m build --outdir dist2
+        run: uv run python -m build --outdir dist2
 
       - name: Compare builds
         run: |
-          set -euo pipefail
           sha256sum dist1/* > dist1/hashes.txt
           sha256sum dist2/* > dist2/hashes.txt
           diff dist1/hashes.txt dist2/hashes.txt
           echo "Reproducible build OK"
 
-      - name: Promote reproducible build to dist/
+      - name: Promote reproducible build
         run: |
-          set -euo pipefail
-          rm -rf dist
           mv dist2 dist
           cp dist1/hashes.txt dist/hashes.txt
-          cat dist/hashes.txt
 
       # -------------------------------
-      # VALIDATION ON REPRODUCIBLE BUILD
+      # VALIDATION
       # -------------------------------
       - name: Twine check
-        run: |
-          set -euo pipefail
-          uv run python -m twine check dist/*
+        run: uv run python -m twine check dist/*
 
       - name: Check wheel contents
-        run: |
-          set -euo pipefail
-          uv run python -m check-wheel-contents dist/*.whl
+        run: uv run python -m check-wheel-contents dist/*.whl
 
       - name: Smoke test (wheel)
         run: |
-          set -euo pipefail
           uv run --no-project pip install dist/*.whl
           uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
       - name: Smoke test (sdist)
         run: |
-          set -euo pipefail
           uv run --no-project pip install dist/*.tar.gz
           uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
       - name: Verify version matches tag
         run: |
-          set -euo pipefail
           python - <<EOF
           import ${PACKAGE_NAME}, sys
           expected = "${GITHUB_REF_NAME}"
@@ -138,31 +110,28 @@ jobs:
           if actual != expected:
               print(f"Version mismatch: {actual} != {expected}")
               sys.exit(1)
-          print(f"Version OK: {actual}")
+          print("Version OK:", actual)
           EOF
 
       - name: Generate base64 subject hashes
         id: hash
         run: |
-          set -euo pipefail
           cd dist
           HASHES=$(sha256sum * | base64 -w0)
           echo "hashes=$HASHES" >> "$GITHUB_OUTPUT"
 
-      - name: Upload dist artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dist
           path: dist/
 
-      - name: Upload SBOM
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: sbom
           path: sbom.cdx.json
 
   sign:
-    name: sign reproducible artifacts + SBOM
+    name: sign artifacts + SBOM
     needs: build
     runs-on: ubuntu-latest
 
@@ -181,35 +150,28 @@ jobs:
           name: sbom
           path: .
 
-      - name: Sign SBOM (Sigstore)
+      - name: Sign SBOM
         uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
         with:
           inputs: sbom.cdx.json
-          staging: false
-          verify: false
-          upload-signing-artifacts: false
           release-signing-artifacts: false
 
-      - name: Sign artifacts (Sigstore)
+      - name: Sign artifacts
         uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
         with:
           inputs: dist/*
-          staging: false
-          verify: false
-          upload-signing-artifacts: false
           release-signing-artifacts: false
 
-      - name: Upload signed artifacts + SBOM bundles
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: signed-dist
+          name: signed
           path: |
             dist/
             sbom.cdx.json
             sbom.cdx.json.sigstore.json
 
   provenance:
-    needs: [build]
+    needs: build
     permissions:
       actions: read
       id-token: write
@@ -220,10 +182,8 @@ jobs:
       upload-assets: true
 
   publish-testpypi:
-    name: publish to TestPyPI
     needs: [build, sign]
     runs-on: ubuntu-latest
-
     permissions:
       id-token: write
 
@@ -233,46 +193,36 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Show hashes (pre-publish verification)
-        run: cat dist/hashes.txt
-
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
         with:
           repository-url: https://test.pypi.org/legacy/
-          print-hash: true
           attestations: true
+          print-hash: true
 
   verify-install:
-    name: verify install from TestPyPI
     needs: publish-testpypi
     runs-on: ubuntu-latest
 
     steps:
       - name: Install from TestPyPI
         run: |
-          set -euo pipefail
           uv run --no-project pip install \
             --index-url https://test.pypi.org/simple \
             --extra-index-url https://pypi.org/simple \
             ${PACKAGE_NAME}==${{ github.ref_name }}
-          uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
       - name: Verify import outside project tree
         run: |
-          set -euo pipefail
           mkdir /tmp/testimport
           cd /tmp/testimport
           uv run --no-project python -c "import ${PACKAGE_NAME}; print('Import OK')"
 
   publish:
-    name: publish to PyPI
     needs: verify-install
     runs-on: ubuntu-latest
-
     environment:
       name: pypi
-
     permissions:
       id-token: write
 
@@ -282,10 +232,8 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Verify hashes before publish
-        run: |
-          set -euo pipefail
-          sha256sum -c dist/hashes.txt
+      - name: Verify hashes
+        run: sha256sum -c dist/hashes.txt
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
@@ -309,19 +257,19 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: signed-dist
+          name: signed
           path: signed/
 
-      - name: Collect release files
+      - name: Collect release assets
         run: |
-          set -euo pipefail
           mkdir release-assets
           cp dist/* release-assets/
           cp signed/* release-assets/ || true
 
-      - name: Create GitHub Release (immutable)
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe
         with:
           files: release-assets/*
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
