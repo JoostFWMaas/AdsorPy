@@ -73,7 +73,7 @@ jobs:
       - name: Twine check
         run: |
           set -euo pipefail
-          uv run twine check dist/*
+          uv run python -m twine check dist/*
 
       - name: Check wheel contents
         run: |
