@@ -90,9 +90,9 @@ jobs:
       - name: Compare builds
         run: |
           set -euo pipefail
-          sha256sum dist1/*.whl | awk '{print $1}' > dist1/hashes.txt
-          sha256sum dist2/*.whl | awk '{print $1}' > dist2/hashes.txt
-          diff dist1/hashes.txt dist2/hashes.txt
+          sha256sum dist1/*.whl > reproducibility/hashes1.txt
+          sha256sum dist2/*.whl > reproducibility/hashes2.txt
+          diff reproducibility/hashes.txt reproducibility/hashes.txt
           echo "Reproducible build OK"
 
       - name: Promote reproducible build to dist/
