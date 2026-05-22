@@ -123,6 +123,7 @@ include = [
     "/pyproject.toml",
     "README.md",
     "/LICENSE",
+    "sbom.cdx.json",
 ]
 
 [tool.hatch.env]
