@@ -258,7 +258,6 @@ jobs:
     with:
       base64-subjects: "${{ needs.build.outputs.hashes }}"
       upload-assets: true
-      artifact-name: dist
 
   publish-testpypi:
     name: publish to TestPyPI
