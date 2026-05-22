@@ -103,11 +103,12 @@ jobs:
           rm -rf dist
           mv dist2 dist
 
+
       - name: Generate hashes.txt
         run: |
           set -euo pipefail
-          cd dist
-          sha256sum *.whl *.tar.gz > hashes.txt
+          sha256sum dist/*.whl dist/*.tar.gz > hashes.txt
+
 
       # -------------------------------
       # VALIDATION ON REPRODUCIBLE BUILD
@@ -174,15 +175,16 @@ jobs:
         id: hash
         run: |
           set -euo pipefail
-          cd dist
-          HASHES=$(sha256sum * | base64 -w0)
+          HASHES=$(sha256sum dist/*.whl dist/*.tar.gz | base64 -w0)
           echo "hashes=$HASHES" >> "$GITHUB_OUTPUT"
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: dist
-          path: dist/
+          path: |
+            dist/
+            hashes.txt
 
       - name: Upload SBOM
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -215,7 +217,7 @@ jobs:
         with:
           inputs: sbom.cdx.json
           staging: false
-          verify: false
+          verify: true
           upload-signing-artifacts: false
           release-signing-artifacts: false
 
@@ -224,7 +226,7 @@ jobs:
         with:
           inputs: dist/*
           staging: false
-          verify: false
+          verify: true
           upload-signing-artifacts: false
           release-signing-artifacts: false
 
@@ -263,7 +265,7 @@ jobs:
           path: dist/
 
       - name: Show hashes (pre-publish verification)
-        run: cat dist/hashes.txt
+        run: cat hashes.txt
 
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
@@ -278,13 +280,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Normalize version
+        id: normalize_version
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+
+          VERSION="${VERSION#v}"                 # strip leading v
+          VERSION="${VERSION/-alpha./a}"
+          VERSION="${VERSION/-beta./b}"
+          VERSION="${VERSION/-rc./rc}"
+          VERSION=$(echo "$VERSION" | sed 's/+.*//')  # remove build metadata
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install from TestPyPI
         run: |
           set -euo pipefail
           uv run --no-project pip install \
             --index-url https://test.pypi.org/simple \
             --extra-index-url https://pypi.org/simple \
-            ${PACKAGE_NAME}==${{ github.ref_name }}
+            ${PACKAGE_NAME}==${{ steps.normalize_version.outputs.version }} 
           uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
       - name: Verify import outside project tree
@@ -314,7 +329,7 @@ jobs:
       - name: Verify hashes before publish
         run: |
           set -euo pipefail
-          sha256sum -c dist/hashes.txt
+          sha256sum -c hashes.txt
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
