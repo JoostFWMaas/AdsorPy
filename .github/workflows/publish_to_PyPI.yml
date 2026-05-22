@@ -205,12 +205,17 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: dist
-          path: dist/
+          path: .
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: sbom
           path: .
+
+      - name: List artifacts
+        run: |
+          echo "Files:"
+          find . -maxdepth 2 -type f
 
       - name: Sign SBOM (Sigstore)
         uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
@@ -226,7 +231,7 @@ jobs:
       - name: Sign artifacts (Sigstore)
         uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
         with:
-          inputs: dist/*
+          inputs: dist/*.whl,dist/*.tar.gz,hashes.txt
           staging: false
           verify: true
           verify-cert-identity: https://github.com/${{ github.repository }}/.github/workflows/publish_to_PyPI.yml@${{ github.ref }}
@@ -266,7 +271,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: dist
-          path: dist/
+          path: .
 
       - name: Show hashes (pre-publish verification)
         run: cat hashes.txt
@@ -327,8 +332,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: dist
-          path: dist/
+          name: signed-dist
+          path: .
 
       - name: Verify hashes before publish
         run: |
@@ -353,7 +358,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: dist
-          path: dist/
+          path: .
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
