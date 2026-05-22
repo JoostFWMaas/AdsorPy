@@ -50,7 +50,7 @@ jobs:
         run: uv run tox -m static
 
       - name: Run tests with tox
-        run: uv run tox -e py$(echo {{ matrix.python-version }} | tr - d '.')
+        run: uv run tox -e py$(echo {{ matrix.python-version }} | tr -d '.')
 
       - name: Upload test results
         if: always() && matrix.python-version == '3.14'
