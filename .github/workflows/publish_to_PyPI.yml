@@ -231,7 +231,7 @@ jobs:
       - name: Sign artifacts (Sigstore)
         uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
         with:
-          inputs: dist/*.whl,dist/*.tar.gz,hashes.txt
+          inputs: dist/*.whl dist/*.tar.gz hashes.txt
           staging: false
           verify: true
           verify-cert-identity: https://github.com/${{ github.repository }}/.github/workflows/publish_to_PyPI.yml@${{ github.ref }}
