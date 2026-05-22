@@ -245,6 +245,7 @@ jobs:
           name: signed-dist
           path: |
             dist/
+            hashes.txt
             sbom.cdx.json
             sbom.cdx.json.sigstore.json
 
