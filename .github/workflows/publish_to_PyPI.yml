@@ -92,8 +92,8 @@ jobs:
           set -euo pipefail
           rm -rf reproducibility
           mkdir reproducibility
-          sha256sum dist1/*.whl | sed 's#dist1/#dist/#' > reproducibility/hashes1.txt
-          sha256sum dist2/*.whl | sed 's#dist2/#dist/#' > reproducibility/hashes2.txt
+          sha256sum dist1/*.whl | awk '{print $1}' > reproducibility/hashes1.txt
+          sha256sum dist2/*.whl | awk '{print $1}' > reproducibility/hashes2.txt
           diff reproducibility/hashes1.txt reproducibility/hashes2.txt
           echo "Reproducible build OK"
 
@@ -102,8 +102,6 @@ jobs:
           set -euo pipefail
           rm -rf dist
           mv dist2 dist
-          cp dist1/hashes.txt dist/hashes.txt
-          cat dist/hashes.txt
 
       # -------------------------------
       # VALIDATION ON REPRODUCIBLE BUILD
