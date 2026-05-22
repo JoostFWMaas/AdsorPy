@@ -42,8 +42,15 @@ jobs:
       - name: Install tox and plugins
         run: uv sync --frozen --extra envs --no-default-groups
 
+#      - name: Run tests with tox
+#        run: uv run tox
+
       - name: Run tests with tox
-        run: uv run tox
+        run: uv run tox -e py$(echo {{ matrix.python-version }} | tr - d '.')
+
+      - name: Run static checks
+        if: matrix.python-version == '3.14'
+        run: uv run tox -e lint
 
       - name: Upload test results
         if: always() && matrix.python-version == '3.14'

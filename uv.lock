@@ -54,7 +54,6 @@ docs = [
 ]
 envs = [
     { name = "tox" },
-    { name = "tox-gh-actions" },
     { name = "tox-uv" },
 ]
 lint = [
@@ -99,7 +98,6 @@ requires-dist = [
     { name = "sphinx-pyproject", marker = "extra == 'docs'", specifier = ">=0.3.0" },
     { name = "tach", marker = "extra == 'lint'", specifier = ">=0.34.1" },
     { name = "tox", marker = "extra == 'envs'", specifier = ">=4.54" },
-    { name = "tox-gh-actions", marker = "extra == 'envs'", specifier = ">=3.5" },
     { name = "tox-uv", marker = "extra == 'envs'", specifier = ">=1.35.2" },
     { name = "twine", marker = "extra == 'dev-misc'", specifier = ">=6.0" },
 ]
@@ -3085,18 +3083,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/17/2c/7ca5edb5ecd6bcc5cc926fe87e62a84dcd3cbd03a32f9d0bee98d2bee7cf/tox-4.54.0.tar.gz", hash = "sha256:21e36fd8256590379620848d0b03b52f4d541b65b749de1a17c3e616978dad58", size = 279256, upload-time = "2026-05-12T19:13:05.937Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/26/18/20cf56a76c5d6117547179db9b5d31cc56e3e90507d1b0b748da74aa95c5/tox-4.54.0-py3-none-any.whl", hash = "sha256:a2d7c1177242ae9c3d9e404039e9f945ce16a3e5dfc66972c643e27d7e764f4b", size = 214527, upload-time = "2026-05-12T19:13:04.334Z" },
-]
-
-[[package]]
-name = "tox-gh-actions"
-version = "3.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "tox" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/11/6c3f818887c37a144a4b48bfc440150f006bdac7a68d92de1046680f578f/tox_gh_actions-3.5.0.tar.gz", hash = "sha256:cc8e148c4513042e5019973e5672594c3df241b035e7fb550f6f778588110051", size = 18815, upload-time = "2025-10-22T14:12:24.846Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/9e/8d50f3b3fc4af8c73154f64d4a2293bfa2d517a19000e70ef2d614254084/tox_gh_actions-3.5.0-py3-none-any.whl", hash = "sha256:070790114c92f4c94337047515ca5e077ceb269a5cb9366e0a0b3440a024eca1", size = 9910, upload-time = "2025-10-22T14:12:23.405Z" },
 ]
 
 [[package]]
