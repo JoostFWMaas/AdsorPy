@@ -114,7 +114,7 @@ jobs:
       - name: Check wheel contents
         run: |
           set -euo pipefail
-          uv tool run python -m check-wheel-contents dist/*.whl
+          uv tool run check-wheel-contents dist/*.whl
 
       - name: Smoke test (wheel)
         run: |
