@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
         with:
-          python-version: "3.12"
+          python-version: "3.14"
 
       - name: Setup uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
@@ -90,8 +90,8 @@ jobs:
       - name: Compare builds
         run: |
           set -euo pipefail
-          sha256sum dist1/*.whl > dist1/hashes.txt
-          sha256sum dist2/*.whl > dist2/hashes.txt
+          sha256sum dist1/*.whl | awk '{print $1}' > dist1/hashes.txt
+          sha256sum dist2/*.whl | awk '{print $1}' > dist2/hashes.txt
           diff dist1/hashes.txt dist2/hashes.txt
           echo "Reproducible build OK"
 
