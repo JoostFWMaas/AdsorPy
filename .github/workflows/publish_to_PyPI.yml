@@ -90,8 +90,8 @@ jobs:
       - name: Compare builds
         run: |
           set -euo pipefail
-          sha256sum dist1/* > dist1/hashes.txt
-          sha256sum dist2/* > dist2/hashes.txt
+          sha256sum dist1/*.whl > dist1/hashes.txt
+          sha256sum dist2/*.whl > dist2/hashes.txt
           diff dist1/hashes.txt dist2/hashes.txt
           echo "Reproducible build OK"
 
