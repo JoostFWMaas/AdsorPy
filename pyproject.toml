@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.2.2"  # The Python guide says that this will use the Git tag to fill it in.
+version = "1.2.2-beta.1"  # The Python guide says that this will use the Git tag to fill it in.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -89,7 +89,6 @@ docs = [
 ]
 envs = [
     "tox>=4.54",
-#    "tox-gh-actions>=3.5",
     "tox-uv>=1.35.2",
 ]
 dev-misc = [
@@ -116,6 +115,15 @@ deterministic = true
 
 [tool.hatch.build.targets.wheel]
 sbom-files = ["sbom.cdx.json"]
+packages = ["src/adsorpy"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/adsorpy",
+    "/pyproject.toml",
+    "README.md",
+    "/LICENSE",
+]
 
 [tool.hatch.env]
 requires = [
