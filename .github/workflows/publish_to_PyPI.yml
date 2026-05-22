@@ -103,6 +103,12 @@ jobs:
           rm -rf dist
           mv dist2 dist
 
+      - name: Generate hashes.txt
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum *.whl *.tar.gz > hashes.txt
+
       # -------------------------------
       # VALIDATION ON REPRODUCIBLE BUILD
       # -------------------------------
