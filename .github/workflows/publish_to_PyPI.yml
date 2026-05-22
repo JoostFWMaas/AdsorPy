@@ -368,6 +368,9 @@ jobs:
           set -euo pipefail
           sha256sum -c hashes.txt
 
+      - name: Remove Sigstore files before publish
+        run: rm -f dist/*.sigstore.json
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
         with:

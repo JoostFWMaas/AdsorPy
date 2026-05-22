@@ -3,8 +3,13 @@ All important changes to ``AdsorPy`` will be documented in this file.
 
 This format is based on [Keep a Changelog](http://keepachangelog.com/). This project adheres to [Semantic Versioning](http://semver.org/).
 
-
 ## [unreleased]
+### Added
+### Changed
+### Fixed
+### Removed
+
+## 1.2.2 - 2026-05-22
 ### Added
 - Add attestation to PyPI.
 - Add ``.xyz`` input validation
@@ -18,6 +23,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ### Removed
 - Remove explicit token minting in PyPI CI. This is now implicit.
 - Remove pip upgrading from CI. Runners are up to date.
+- Remove unnecessary info from the `.tar.gz` file.
 
 ## 1.2.1 - 2026-05-08
 ### Added

@@ -89,7 +89,6 @@ docs = [
 ]
 envs = [
     "tox>=4.54",
-#    "tox-gh-actions>=3.5",
     "tox-uv>=1.35.2",
 ]
 dev-misc = [
@@ -116,6 +115,16 @@ deterministic = true
 
 [tool.hatch.build.targets.wheel]
 sbom-files = ["sbom.cdx.json"]
+packages = ["src/adsorpy"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/adsorpy",
+    "/pyproject.toml",
+    "README.md",
+    "/LICENSE",
+    "sbom.cdx.json",
+]
 
 [tool.hatch.env]
 requires = [
