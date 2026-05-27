@@ -82,7 +82,7 @@ Releases are managed by the Maintainer.
 ---
 
 ## Future Governance
-As the project grows, additional roles may be introduced, such as: 
+As the project grows, additional roles may be introduced, such as:
 - Reviewers
 - Release Managers
 - Module Owners

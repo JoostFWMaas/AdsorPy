@@ -99,7 +99,7 @@ dev-misc = [
 ]
 
 [project.urls]
-github = "https://github.com/JoostFWMaas/AdsorPy"
+github = "https://github.com/JoosFWMaas/AdsorPy"
 Documentation = "https://joostfwmaas.github.io/AdsorPy"
 Changelog = "https://github.com/JoostFWMaas/AdsorPy/blob/main/CHANGELOG.md"
 homepage = "https://pypi.org/project/adsorpy/"

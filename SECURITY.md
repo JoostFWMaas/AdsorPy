@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-Security updates are provided only for the latest released version of this project.
+Security updates are provided only for the latest released version of this project. Dependency updates are performed weekly using Dependabot. We aim to provide frequent support for security fixes.
 
 ---
 

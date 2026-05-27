@@ -130,21 +130,62 @@ Enhancement suggestions are tracked as [GitHub issues](https://github.com/JoostF
 include Setup of env, IDE and typical getting started instructions?
 
 -->
+- To get started with a small contribution, use git to clone the project, this is as simple as:
+```bash 
+git clone https://www.github.com/JoostFWMaas/AdsorPy
+```
+- For development, we recommend an editable install via pip:
+```bash
+pip install -e .[test]
+```
+- Or an install with locked dependencies via uv:
+```bash
+uv sync --extra test
+```
+- Start small: one function, method, or class ``__init__`` at a time.
+- Write tests for the code you have written.
+- Make sure your code passes the tox tests.
+- Make a descriptive commit when you push your code. 
+  - Sign off your commit: you agree to the open source terms of the project and you promise that you wrote this code. https://www.secondstate.io/articles/dco/
+  - Use GPG signing: a cryptographic guarantee that you are the one authoring this commit. https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits
+- Open an issue if you want to add a feature, and if you think you do not currently have the skill to add this yourself.
+
+Examples of small projects to start on:
+- Add some tests to the code if you find that they are missing
+- Add a basic GUI (even if it has no features yet)
+
+For larger changes, we recommend forking instead of cloning.
 
 ### Improving The Documentation
 <!-- TODO
 Updating, improving and correcting the documentation
 
 -->
+Documentation at this point is automatically generated. If you want to help, you can do the following:
+- Edit docstrings. Changes will be reflected in the Sphinx-generated docs.
+- Edit the rst files themselves to add more information.
+- Edit the wiki! There are no pages currently. Any addition will make a difference.
+- Open an issue if you find that something is lacking, and if you think you do not have the skill to fix this yourself.
 
 ## Styleguides
 ### Commit Messages
 <!-- TODO
 
 -->
+- The project makes use of several static checkers. These can be executed using
+```bash
+tox run -m static
+```
+- The main checks to keep in mind are mypy, ruff, and pyright. The other static checks are easier to pass.
 
 ## Join The Project Team
 <!-- TODO -->
+So you want to join the team and become a maintainer or reviewer! To show that you are capable and trustworthy, we recommend the following:
+- Show that you can write and understand your own code.
+- Have a history of high quality commits.
+- Have your own repo(s) to showcase your skills.
+
+Contact a Maintainer if you are interested in helping out. We appreciate it!
 
 <!-- omit in toc -->
 ## Attribution
