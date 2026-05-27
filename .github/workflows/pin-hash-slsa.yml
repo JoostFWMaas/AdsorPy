@@ -1,6 +1,7 @@
 name: test hash pin
 
 on:
+  push:
   workflow_dispatch:
 
 concurrency:
