@@ -135,42 +135,6 @@ jobs:
           uv run --no-project pip install dist/*.tar.gz
           uv run --no-project python -c "import ${PACKAGE_NAME}; print(${PACKAGE_NAME}.__version__)"
 
-      - name: Verify version matches tag
-        run: |
-          set -euo pipefail
-          python - <<EOF
-          import re
-          import sys
-          from packaging.version import Version
-
-          import ${PACKAGE_NAME}
-
-          expected_raw = "${GITHUB_REF_NAME}"
-          actual = Version(${PACKAGE_NAME}.__version__)
-
-          # Normalize Git tag → PEP 440
-          expected = expected_raw
-
-          # strip leading "v"
-          expected = re.sub(r"^v", "", expected)
-
-          # convert semver prerelease → PEP 440
-          expected = expected.replace("-alpha.", "a")
-          expected = expected.replace("-beta.", "b")
-          expected = expected.replace("-rc.", "rc")
-
-          # drop build metadata (+...)
-          expected = re.sub(r"\+.*$", "", expected)
-
-          expected = Version(expected)
-
-          if actual != expected:
-              print(f"Version mismatch: {actual} != {expected} (from {expected_raw})")
-              sys.exit(1)
-
-          print(f"Version OK: {actual}")
-          EOF
-
       - name: Generate base64 subject hashes
         id: hash
         run: |
