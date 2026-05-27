@@ -24,6 +24,53 @@ jobs:
       contents: read
       id-token: write
 
+    env:
+      SOURCE_DATE_EPOCH: "0"
+      PYTHONHASHSEED: "0"
+      UV_FROZEN: "1"
+
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: "3.14"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+
+      - name: Cache uv
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ hashFiles('uv.lock') }}
+
+      # -------------------------------
+      # SBOM GENERATION + SIGNING INPUT
+      # -------------------------------
+      - name: Generate SBOM
+        uses: sbomify/sbomify-action@ac8b0d423c90447f3011ef8ab5f9ff2e854c6931
+        env:
+          LOCK_FILE: uv.lock
+          OUTPUT_FILE: sbom.cdx.json
+          UPLOAD: false
+          COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
+          COMPONENT_VERSION: ${{ github.ref_name }}
+          ENRICH: true
+
+      # -------------------------------
+      # INSTALL BUILD TOOLS
+      # -------------------------------
+      - name: Install build and validation tools
+        run: |
+          set -euo pipefail
+          uv sync --frozen --extra dev-misc --no-default-groups
+
   provenance:
     needs: [build]
     permissions:
