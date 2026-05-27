@@ -63,6 +63,11 @@ jobs:
           COMPONENT_VERSION: ${{ github.ref_name }}
           ENRICH: true
 
+      - name: Upload SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sbom
+
       # -------------------------------
       # INSTALL BUILD TOOLS
       # -------------------------------
