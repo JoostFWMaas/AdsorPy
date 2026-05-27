@@ -1,6 +1,8 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
 """Random sequential adsorption (RSA) simulator on a grid.
 
-In this module, all the classes are defined. This is the base of the simulation.
+In this module, all the adsorpy classes are defined. This is the base of the simulation.
 This module contains the lowest level methods for the library. run_simulation is preferred.
 """
 

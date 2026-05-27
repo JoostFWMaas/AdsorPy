@@ -1,3 +1,5 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
 """Contains all the molecules that can be used in this simulation.
 
 Also includes molecule loader scripts, for which the molecule data is not included in this lib.

@@ -1,3 +1,5 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
 """Runs the simulation.
 
 run_simulation() should provide the user with customisability.

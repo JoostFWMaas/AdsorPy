@@ -129,11 +129,11 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 
 ### Added
 - Implement subtests for the test_run_alt (a test for the RSA simulator on an alternative seed).
-- Add a determinism test to show identical outcome for identical seeds. 
+- Add a determinism test to show identical outcome for identical seeds.
 - In ``tool.ruff.lint``: use ``future-annotations = true``, this correctly checks ``__future__`` annotation.
-### Changed 
-- Update version dependencies. 
-- Strengthen seed comparison test. 
+### Changed
+- Update version dependencies.
+- Strengthen seed comparison test.
 - Vectorise (remove a for-loop) from overlap test.
 
 ### Fixed

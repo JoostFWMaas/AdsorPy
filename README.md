@@ -22,8 +22,8 @@ gap size distribution.
 
 ## How to use
 
-This package can be found on PyPI as [adsorpy](https://pypi.org/project/adsorpy/), so we recommend the following: 
-```bash 
+This package can be found on PyPI as [adsorpy](https://pypi.org/project/adsorpy/), so we recommend the following:
+```bash
 pip install adsorpy
 ```
 
@@ -67,5 +67,5 @@ The package also makes use of an optional config file that falls back on standar
 
 ## Openness and academic collaboration
 
-The script was made public for the sake of openness and academic collaboration. Please let me know if you have questions about the script, or if you have discovered any issues/bugs. 
+The script was made public for the sake of openness and academic collaboration. Please let me know if you have questions about the script, or if you have discovered any issues/bugs.
 At the end of this file, I will place a list of papers that make use of this work. Feel free to contact me if you want your work to be added to the list as well.

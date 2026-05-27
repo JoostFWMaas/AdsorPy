@@ -1,3 +1,5 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
 """Reads the config json.
 
 The config.json contains the standard values for the RSA simulations. They can be changed if the user wants to,
