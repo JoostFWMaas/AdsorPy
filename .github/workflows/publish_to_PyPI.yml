@@ -44,6 +44,8 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.16"
 
       - name: Cache uv
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
@@ -312,6 +314,8 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: "0.11.16"
 
       - name: Normalize version
         id: normalize_version
