@@ -1,3 +1,5 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
 """Test the .xyz file parsing by fuzzing input."""
 from collections.abc import Callable
 from typing import Literal, TypeVar, cast

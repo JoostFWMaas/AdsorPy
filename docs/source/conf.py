@@ -1,3 +1,6 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
+"""Sphinx config to generate documentation automatically."""
 import sys
 from pathlib import Path
 from sphinx_pyproject import SphinxConfig
@@ -13,7 +16,7 @@ from sphinx_pyproject import SphinxConfig
 config = SphinxConfig(Path("../../pyproject.toml"), globalns=globals())
 
 project = config.name
-copyright = f"2024-%Y, {config.author}"
+copyright = f"2025-%Y, {config.author}"
 author = config.author
 version = config.version
 description = config.description

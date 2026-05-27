@@ -1,3 +1,5 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
 """RSA Calculator module. Import needed for the Random Sequential Adsorption script to run.
 
 There is no real reason for the user to need to use any of this, but the functions are accessible just in case.

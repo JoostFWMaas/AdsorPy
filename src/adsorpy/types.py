@@ -1,3 +1,5 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
 """Type aliases for the adsorpy library."""
 
 from __future__ import annotations  # This allows for delayed hinting of classes.

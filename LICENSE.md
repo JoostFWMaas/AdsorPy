@@ -1,6 +1,6 @@
 # MIT License
 
-Copyright (c) 2025 J.F.W. Maas
+Copyright (c) 2025-2026 J.F.W. Maas
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
