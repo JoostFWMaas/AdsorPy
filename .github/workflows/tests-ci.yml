@@ -51,7 +51,6 @@ jobs:
         run: uv run tox -m static
 
       - name: Run tests with tox
-        if: matrix.os == 'ubuntu-latest' || matrix.python-version == '3.14'
         run: uv run tox -e py$(echo ${{ matrix.python-version }} | tr -d '.')
 
       - name: Upload test results
