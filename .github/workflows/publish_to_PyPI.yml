@@ -1,9 +1,10 @@
 name: release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ['tests-ci']
+    types:
+      - completed
 
 concurrency:
   group: release-${{ github.ref }}
@@ -15,7 +16,24 @@ env:
   PACKAGE_NAME: adsorpy
 
 jobs:
+  tag-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+     - name: regex semver tag check
+       run: |
+        set -euo pipefail
+        REF="${{ github.event.workflow_run.head_branch }}"
+        if [[ "$REF" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-.+)?(\+.+)?$ ]]; then
+          echo "match=true" >> $GITHUB_OUTPUT
+        else
+          echo "match=false" >> $GITHUB_OUTPUT
+        fi
+
   build:
+    needs: tag-check
+    if: needs.tag-check.outputs.match == 'true'
     name: build + reproducible artifacts
     runs-on: ubuntu-latest
     outputs:
@@ -251,10 +269,9 @@ jobs:
         with:
           name: signed-dist
           path: |
-            dist/
-            hashes.txt
-            sbom.cdx.json
-            sbom.cdx.json.sigstore.json
+            dist/**
+            hashes.txt*
+            sbom.cdx.json*
 
   provenance:
     needs: [build]

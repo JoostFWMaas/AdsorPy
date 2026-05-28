@@ -131,7 +131,7 @@ include Setup of env, IDE and typical getting started instructions?
 
 -->
 - To get started with a small contribution, use git to clone the project, this is as simple as:
-```bash 
+```bash
 git clone https://www.github.com/JoostFWMaas/AdsorPy
 ```
 - For development, we recommend an editable install via pip:
@@ -145,7 +145,7 @@ uv sync --extra test
 - Start small: one function, method, or class ``__init__`` at a time.
 - Write tests for the code you have written.
 - Make sure your code passes the tox tests.
-- Make a descriptive commit when you push your code. 
+- Make a descriptive commit when you push your code.
   - Sign off your commit: you agree to the open source terms of the project and you promise that you wrote this code. https://www.secondstate.io/articles/dco/
   - Use GPG signing: a cryptographic guarantee that you are the one authoring this commit. https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits
 - Open an issue if you want to add a feature, and if you think you do not currently have the skill to add this yourself.
