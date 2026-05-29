@@ -150,6 +150,8 @@ def run_simulation(  # noqa: PLR0913
     results_folder = temp_results_folder
 
     surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
+
+
     if custom_grid_flg:
         if TYPE_CHECKING:
             if site_x_coords is None or site_y_coords is None or bounding_x_coord is None or bounding_y_coord is None:
@@ -159,6 +161,7 @@ def run_simulation(  # noqa: PLR0913
         surf.generate_custom_surface(site_x_coords, site_y_coords, bounding_x_coord, bounding_y_coord)
     else:
         surf.generate_grid(rng)
+
 
     molecules: list[MoleculeGroup] = []  # Initially, there are none.
     mgc: count[int] = count()

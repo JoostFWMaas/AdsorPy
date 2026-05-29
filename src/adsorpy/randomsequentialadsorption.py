@@ -1314,7 +1314,7 @@ class Surface:
             [Point(coord) for coord in self.grid_coordinates.T],
         )  # TODO: Never used?
 
-    def plot_surface_sites(self, timestr: str, directory: str | Path = "") -> None:
+    def plot_surface_sites(self, timestr: str, directory: str | Path = "", axes_object: Axes | None = None) -> Axes:
         """Plot the surface sites (for verification/validation).
 
         :param timestr: The timestring, can be used for saving.
@@ -1323,6 +1323,8 @@ class Surface:
         fig: Figure
         ax: Axes
         fig, ax = plt.subplots()
+        if axes_object is not None:
+            ax = axes_object
         plt.figure(dpi=1200)
         ax.set_aspect("equal", "box")
         gridpoints = [
@@ -1338,10 +1340,13 @@ class Surface:
                 *[[0, 0, self.x_max, self.x_max, 0], [0, self.y_max, self.y_max, 0, 0]],
             )
         surfacename = Path(directory) / (timestr + "_surface")
-        fig.savefig(f"{surfacename}.png", transparent=True)
-        fig.savefig(f"{surfacename}.pdf", transparent=True)
-        plt.show()
-        plt.close(fig)
+        if axes_object is None:
+            fig.savefig(f"{surfacename}.png", transparent=True)
+            fig.savefig(f"{surfacename}.pdf", transparent=True)
+            plt.show()
+            plt.close(fig)
+
+        return ax
 
 
 @dataclass(slots=True)
