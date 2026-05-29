@@ -1,13 +1,12 @@
 name: release
 
 on:
-  workflow_run:
-    workflows: ['tests-ci']
-    types:
-      - completed
+  push:
+    tags:
+      - "v*.*.*"
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: true
 
 permissions: {}
@@ -20,11 +19,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      match: ${{ steps.semver.outputs.match }}
     steps:
+     - name: Ensure tag is from main
+       run: |
+         set -euo pipefail
+
+         git fetch origin main --depth=1
+
+         TAG_COMMIT=$(git rev-list -n 1 "$GITHUB_REF_NAME")
+
+         if ! git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+           echo "Tag is NOT on main branch"
+           exit 1
+         fi
+
+         echo "Tag is on main"
+
      - name: regex semver tag check
+       id: semver
        run: |
         set -euo pipefail
-        REF="${{ github.event.workflow_run.head_branch }}"
+        REF="${GITHUB_REF_NAME}"
         if [[ "$REF" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-.+)?(\+.+)?$ ]]; then
           echo "match=true" >> $GITHUB_OUTPUT
         else
@@ -83,6 +100,7 @@ jobs:
           COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
           COMPONENT_VERSION: ${{ github.ref_name }}
           ENRICH: true
+          AUGMENT: true
 
       # -------------------------------
       # INSTALL BUILD TOOLS
