@@ -30,6 +30,8 @@ from src.adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Sur
 from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 if TYPE_CHECKING:
+    from matplotlib import pyplot as plt
+
     from src.adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
     T2 = TypeVar("T2", bound=np.generic | Polygon)  # type: ignore[explicit-any]
     TargetType: TypeAlias = np.generic | Polygon  # type: ignore[explicit-any]
     Tn = TypeVar("Tn", bound=np.ndarray[tuple[int], np.dtype[np.generic | Polygon]])  # type: ignore[explicit-any]
+    Tax = TypeVar("Tax", bound=plt.Axes | None)
 
 
 def run_simulation(  # noqa: PLR0913
@@ -161,7 +164,6 @@ def run_simulation(  # noqa: PLR0913
         surf.generate_custom_surface(site_x_coords, site_y_coords, bounding_x_coord, bounding_y_coord)
     else:
         surf.generate_grid(rng)
-
 
     molecules: list[MoleculeGroup] = []  # Initially, there are none.
     mgc: count[int] = count()
@@ -542,6 +544,46 @@ def _select_and_run(
             raise ValueError(errmsg)
     return all_flux, phis
 
+
+def show_surface(
+    rsa_config: RsaConfig | None = None,
+    lattice_type: str = "triangular",
+    site_count: int | None = None,
+    lattice_a: float | None = None,
+    # boundary_condition: str | None = None,
+    seed: int | Generator | None = None,
+    # site_x_coords: DistArray | None = None,
+    # site_y_coords: DistArray | None = None,
+    # bounding_x_coord: float | None = None,
+    # bounding_y_coord: float | None = None,
+    ax: Tax = None,
+    ) -> Tax:
+    """Show the simulation surface.
+
+    :param rsa_config: Input parameters defined in the config.
+    :param lattice_type: The lattice type. "triangular", "honeycomb", or "square".
+    :param site_count: The site count along one axis. Optional. If None, defaults to the value in config.json.
+    :param lattice_a: The lattice spacing in Angstrom. If None, defaults to the value in config.json.
+    :param seed: The seed for the simulation. If None, takes the datetime in microseconds: YYYMMDDhhmmssuuuuuu.
+    :param ax: Plot Axes.
+    :return: Updated plot Axes.
+    """
+    rsa_config = RsaConfig(Path(__file__).parent / "config.json") if rsa_config is None else rsa_config
+
+
+    # The seed is defined as the datetime in microseconds. The seed is stored so simulations can be verified.
+    how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
+    seed = int(how_late.strftime("%Y%m%d%H%M%S%f")) if seed is None else seed
+    # As long as the new safer PCG64DXSM generator is not the default, override the generator.
+    rng = Generator(PCG64DXSM(seed)) if isinstance(seed, (int, np.integer)) else seed
+    # Output files of the script are datetime stamped.
+    # timestr = how_late.strftime("%Y%m%dT%H%M%S")
+    # results_folder = Path.cwd() / "Output" / f"{timestr}_RSA"
+
+    surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
+    surf.generate_grid(rng)
+
+    return surf.plot_surface_sites("", "", ax)
 
 def main() -> Literal[0]:
     """Run the RSA script, for demonstration purposes.

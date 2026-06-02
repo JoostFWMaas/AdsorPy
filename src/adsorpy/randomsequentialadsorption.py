@@ -1314,11 +1314,18 @@ class Surface:
             [Point(coord) for coord in self.grid_coordinates.T],
         )  # TODO: Never used?
 
-    def plot_surface_sites(self, timestr: str, directory: str | Path = "", axes_object: Axes | None = None) -> Axes:
+    def plot_surface_sites(
+            self,
+            timestr: str = "",
+            directory: str | Path = "",
+            axes_object: Axes | None = None,
+    ) -> Axes:
         """Plot the surface sites (for verification/validation).
 
-        :param timestr: The timestring, can be used for saving.
-        :param directory: The directory in which results are stored.
+        :param timestr: The timestring, can be used for saving. Leave empty to not save.
+        :param directory: The directory in which results are stored. Leave empty to not save.
+        :param axes_object: The plt.Axes object to update, if given.
+        :returns: The plt.Axes object.
         """
         fig: Figure
         ax: Axes
@@ -1340,7 +1347,7 @@ class Surface:
                 *[[0, 0, self.x_max, self.x_max, 0], [0, self.y_max, self.y_max, 0, 0]],
             )
         surfacename = Path(directory) / (timestr + "_surface")
-        if axes_object is None:
+        if axes_object is None and timestr and directory:
             fig.savefig(f"{surfacename}.png", transparent=True)
             fig.savefig(f"{surfacename}.pdf", transparent=True)
             plt.show()

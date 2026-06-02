@@ -1,19 +1,32 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
-"""GUI module of adsorpy."""
-import tkinter as tk
+"""GUI module of adsorpy."""  # TODO: Make a new repo for this!
+import io
+import sys
 import webbrowser
-from pathlib import Path
-from tkinter import messagebox, ttk
 
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PIL import Image, ImageTk
+from PySide6.QtCore import QRegularExpression, Qt
+from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 from shapely import MultiPolygon
 from shapely.plotting import plot_polygon
 
 from src.adsorpy import molecule_lib
-from src.adsorpy.run_simulation import run_simulation
+from src.adsorpy.run_simulation import run_simulation, show_surface
 
 
 def list_public_molecules() -> list[str]:
@@ -26,202 +39,308 @@ def list_public_molecules() -> list[str]:
         if name.startswith("_"):
             continue  # skip private members
 
-        attr = getattr(molecule_lib, name)
+        attr: object = getattr(molecule_lib, name)
 
         # Keep only objects that look like molecule definitions
-        # Adjust this check depending on AdsorPy's class structure
         if callable(attr) and attr.__module__ == "adsorpy.molecule_lib":
             molecules.append(name)
 
     return sorted(molecules)
 
-class AdsorPyGUI(tk.Tk):
-    """Adsorpy GUI."""
+
+class MplCanvas(FigureCanvasQTAgg):
+    """Plot canvas class."""
 
     def __init__(self) -> None:
-        """Initialize the GUI."""
+        """Initialise plot canvas class."""
+        self.fig = Figure(figsize=(16, 9))
+        self.ax = self.fig.add_subplot(111)
+        # self.plot_widget = pg.PlotWidget()
+        super().__init__(self.fig)
+
+
+class AdsorpyGUI(QMainWindow):
+    """AdsorPy GUI."""
+
+    def __init__(self) -> None:
+        """Initialise the AdsorPy GUI."""
         super().__init__()
 
-        self.title("AdsorPy GUI")
-        self.geometry("900x600")
+        self.setWindowTitle("Adsorpy Simulation GUI")
 
-        self._build_controls()
-        self._build_plot()
+        menubar = self.menuBar()
 
-        menu_bar = tk.Menu(self)
-        self.config(menu=menu_bar)
+        # File menu
+        file_menu = menubar.addMenu("File")
 
-        settings_menu = tk.Menu(menu_bar, tearoff=False)
-        help_menu = tk.Menu(menu_bar, tearoff=False)
-        iconsize = (
-            15,  # Width
-            15,  # Height
+        new_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentNew), "New Simulation", self)
+        open_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentOpen), "Open…", self)
+        save_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave), "Save", self)
+        exit_action = QAction(QIcon("assets/door-open-out.png"), "Exit", self)
+        exit_action.triggered.connect(self.close)
+
+        file_menu.addAction(new_action)
+        file_menu.addAction(open_action)
+        file_menu.addAction(save_action)
+        file_menu.addSeparator()
+        file_menu.addAction(exit_action)
+
+        # Help menu
+        help_menu = menubar.addMenu("Help")
+
+        # Documentation
+        doc_action = QAction(QIcon("assets/book-open-list.png"), "Documentation (web)", self)
+        doc_action.triggered.connect(
+            lambda: webbrowser.open("https://joostfwmaas.github.io/AdsorPy/"),
         )
 
-        gear_icon = Image.open(Path("assets/gear-icon.png")).resize(iconsize)
-        exit_icon = Image.open(Path("assets/exit-icon.png")).resize(iconsize)
-        book_icon = Image.open(Path("assets/book-icon.png")).resize(iconsize)
-        self.gear_icon = ImageTk.PhotoImage(gear_icon)
-        self.exit_icon = ImageTk.PhotoImage(exit_icon)
-        self.book_icon = ImageTk.PhotoImage(book_icon)
-
-
-
-        settings_menu.add_command(
-            label="Settings",
-            command=self.destroy,
-            image=self.gear_icon,
-            compound="left",
+        # Wiki
+        wiki_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.HelpFaq), "Wiki (web)", self)
+        wiki_action.triggered.connect(
+            lambda: webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/wiki"),
         )
 
-        settings_menu.add_command(
-            label="Exit",
-            command=self.destroy,
-            image=self.exit_icon,
-            compound="left",
+        # Report bug
+        bug_action = QAction(QIcon("assets/bug--exclamation.png"), "Report bug (web)", self)
+        bug_action.triggered.connect(
+            lambda: webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/issues"),
         )
 
-        menu_bar.add_cascade(
-            label="File",
-            menu=settings_menu,
-            underline=0,
-            # image=self.item_gear_icon,
-            compound="left",
-        )
+        help_menu.addAction(doc_action)
+        help_menu.addAction(wiki_action)
+        help_menu.addAction(bug_action)
 
-        menu_bar.add_cascade(
-            label="Help",
-            menu=help_menu,
-            underline=0,
-            compound="left",
-        )
 
-        def open_documentation() -> None:
-            """Open link to auto-generated documentation."""
-            webbrowser.open("https://joostfwmaas.github.io/AdsorPy/")
+        central = SurfaceGeneration()
+        self.setCentralWidget(central)
 
-        def open_wiki() -> None:
-            """Open link to adsorpy wiki."""
-            webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/wiki")
+        main_layout = QHBoxLayout()
+        central.setLayout(main_layout)
 
-        def report_bug() -> None:
-            """Open link to issues page."""
-            webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/issues")
-
-        help_menu.add_command(
-            label="Documentation (web)",
-            command=open_documentation,
-            compound="left",
-            image=self.book_icon,
-        )
-
-        help_menu.add_command(
-            label="Wiki (web)",
-            command=open_wiki,
-            compound="left",
-            image=self.book_icon,
-        )
-
-        help_menu.add_command(
-            label="Report bug (web)",
-            command=report_bug,
-            compound="left",
-            image=self.book_icon,
-        )
+        controls_layout = QVBoxLayout()
+        main_layout.addLayout(controls_layout)
 
 
 
+class SurfaceGeneration(QWidget):
+    """Surface generation window."""
 
+    def __init__(self) -> None:
+        """Initialise surface generation window."""
+        super().__init__()
+        self.setWindowTitle("Surface Generation")
 
-        # help_menu.add_command(
-        #     label="About",
-        #     command=self.about,
-        #     compound="left",
-        # )
+        main_layout = QHBoxLayout()
+        controls_layout = QVBoxLayout()
+        gt_one_validator = QIntValidator(bottom=1)
+        pos_float_validator = QDoubleValidator(bottom=0)
+        seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
 
-
-        # help_menu = tk.Menu(menu_bar, name="help")
-        # menu_bar.add_cascade(label="Help", menu=help_menu, underline=0)
-        # self.createcommand("tk::mac::ShowHelp",)
-
-
-    def _build_controls(self) -> None:
-        """Build the control frame."""
-        frame = ttk.Frame(self, padding=10)
-        frame.pack(side=tk.LEFT, fill=tk.Y)
-
-        # # Molecule string (from molecule_lib / first_time_loader)
-        # ttk.Label(frame, text="Molecule string:").pack(anchor="w")
-        # self.molecule_entry = tk.Text(frame, height=5, width=40)
-        # self.molecule_entry.pack(fill=tk.X, pady=(0, 10))
-
-        # Number of molecules / steps
-        ttk.Label(frame, text="Step limit:").pack(anchor="w")
-        self.step_limit = tk.IntVar(value=10000)
-        ttk.Entry(frame, textvariable=self.step_limit, width=15).pack(anchor="w", pady=(0, 10))
-
-        # Random seed
-        ttk.Label(frame, text="Random seed (optional):").pack(anchor="w")
-        self.seed_var = (tk.StringVar(value=""))
-        ttk.Entry(frame, textvariable=self.seed_var, width=15).pack(anchor="w", pady=(0, 10))
-
-        # Surface / lattice type
-        ttk.Label(frame, text="Surface type:").pack(anchor="w")
-        # self.surface_var = tk.StringVar(value="hex_al2o3")
-        # ttk.Entry(frame, textvariable=self.surface_var, width=20).pack(anchor="w", pady=(0, 10))
-
-        self.surface_names = ["hexagonal", "honeycomb", "square"]
-        self.surface_var = tk.StringVar(value=self.surface_names[0])
-
-        self.surface_dropdown = ttk.Combobox(
-            frame,
-            textvariable=self.surface_var,
-            values=self.surface_names,
-            state="readonly",
-            width=30,
-        )
-
-        self.surface_dropdown.pack(anchor="w", pady=(0, 15))
-
-        # Run button
-        ttk.Button(frame, text="Run simulation", command=self.run_simulation_clicked).pack(
-            anchor="center", pady=20,
-        )
+        # Seed input
+        controls_layout.addWidget(QLabel("Optional Seed (positive int):"))
+        self.seed_input = QLineEdit()
+        self.seed_input.setValidator(seed_validator)
+        self.seed_input.setPlaceholderText("e.g. 23")  # Skidoo!
+        controls_layout.addWidget(self.seed_input)
 
         # Molecule dropdown
-        ttk.Label(frame, text="Select molecule:").pack(anchor="w")
-
+        controls_layout.addWidget(QLabel("Molecule:"))
+        self.molecule_dropdown = QComboBox()
         self.molecule_names = list_public_molecules()
-        self.molecule_var = tk.StringVar(value=self.molecule_names[0])
+        self.molecule_dropdown.addItems(self.molecule_names)
+        controls_layout.addWidget(self.molecule_dropdown)
 
-        self.molecule_dropdown = ttk.Combobox(
-            frame,
-            textvariable=self.molecule_var,
-            values=self.molecule_names,
-            state="readonly",
-            width=30,
+        # Surface dropdown
+        controls_layout.addWidget(QLabel("Surface Type:"))
+        self.surface_dropdown = QComboBox()
+        self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))
+        controls_layout.addWidget(self.surface_dropdown)
+
+        # Surface site count
+        controls_layout.addWidget(QLabel("Optional surface site count (positive int):"))
+        self.site_count_input = QLineEdit()
+        self.site_count_input.setValidator(gt_one_validator)
+        self.site_count_input.setPlaceholderText("e.g. 42")  # Answer to Ultimate Question of Life, Universe, Everything
+        controls_layout.addWidget(self.site_count_input)
+
+        # Real surface site count output
+        controls_layout.addWidget(QLabel("Real surface site count:"))
+        self.real_site_count = QLabel()
+        self.real_site_count.setText("50")
+        self.site_count_input.textChanged.connect(self._get_real_surface_site_count)
+        self.surface_dropdown.currentIndexChanged.connect(self._get_real_surface_site_count)
+        controls_layout.addWidget(self.real_site_count)
+
+        # Lattice spacing input box
+        controls_layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"))
+        self.lattice_input = QLineEdit()
+        self.lattice_input.setValidator(pos_float_validator)
+        self.lattice_input.setPlaceholderText("e.g. 1.0")
+        controls_layout.addWidget(self.lattice_input)
+
+        # Step limit input box
+        controls_layout.addWidget(QLabel("Step limit (optional, > 0 int):"))
+        self.step_limit = QLineEdit()
+        self.step_limit.setPlaceholderText("e.g. 1")
+        self.step_limit.setValidator(gt_one_validator)
+        controls_layout.addWidget(self.step_limit)
+
+        # Generate surface button
+        self.generate_surface_button = QPushButton("Generate Surface")
+        self.generate_surface_button.clicked.connect(self.generate_surface)
+        controls_layout.addWidget(self.generate_surface_button)
+
+        controls_layout.addStretch()
+        main_layout.addLayout(controls_layout)
+
+        # Run button
+        self.run_button = QPushButton("Run Simulation")
+        self.run_button.clicked.connect(self.run_simulation)
+        controls_layout.addWidget(self.run_button)
+
+        controls_layout.addStretch()
+        main_layout.addLayout(controls_layout)
+
+        # Plot canvas
+        self.canvas = MplCanvas()
+        svg_buffer = io.BytesIO()
+        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        svg_data = svg_buffer.getvalue()
+        self.svg_widget = QSvgWidget()
+        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        self.svg_widget.load(svg_data)
+
+        # Add the SVG widget to layout
+        # layout.addWidget(svg_widget)
+        # main_layout.addWidget(self.canvas, stretch=1)
+        main_layout.addWidget(self.svg_widget, stretch=1)
+
+        self.setLayout(main_layout)
+
+        self.surface_count: int = 50
+        self.real_surface_count: int = 50
+
+    def _get_real_surface_site_count(self) -> None:
+        """Get the real surface site count."""
+        default_count: int = 50
+        surface_type: str = self.surface_dropdown.currentText()
+        temp_count: str = self.site_count_input.text().strip()
+        self.surface_count = default_count if not temp_count else int(temp_count)
+        self.real_surface_count = self.surface_count
+        if surface_type == "hexagonal":
+            self.real_surface_count *= 2
+        elif surface_type == "honeycomb":
+            self.real_surface_count *= 4
+        self.real_site_count.setText(str(self.real_surface_count))
+
+    def generate_surface(self) -> None:
+        """Generate an example surface."""
+        seed_text = self.seed_input.text().strip()
+        seed: int | None = None
+        if seed_text:
+            if not seed_text.isnumeric() or int(seed_text) < 0:
+                self.error("Seed must be a positive integer")
+                return
+            seed = int(seed_text)
+
+        # Validate lattice spacing
+        lattice_text = self.lattice_input.text().strip()
+        lattice: float | None = None
+        if lattice_text:
+            try:
+                lattice = float(lattice_text)
+            except ValueError as e:
+                self.error(str(e))
+                return
+
+        lattice_type = self.surface_dropdown.currentText()
+
+        # ------------------------------------------------------
+        # Plot result
+        # ------------------------------------------------------
+        self.canvas.ax.clear()
+        # self.canvas.ax.set_title("Adsorbed molecules")
+        self.canvas.ax = show_surface(
+            ax = self.canvas.ax,
+            lattice_a=lattice,
+            lattice_type=lattice_type,
+            seed=seed,
+            site_count=self.surface_count,
         )
+        self.canvas.ax.set_xlabel("x")
+        self.canvas.ax.set_ylabel("y")
+        self.canvas.ax.set_aspect("equal", "box")
 
-        self.molecule_dropdown.pack(anchor="w", pady=(0, 15))
+        svg_buffer = io.BytesIO()
+        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        svg_data = svg_buffer.getvalue()
 
-        # Status label
-        self.status_var = tk.StringVar(value="Ready.")
-        ttk.Label(frame, textvariable=self.status_var, foreground="gray").pack(anchor="w", pady=(20, 0))
+        self.svg_widget.load(svg_data)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        # Add the SVG widget to layout
+        # self.canvas.addWidget(svg_widget)
 
-    def _build_plot(self) -> None:
-        """Build the plot frame."""
-        plot_frame = ttk.Frame(self, padding=10)
-        plot_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+    def run_simulation(self) -> None:
+        """Run the simulation."""
+        # Validate seed
+        seed_text = self.seed_input.text().strip()
+        seed: int | None = None
+        if seed_text:
+            if not seed_text.isnumeric() or int(seed_text) < 0:
+                self.error("Seed must be a positive integer")
+                return
+            seed = int(seed_text)
 
-        self.fig = Figure(figsize=(5, 5), dpi=75)
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_title("Adsorbed molecules")
-        self.ax.set_xlabel("x")
-        self.ax.set_ylabel("y")
+        # Validate lattice spacing
+        lattice_text = self.lattice_input.text().strip()
+        lattice: float | None = None
+        if lattice_text:
+            try:
+                lattice = float(lattice_text)
+            except ValueError as e:
+                self.error(str(e))
+                return
 
-        self.canvas = FigureCanvasTkAgg(self.fig, master=plot_frame)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # Validate step limit
+        step_text = self.step_limit.text().strip()
+        step_limit: int | None = None
+        if step_text:
+            if not step_text.isdigit() or int(step_text) <= 0:
+                self.error("Step limit must be a positive integer")
+                return
+            step_limit = int(step_text)
+
+        molecule = self.molecule_dropdown.currentText()
+        lattice_type = self.surface_dropdown.currentText()
+
+        # Run simulation
+        output = run_simulation(
+            seed=seed,
+            lattice_type=lattice_type,
+            lattice_a=lattice,
+            site_count=self.surface_count,
+        )[-1]
+
+        # ------------------------------------------------------
+        # Plot result
+        # ------------------------------------------------------
+        self.canvas.ax.clear()
+        plot_polygon(MultiPolygon(output.mol_data.stored_mirr_data["polygon"]), ax=self.canvas.ax, add_points=False)
+        # self.canvas.ax.set_title("Adsorbed molecules")
+        self.canvas.ax.set_xlabel("x")
+        self.canvas.ax.set_ylabel("y")
+        self.canvas.ax.set_aspect("equal", "box")
+        self.canvas.ax.set_xlim(0, output.surf.x_max)
+        self.canvas.ax.set_ylim(0, output.surf.y_max)
+
+        svg_buffer = io.BytesIO()
+        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        svg_data = svg_buffer.getvalue()
+
+        self.svg_widget.load(svg_data)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+
+        # self.canvas.draw()
 
     def _save_settings_json(self) -> None:
         """Save settings to JSON file."""
@@ -232,88 +351,14 @@ class AdsorPyGUI(tk.Tk):
     def _orient_molecule(self) -> None:
         """Orient the molecule with first_time_loader."""
 
-    def run_simulation_clicked(self) -> None:
-        """To be added."""
-        try:
-            try:
-                step_limit = int(self.step_limit.get())
-            except ValueError:
-                messagebox.showerror("Error", "Number of molecules must be an integer.")
-                return
-
-
-            # surface = self.surface_var.get().strip()
-
-            self.status_var.set("Running simulation...")
-            self.update_idletasks()
-
-            # ------------------------------------------------------------------
-            # 1) Convert molecule string to footprint using AdsorPy
-            #    (adapt this to how you normally load molecules)
-            #
-            # Example pattern (check AdsorPy docs for exact API):
-            #   molecule = molecule_lib.Molecule.from_string(molecule_str)
-            #   footprint = molecule.get_footprint(surface=surface)
-            #
-            # Here we just keep a placeholder:
-            # ------------------------------------------------------------------
-            # TODO: replace with real molecule loading
-
-            # ------------------------------------------------------------------
-            # 2) Call AdsorPy's run_simulation
-            #
-            # Check the actual signature in AdsorPy. A common pattern might be:
-            #   result = run_simulation(
-            #       molecule_footprints=[footprint],
-            #       n_molecules=n_mol,
-            #       rng_seed=seed,
-            #       surface=surface,
-            #       # other keyword args...
-            #   )
-            #
-            # We'll assume it returns coordinates or an object with them.
-            # ------------------------------------------------------------------
-
-            # TODO: replace this with the real call
-            # result = run_simulation(
-            #     molecule_footprints=[footprint],
-            #     n_molecules=n_mol,
-            #     rng_seed=seed,
-            #     surface=surface,
-            # )
-
-            # For now, fake some data so the GUI structure is clear:
-            seed = int(self.seed_var.get()) if self.seed_var.get() != "" else None
-
-            output = run_simulation(timestep_limit=step_limit, seed=seed)[-1]
-
-            # If you have real result, adapt here:
-            # x, y = result.x_coords, result.y_coords
-
-
-
-            # ------------------------------------------------------------------
-            # 3) Plot result
-            # ------------------------------------------------------------------
-            self.ax.clear()
-            # self.ax.scatter(x, y, s=5)
-            plot_polygon(MultiPolygon(output.mol_data.stored_mirr_data["polygon"]), ax=self.ax, add_points=False)
-            self.ax.set_title("Adsorbed molecules")
-            self.ax.set_xlabel("x")
-            self.ax.set_ylabel("y")
-            self.ax.set_aspect("equal", "box")
-            self.ax.set_xlim(0, output.surf.x_max)
-            self.ax.set_ylim(0, output.surf.y_max)
-
-            self.canvas.draw()
-
-            self.status_var.set("Done.")
-
-        except tk.TclError as e:
-            self.status_var.set("Error.")
-            messagebox.showerror("Error during simulation", str(e))
+    def error(self, msg: str) -> None:
+        """Handle the errors."""
+        QMessageBox.critical(self, "Input Error", msg)
 
 
 if __name__ == "__main__":
-    app = AdsorPyGUI()
-    app.mainloop()
+    app = QApplication(sys.argv)
+    gui = AdsorpyGUI()
+    gui.resize(900, 500)
+    gui.show()
+    sys.exit(app.exec())

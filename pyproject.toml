@@ -17,8 +17,8 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
-    "Natural Language :: English",
     # Intended users of project:
+    "Natural Language :: English",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Software Development",
@@ -69,16 +69,16 @@ dependencies = [
 test = [
     "pytest>=9.0.3",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.152.4",
+    "hypothesis>=6.155.1",
     "scipy>=1.15.3",
     "codecov>=2.1.13",
 ]
 lint = [
     "mypy>=2.0.0",
     "ruff>=0.15.12",
-    "pyright>=1.1.409",
+    "pyright>=1.1.410",
     "tach>=0.34.1",
-    "slotscheck>=0.19.1",
+    "slotscheck>=0.20.0",
 ]
 docs = [
     "sphinx>=8.0",
@@ -88,7 +88,7 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.54",
+    "tox>=4.55.0",
     "tox-uv>=1.35.2",
 ]
 dev-misc = [
@@ -98,8 +98,12 @@ dev-misc = [
     "pre-commit>=4.6.0"
 ]
 
-gui = [
-    "pyqt6>=6.11.0",
+gui-deps = [
+    "pyside6>=6.11.1",
+]
+
+dev-complete = [
+    "adsorpy[test,lint,docs,envs,dev-misc,gui-deps]"
 ]
 
 [project.urls]

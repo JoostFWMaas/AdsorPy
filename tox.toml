@@ -1,4 +1,4 @@
-min_version = "4.54.0"
+min_version = "4.55.0"
 env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "pyright", "tach", "slotscheck"]
 isolated_build = true
 recreate = true
@@ -27,7 +27,7 @@ deps = ["pyright", "[test]"]
 commands = [["pyright"]]
 
 [env.slotscheck]
-deps = ["slotscheck"]
+deps = ["slotscheck", "[gui-deps]"]
 commands = [["python", "-m", "slotscheck", "."]]
 
 [env.tach]
