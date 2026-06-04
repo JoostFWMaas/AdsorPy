@@ -64,15 +64,17 @@ RADII: dict[str, float] = dict(
 
 
 def discorectangle(
-    params: list[float],
+    radius: float = 0.0,
+    distance: float = 0.0,
     offx: float = 0.0,
     offy: float = 0.0,
 ) -> Polygon:
-    """Create a discorectangle using the union of two circles and a rectangle.
+    """Create a disco-rectangle using the union of two circles and a rectangle.
 
     The circles are automatically approximated using linear segments (error of 1% or less).
 
-    :param params: Radius of the two circles and distance between the two halves in Angstrom.
+    :param radius: Radius of the two circles in angstrom.
+    :param distance: Distance between the two halves in angstrom.
     :param offx: X offset.
     :param offy: Y offset.
     :return: The molecule shape as a polygon.
@@ -81,7 +83,6 @@ def discorectangle(
     distance: float
     offy *= -1.0
     offx *= -1.0
-    radius, distance = params  # radius: float, distance: float
     circles = MultiPoint(
         [(offx - distance / 2.0, offy), (offx + distance / 2.0, offy)],
     ).buffer(radius)

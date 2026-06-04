@@ -1,26 +1,36 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """GUI module of adsorpy."""  # TODO: Make a new repo for this!
+import inspect
 import io
 import sys
 import webbrowser
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6.QtCore import QRegularExpression, Qt
+from PySide6.QtCore import QFileInfo, QRegularExpression, Qt
 from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFrame,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
+    QDoubleSpinBox,
+    QSpinBox,
 )
 from shapely import MultiPolygon
 from shapely.plotting import plot_polygon
@@ -35,6 +45,7 @@ def list_public_molecules() -> list[str]:
     :returns: The molecules list, sorted.
     """
     molecules: list[str] = []
+
     for name in dir(molecule_lib):
         if name.startswith("_"):
             continue  # skip private members
@@ -120,15 +131,18 @@ class AdsorpyGUI(QMainWindow):
         controls_layout = QVBoxLayout()
         main_layout.addLayout(controls_layout)
 
+        tabs = QTabWidget()
+        tabs.addTab(GeneralSettings(), "General")
+        tabs.addTab(SurfaceGeneration(), "Surface")
+        tabs.addTab(MoleculeGeneration(), "Molecule(s)")
+        self.setCentralWidget(tabs)
 
-
-class SurfaceGeneration(QWidget):
-    """Surface generation window."""
+class GeneralSettings(QWidget):
+    """General settings generation widget."""
 
     def __init__(self) -> None:
-        """Initialise surface generation window."""
+        """Initialise the general settings widget."""
         super().__init__()
-        self.setWindowTitle("Surface Generation")
 
         main_layout = QHBoxLayout()
         controls_layout = QVBoxLayout()
@@ -143,12 +157,222 @@ class SurfaceGeneration(QWidget):
         self.seed_input.setPlaceholderText("e.g. 23")  # Skidoo!
         controls_layout.addWidget(self.seed_input)
 
+        # Step limit input box
+        controls_layout.addWidget(QLabel("Step limit (optional, > 0 int):"))
+        self.step_limit = QLineEdit()
+        self.step_limit.setPlaceholderText("e.g. 1")
+        self.step_limit.setValidator(gt_one_validator)
+        controls_layout.addWidget(self.step_limit)
+        main_layout.addLayout(controls_layout)
+
+        self.canvas = MplCanvas()
+        svg_buffer = io.BytesIO()
+        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        svg_data = svg_buffer.getvalue()
+        self.svg_widget = QSvgWidget()
+        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        self.svg_widget.load(svg_data)
+
+        # Add the SVG widget to layout
+        # layout.addWidget(svg_widget)
+        # main_layout.addWidget(self.canvas, stretch=1)
+        main_layout.addWidget(self.svg_widget, stretch=1)
+
+        self.setLayout(main_layout)
+
+
+class MoleculeGeneration(QWidget):
+    """Molecule generation widget."""
+
+    def __init__(self) -> None:
+        """Initialise the molecule generation widget."""
+        super().__init__()
+
+        main_layout = QHBoxLayout()
+        controls_layout = QVBoxLayout()
+        gt_one_validator = QIntValidator(bottom=1)
+        pos_float_validator = QDoubleValidator(bottom=0)
+        seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
+
+
+        # Add molecule button
+        self.add_molecule_button = QPushButton("Add new molecule")
+        # self.add_molecule_button.clicked.connect(self.add_molecule)
+        controls_layout.addWidget(self.add_molecule_button)
+        main_layout.addLayout(controls_layout)
+
+        self.func_dropdown = QComboBox()
+        controls_layout.addWidget(QLabel("Select molecule generator:"))
+        controls_layout.addWidget(self.func_dropdown)
+
+        self.generators = {
+            name: func for name, func in molecule_lib.__dict__.items() if callable(func) and not name.startswith("_") and func.__module__ == "adsorpy.molecule_lib"
+        }
+
+        self.func_dropdown.addItems(self.generators.keys())
+        self.func_dropdown.currentTextChanged.connect(self.build_param_inputs)
+
+        self.param_widgets = {}
+        self.param_layout = QVBoxLayout()
+        controls_layout.addLayout(self.param_layout)
+
         # Molecule dropdown
         controls_layout.addWidget(QLabel("Molecule:"))
         self.molecule_dropdown = QComboBox()
         self.molecule_names = list_public_molecules()
         self.molecule_dropdown.addItems(self.molecule_names)
         controls_layout.addWidget(self.molecule_dropdown)
+
+
+        # Plot molecules
+        self.canvas = MplCanvas()
+        svg_buffer = io.BytesIO()
+        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        svg_data = svg_buffer.getvalue()
+        self.svg_widget = QSvgWidget()
+        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        self.svg_widget.load(svg_data)
+
+        # Add the SVG widget to layout
+        # layout.addWidget(svg_widget)
+        # main_layout.addWidget(self.canvas, stretch=1)
+        main_layout.addWidget(self.svg_widget, stretch=1)
+
+        self.setLayout(main_layout)
+
+        self.output_label = QLabel("")
+        controls_layout.addWidget(self.output_label)
+        main_layout.addLayout(controls_layout)
+
+        right_col = QVBoxLayout()
+
+        group = QGroupBox("Molecules")
+        group_layout = QVBoxLayout()
+
+        self.molecule_dropdown = QComboBox()
+        group_layout.addWidget(self.molecule_dropdown)
+
+        # Delete button
+        self.delete_btn = QPushButton("Delete Selected Molecule")
+        self.delete_btn.clicked.connect(self.delete_molecule)
+        group_layout.addWidget(self.delete_btn)
+
+        group.setLayout(group_layout)
+        right_col.addWidget(group)
+
+        # Add right column to main layout
+        main_layout.addLayout(right_col)
+
+        # Build initial parameter UI
+        self.build_param_inputs(self.func_dropdown.currentText())
+
+        # Internal molecule storage
+        self.molecules = []
+
+    # ---------------------------------------------------------
+    # Build parameter widgets dynamically
+    # ---------------------------------------------------------
+    def build_param_inputs(self, func_name: str):
+        """Build the parameter inputs.
+
+        :param func_name: Name of the function
+        """
+        while self.param_layout.count():
+            item = self.param_layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+            # if it's a nested layout, clear it too
+            child_layout = item.layout()
+            if child_layout is not None:
+                while child_layout.count():
+                    child_item = child_layout.takeAt(0)
+                    cw = child_item.widget()
+                    if cw is not None:
+                        cw.deleteLater()
+
+        self.param_widgets.clear()
+
+        self.param_widgets.clear()
+
+        func = self.generators[func_name]
+        sig = inspect.signature(func)
+
+        for name, param in sig.parameters.items():
+            default = param.default
+
+            row = QHBoxLayout()
+            row.addWidget(QLabel(name))
+
+            # Choose widget type based on default value
+            if isinstance(default, float):
+                widget = QDoubleSpinBox()
+                widget.setValue(default)
+                widget.setDecimals(4)
+            elif isinstance(default, int):
+                widget = QSpinBox()
+                widget.setValue(default)
+            else:
+                widget = QComboBox()
+                widget.addItem(str(default))
+
+            row.addWidget(widget)
+            self.param_widgets[name] = widget
+            self.param_layout.addLayout(row)
+
+    def add_molecule(self):
+        func_name = self.func_dropdown.currentText()
+        func = self.generators[func_name]
+
+        kwargs = {}
+        for name, widget in self.param_widgets.items():
+            if isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+                kwargs[name] = widget.value()
+            else:
+                kwargs[name] = widget.currentText()
+
+        result = func(**kwargs)
+
+        # Store molecule
+        self.molecules.append(result)
+
+        # Update dropdown
+        label = f"{result['name']} #{len(self.molecules)}"
+        self.molecule_dropdown.addItem(label)
+
+        self.output_label.setText(f"Added: {label}")
+
+    # ---------------------------------------------------------
+    # Delete selected molecule
+    # ---------------------------------------------------------
+    def delete_molecule(self):
+        idx = self.molecule_dropdown.currentIndex()
+        if idx < 0:
+            return
+
+        # Remove from internal list
+        del self.molecules[idx]
+
+        # Remove from dropdown
+        self.molecule_dropdown.removeItem(idx)
+
+        self.output_label.setText("Molecule deleted")
+
+
+
+class SurfaceGeneration(QWidget):
+    """Surface generation widget."""
+
+    def __init__(self) -> None:
+        """Initialise surface generation widget."""
+        super().__init__()
+        # self.setWindowTitle("Surface Generation")
+
+        main_layout = QHBoxLayout()
+        controls_layout = QVBoxLayout()
+        gt_one_validator = QIntValidator(bottom=1)
+        pos_float_validator = QDoubleValidator(bottom=0)
+        seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
 
         # Surface dropdown
         controls_layout.addWidget(QLabel("Surface Type:"))
@@ -177,13 +401,6 @@ class SurfaceGeneration(QWidget):
         self.lattice_input.setValidator(pos_float_validator)
         self.lattice_input.setPlaceholderText("e.g. 1.0")
         controls_layout.addWidget(self.lattice_input)
-
-        # Step limit input box
-        controls_layout.addWidget(QLabel("Step limit (optional, > 0 int):"))
-        self.step_limit = QLineEdit()
-        self.step_limit.setPlaceholderText("e.g. 1")
-        self.step_limit.setValidator(gt_one_validator)
-        controls_layout.addWidget(self.step_limit)
 
         # Generate surface button
         self.generate_surface_button = QPushButton("Generate Surface")
@@ -354,6 +571,7 @@ class SurfaceGeneration(QWidget):
     def error(self, msg: str) -> None:
         """Handle the errors."""
         QMessageBox.critical(self, "Input Error", msg)
+
 
 
 if __name__ == "__main__":

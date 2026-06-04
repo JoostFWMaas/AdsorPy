@@ -916,7 +916,8 @@ class Simulator:
         plt_flag: bool = False,
         timestr: str = "",
         results_folder: str | Path = "",
-    ) -> None:
+        use_ax: plt.Axes | None = None,
+    ) -> plt.Axes:
         """Plot the molecules with the grid and save it as a figure.
 
         :param surf: The surface.
@@ -925,10 +926,14 @@ class Simulator:
         :param plt_flag: True: plot the figure.
         :param timestr: The timestring, can be used for saving the name.
         :param results_folder: The folder in which the results will be saved.
+        :param use_ax: The plt.Axes object of the figure. Optional.
+        :returns: The updated plt.Axes object.
         """
         fig: Figure  # Type hinting this makes it much easier to tab-complete commands.
         ax: Axes
         fig, ax = plt.subplots(dpi=1200)
+        if use_ax is not None:
+            ax = use_ax
         ax.set_aspect("equal", "box")
         coords = surf.grid_coordinates
         xmax = np.max(coords[0])
@@ -995,7 +1000,10 @@ class Simulator:
         if plt_flag:
             plt.show()
 
-        plt.close(fig)
+        if use_ax is None:
+            plt.close(fig)
+
+        return ax
 
     def attempt_cascading_placement(
         self,
