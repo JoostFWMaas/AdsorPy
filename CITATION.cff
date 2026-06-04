@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: Please cite the following works when using this software.
+preferred-citation:
+  authors:
+    - family-names: Maas
+      given-names: Joost F. W.
+      orcid: https://orcid.org/0000-0002-1707-1126
+    - family-names: Tezsevin
+      given-names: Ilker
+      orcid: https://orcid.org/0000-0001-5648-3943
+    - family-names: Merkx
+      given-names: Marc J. M.
+      orcid: https://orcid.org/0000-0002-3886-0220
+    - family-names: Sandoval
+      given-names: Tania E.
+      orcid: https://orcid.org/0000-0001-9418-5031
+    - family-names: Mackus
+      given-names: Adriaan J. M.
+      orcid: https://orcid.org/0000-0001-6944-9867
+  doi: 10.1021/acs.jctc.5c01967
+  identifiers:
+    - type: doi
+      value: 10.1021/acs.jctc.5c01967
+    - type: url
+      value: http://dx.doi.org/10.1021/acs.jctc.5c01967
+    - type: other
+      value: urn:issn:1549-9618
+  title: >-
+    AdsorPy: A Python Package for Lattice-Based Random Sequential Adsorption
+    Simulations
+  url: http://dx.doi.org/10.1021/acs.jctc.5c01967
+  database: Crossref
+  date-published: 2026-06-03
+  year: 2026
+  month: 6
+  issn: 1549-9618
+  journal: Journal of Chemical Theory and Computation
+  languages:
+    - en
+  publisher:
+    name: American Chemical Society (ACS)
+  type: article
