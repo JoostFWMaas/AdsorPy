@@ -3,40 +3,44 @@
 """GUI module of adsorpy."""  # TODO: Make a new repo for this!
 import inspect
 import io
+import re
 import sys
 import webbrowser
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6.QtCore import QFileInfo, QRegularExpression, Qt
+from PySide6.QtCore import QObject, QRegularExpression, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
-    QDialog,
-    QDialogButtonBox,
-    QFrame,
+    QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
-    QDoubleSpinBox,
-    QSpinBox,
 )
-from shapely import MultiPolygon
+from shapely import MultiPolygon, Polygon
 from shapely.plotting import plot_polygon
 
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 def list_public_molecules() -> list[str]:
@@ -57,6 +61,79 @@ def list_public_molecules() -> list[str]:
             molecules.append(name)
 
     return sorted(molecules)
+
+def extract_param_docs(func: Callable) -> dict[str, str]:
+    doc = inspect.getdoc(func)
+    if not doc:
+        return {}
+
+    param_docs: dict[str, str] = {}
+    lines = doc.splitlines()
+
+    current_param = None
+    buffer = []
+
+    for line in lines:
+        param_match = re.match(r"\s*:param\s+(\w+)\s*:\s*(.*)", line)
+        if param_match:
+            if current_param and buffer:
+                param_docs[current_param] = " ".join(buffer).strip()
+
+            current_param = param_match.group(1)
+            buffer = [param_match.group(2).strip()]
+
+        elif current_param and line.startswith("    "):
+            buffer.append(line.strip())
+
+    # Save last param
+    if current_param and buffer:
+        param_docs[current_param] = " ".join(buffer).strip()
+
+    return param_docs
+
+
+class AutoStateMeta(type(QObject)):
+    def __new__(cls, name, bases, attrs):
+        fields = attrs.get("fields", {})
+
+        for field_name, field_type in fields.items():
+            signal_name = f"{field_name}Changed"
+            private_name = f"_{field_name}"
+
+            attrs[signal_name] = Signal(field_type)
+
+            def getter(self, pn=private_name):
+                return getattr(self, pn)
+
+            def setter(self, value, pn=private_name, sn=signal_name):
+                setattr(self, pn, value)
+                getattr(self, sn).emit(value)
+
+            attrs[field_name] = property(getter, setter)
+
+        return super().__new__(cls, name, bases, attrs)
+
+    def __call__(cls, *args, **kwargs):
+        obj = super().__call__(*args, **kwargs)
+
+        # Auto‑initialize private fields
+        for field_name in cls.fields:
+            private_name = f"_{field_name}"
+            if not hasattr(obj, private_name):
+                setattr(obj, private_name, None)
+
+        return obj
+
+
+class AppState(QObject, metaclass=AutoStateMeta):
+    """AppState class to communicate between tabs."""
+
+    fields: ClassVar[dict[str, type]] = {
+        "filepathm": str,
+        "seed_input": QLineEdit,
+        "count": int,
+    }
+
 
 
 class MplCanvas(FigureCanvasQTAgg):
@@ -80,6 +157,7 @@ class AdsorpyGUI(QMainWindow):
         self.setWindowTitle("Adsorpy Simulation GUI")
 
         menubar = self.menuBar()
+        self.state = AppState()
 
         # File menu
         file_menu = menubar.addMenu("File")
@@ -122,7 +200,7 @@ class AdsorpyGUI(QMainWindow):
         help_menu.addAction(bug_action)
 
 
-        central = SurfaceGeneration()
+        central = SurfaceGeneration(self.state)
         self.setCentralWidget(central)
 
         main_layout = QHBoxLayout()
@@ -131,18 +209,23 @@ class AdsorpyGUI(QMainWindow):
         controls_layout = QVBoxLayout()
         main_layout.addLayout(controls_layout)
 
+
         tabs = QTabWidget()
-        tabs.addTab(GeneralSettings(), "General")
-        tabs.addTab(SurfaceGeneration(), "Surface")
-        tabs.addTab(MoleculeGeneration(), "Molecule(s)")
+        tabs.addTab(GeneralSettings(self.state), "General")
+        tabs.addTab(SurfaceGeneration(self.state), "Surface")
+        tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
         self.setCentralWidget(tabs)
 
 class GeneralSettings(QWidget):
     """General settings generation widget."""
 
-    def __init__(self) -> None:
-        """Initialise the general settings widget."""
+    def __init__(self, state: AppState) -> None:
+        """Initialise the general settings widget.
+
+        :param state: AppState shared state between tabs.
+        """
         super().__init__()
+        self.state = state
 
         main_layout = QHBoxLayout()
         controls_layout = QVBoxLayout()
@@ -156,6 +239,7 @@ class GeneralSettings(QWidget):
         self.seed_input.setValidator(seed_validator)
         self.seed_input.setPlaceholderText("e.g. 23")  # Skidoo!
         controls_layout.addWidget(self.seed_input)
+        self.state.seed_input = self.seed_input
 
         # Step limit input box
         controls_layout.addWidget(QLabel("Step limit (optional, > 0 int):"))
@@ -184,9 +268,13 @@ class GeneralSettings(QWidget):
 class MoleculeGeneration(QWidget):
     """Molecule generation widget."""
 
-    def __init__(self) -> None:
-        """Initialise the molecule generation widget."""
+    def __init__(self, state: AppState) -> None:
+        """Initialise the molecule generation widget.
+
+        :param state: AppState shared state between tabs.
+        """
         super().__init__()
+        self.state = state
 
         main_layout = QHBoxLayout()
         controls_layout = QVBoxLayout()
@@ -205,9 +293,12 @@ class MoleculeGeneration(QWidget):
         controls_layout.addWidget(QLabel("Select molecule generator:"))
         controls_layout.addWidget(self.func_dropdown)
 
-        self.generators = {
+        temp_generators = {
             name: func for name, func in molecule_lib.__dict__.items() if callable(func) and not name.startswith("_") and func.__module__ == "adsorpy.molecule_lib"
         }
+
+        # self.generators = OrderedDict(sorted(temp_generators.items(), key=lambda item: item[0]))
+        self.generators: OrderedDict[str, Callable[[...], Polygon]] = OrderedDict(sorted(temp_generators.items()))
 
         self.func_dropdown.addItems(self.generators.keys())
         self.func_dropdown.currentTextChanged.connect(self.build_param_inputs)
@@ -272,7 +363,7 @@ class MoleculeGeneration(QWidget):
     # ---------------------------------------------------------
     # Build parameter widgets dynamically
     # ---------------------------------------------------------
-    def build_param_inputs(self, func_name: str):
+    def build_param_inputs(self, func_name: str) -> None:
         """Build the parameter inputs.
 
         :param func_name: Name of the function
@@ -291,30 +382,76 @@ class MoleculeGeneration(QWidget):
                     if cw is not None:
                         cw.deleteLater()
 
-        self.param_widgets.clear()
-
-        self.param_widgets.clear()
-
         func = self.generators[func_name]
         sig = inspect.signature(func)
 
+        self.param_widgets = {}
+
         for name, param in sig.parameters.items():
             default = param.default
+            is_optional: bool = default is None
+            is_required: bool = param.default is inspect._empty
+            param_docs = extract_param_docs(param)
+            label = QLabel(name)
+
+            # Tooltip on hover
+            if name in param_docs:
+                label.setToolTip(param_docs[name])
 
             row = QHBoxLayout()
+
+            # Checkbox for optional parameters
+            if is_optional:
+                opt_checkbox = QCheckBox()
+                opt_checkbox.setChecked(False)
+                row.addWidget(opt_checkbox)
+            else:
+                opt_checkbox = None  # required argument
+
+            if name in param_docs:
+                info_btn = QToolButton()
+                info_btn.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.DialogInformation))
+                info_btn.setIconSize(QSize(16, 16))
+                info_btn.setToolTip("Show parameter help")
+
+                def show_info(_, text=param_docs[name], pname=name):
+                    QMessageBox.information(self, f"Parameter: {pname}", text)
+
+                info_btn.clicked.connect(show_info)
+                row.addWidget(info_btn)
+
             row.addWidget(QLabel(name))
 
             # Choose widget type based on default value
-            if isinstance(default, float):
-                widget = QDoubleSpinBox()
-                widget.setValue(default)
+            if isinstance(default, float) or param.annotation == "float":
+                widget = QDoubleSpinBox(maximum=999, minimum=-999)
                 widget.setDecimals(4)
-            elif isinstance(default, int):
-                widget = QSpinBox()
-                widget.setValue(default)
+                if not is_required:
+                    widget.setValue(default)
+            elif param.annotation == "PositiveFloat":
+                widget = QDoubleSpinBox(maximum=999, minimum=0)
+                widget.setDecimals(4)
+                if not is_required:
+                    widget.setValue(default)
+            elif isinstance(default, int) or param.annotation == "int":
+                widget = QSpinBox(maximum=999, minimum=-999)
+                if not is_required:
+                    widget.setValue(default)
+            elif param.annotation == "PositiveInt":
+                widget = QSpinBox(maximum=999, minimum=0)
+                if not is_required:
+                    widget.setValue(default)
+
+            elif default is None:
+                widget = QLineEdit()
+                widget.setPlaceholderText("None")
             else:
                 widget = QComboBox()
                 widget.addItem(str(default))
+
+            if is_optional:
+                widget.setEnabled(False)
+                opt_checkbox.toggled.connect(widget.setEnabled)
 
             row.addWidget(widget)
             self.param_widgets[name] = widget
@@ -325,11 +462,16 @@ class MoleculeGeneration(QWidget):
         func = self.generators[func_name]
 
         kwargs = {}
-        for name, widget in self.param_widgets.items():
+        for name, (widget, checkbox) in self.param_widgets.items():
+            if checkbox is not None and not checkbox.isChecked():
+                # Optional parameter not enabled → skip it
+                continue
+
             if isinstance(widget, (QSpinBox, QDoubleSpinBox)):
                 kwargs[name] = widget.value()
             else:
-                kwargs[name] = widget.currentText()
+                text = widget.text()
+                kwargs[name] = None if text == "" else text
 
         result = func(**kwargs)
 
@@ -363,9 +505,13 @@ class MoleculeGeneration(QWidget):
 class SurfaceGeneration(QWidget):
     """Surface generation widget."""
 
-    def __init__(self) -> None:
-        """Initialise surface generation widget."""
+    def __init__(self, state: AppState) -> None:
+        """Initialise surface generation widget.
+
+        :param state: AppState shared state between tabs.
+        """
         super().__init__()
+        self.state = state
         # self.setWindowTitle("Surface Generation")
 
         main_layout = QHBoxLayout()
@@ -452,7 +598,7 @@ class SurfaceGeneration(QWidget):
 
     def generate_surface(self) -> None:
         """Generate an example surface."""
-        seed_text = self.seed_input.text().strip()
+        seed_text = self.state.seed_input.text().strip()
         seed: int | None = None
         if seed_text:
             if not seed_text.isnumeric() or int(seed_text) < 0:

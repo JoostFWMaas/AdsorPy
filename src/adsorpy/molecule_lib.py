@@ -22,6 +22,8 @@ from matplotlib.widgets import Slider, TextBox
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
+from pydantic import PositiveFloat, PositiveInt
+
 if TYPE_CHECKING:
     from matplotlib import axes, figure
     from matplotlib.axes import Axes
@@ -64,8 +66,8 @@ RADII: dict[str, float] = dict(
 
 
 def discorectangle(
-    radius: float = 0.0,
-    distance: float = 0.0,
+    radius: PositiveFloat ,
+    distance: PositiveFloat ,
     offx: float = 0.0,
     offy: float = 0.0,
 ) -> Polygon:
@@ -79,8 +81,6 @@ def discorectangle(
     :param offy: Y offset.
     :return: The molecule shape as a polygon.
     """
-    radius: float
-    distance: float
     offy *= -1.0
     offx *= -1.0
     circles = MultiPoint(
@@ -100,10 +100,10 @@ def discorectangle(
 
 
 def circulium(
-    radius: float,
+    radius: PositiveFloat,
     x_offset: float = 0.0,
     y_offset: float = 0.0,
-    quad_segs: int = 8,
+    quad_segs: PositiveInt = 8,
 ) -> Polygon:
     """Create a simple circular polygon.
 
@@ -118,7 +118,7 @@ def circulium(
     return Point((x_offset, y_offset)).buffer(radius, quad_segs=quad_segs)
 
 
-def dogbonium(scale: float = 1) -> Polygon:
+def dogbonium(scale: PositiveFloat = 1) -> Polygon:
     """Make a molecule shaped like a bone. Used as a pathological case.
 
     :param scale: scale of the shape.
@@ -137,9 +137,9 @@ def dogbonium(scale: float = 1) -> Polygon:
 
 
 def polygonium(
-    verts: int = 3,
-    scale: float = 1.0,
-    roundedness: float = 0.0,
+    verts: PositiveInt = 3,
+    scale: PositiveFloat = 1.0,
+    roundedness: PositiveFloat = 0.0,
 ) -> Polygon:
     """Create a simple regular polygon with optional rounding.
 
