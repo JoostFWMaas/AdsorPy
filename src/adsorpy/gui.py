@@ -423,7 +423,8 @@ class MoleculeGeneration(QWidget):
             row.addWidget(QLabel(name))
 
             # Choose widget type based on default value
-            if isinstance(default, float) or param.annotation == "float":
+            # if isinstance(default, float) or param.annotation == "float":
+            if param.annotation == "float":
                 widget = QDoubleSpinBox(maximum=999, minimum=-999)
                 widget.setDecimals(4)
                 if not is_required:
@@ -433,7 +434,8 @@ class MoleculeGeneration(QWidget):
                 widget.setDecimals(4)
                 if not is_required:
                     widget.setValue(default)
-            elif isinstance(default, int) or param.annotation == "int":
+            # elif isinstance(default, int) or param.annotation == "int":
+            elif param.annotation == "int":
                 widget = QSpinBox(maximum=999, minimum=-999)
                 if not is_required:
                     widget.setValue(default)

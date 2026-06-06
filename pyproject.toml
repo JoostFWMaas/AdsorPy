@@ -99,7 +99,7 @@ dev-misc = [
 ]
 
 gui-deps = [
-    "pyside6>=6.11.1",
+    "PySide6>=6.11.1",
 ]
 
 dev-complete = [

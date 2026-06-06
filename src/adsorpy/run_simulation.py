@@ -593,7 +593,7 @@ def main() -> Literal[0]:
     config_path = Path(__file__).parent / "config.json"
     rsa_config = RsaConfig(config_path)
     start = time.perf_counter()
-    run_simulation(rsa_config, plot_output_flag=True, include_rejected_flux=False)
+    run_simulation(rsa_config, plot_output_flag=True, include_rejected_flux=False, molecules_list=mol.dogbonium(1))
     end = time.perf_counter()
     totaltime = f"{(end - start):.0f} seconds elapsed since start."
     print(totaltime)

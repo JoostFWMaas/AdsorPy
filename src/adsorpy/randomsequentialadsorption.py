@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Final, Literal, ParamSpec, cast
 
 import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff
+import svgwrite
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
@@ -996,6 +997,7 @@ class Simulator:
             results_path = Path(results_folder) / f"{timestr}_covered_surface"
             fig.savefig(f"{results_path}.png", transparent=True)
             fig.savefig(f"{results_path}.pdf", transparent=True)
+            self.svgplot_covered_grid(surf, amgs, results_path)
 
         if plt_flag:
             plt.show()
@@ -1004,6 +1006,185 @@ class Simulator:
             plt.close(fig)
 
         return ax
+
+    def svgplot_covered_grid(
+            self,
+            surf: Surface,
+            amgs: list[MoleculeGroup],
+            filename: str | Path,
+    ) -> None:
+        """
+        Generate an optimized SVG of the covered surface.
+
+        This implementation stores only one base shape per molecule group and places
+        all molecules using SVG transforms (rotation + reflection + translation).
+
+        Reflection is applied across the y-axis (x -> -x), matching the internal
+        generation using xfact=-1.
+
+        :param surf: The surface object containing grid and molecule data.
+        :param amgs: List of molecule groups present on the surface.
+        :param filename: Output SVG file path.
+        :raises OSError: If the file cannot be written.
+        """
+
+        def _polygon_to_path_d(coords: FloatArray) -> str:
+            """
+            Convert an Nx2 array of coordinates into an SVG path string.
+
+            :param coords: Array of shape (N, 2) describing polygon vertices.
+            :returns: SVG path string ("d" attribute).
+            """
+            cmds: list[str] = [f"M {coords[0, 0]} {coords[0, 1]}"]
+            cmds.extend(f"L {x} {y}" for x, y in coords[1:])
+            cmds.append("Z")
+            return " ".join(cmds)
+
+        def _idx_to_transform(
+                idx: int,
+                allowed_rotations: FloatArray,
+                reflection_symmetry: bool,
+        ) -> tuple[float, bool]:
+            """
+            Convert rotation/reflection index to transform parameters.
+
+            Reflection is ONLY across the y-axis.
+
+            :param idx: Index in rotated_molecules array.
+            :param allowed_rotations: Array of base rotation angles (degrees).
+            :param reflection_symmetry: Whether reflections are symmetric.
+            :returns: (angle [deg], reflect_x)
+            """
+            if reflection_symmetry:
+                # Only rotations exist
+                angle: float = float(allowed_rotations[idx])
+                reflect_x: bool = False
+            else:
+                # Even idx = rotation, odd idx = mirrored version
+                base_idx: int = idx // 2
+                angle = float(allowed_rotations[base_idx])
+                reflect_x = (idx % 2) == 1
+
+            return angle, reflect_x
+
+        filename = Path(filename).with_suffix(".svg")
+
+        width: float = float(surf.x_max)
+        height: float = float(surf.y_max)
+
+        dwg: svgwrite.Drawing = svgwrite.Drawing(
+            str(filename),
+            profile="full",
+            size=(width, height),
+        )
+        dwg.viewbox(0, 0, width, height)
+
+        # Flip y-axis to match your plotting convention
+        root_group = dwg.g(transform=f"scale(1,-1) translate(0,-{height})")
+        dwg.add(root_group)
+
+        # -------------------------
+        # DEFINE BASE SHAPES
+        # -------------------------
+        shape_registry: dict[int, str] = {}
+
+        for mol_gr in amgs:
+            coords: FloatArray = np.asarray(
+                mol_gr.rotated_molecules[0].exterior.coords,
+                dtype=float,
+            )
+
+            shape_id: str = f"mol_{mol_gr.group_id}"
+
+            path = dwg.path(
+                d=_polygon_to_path_d(coords),
+                id=shape_id,
+                fill=getattr(mol_gr, "color", "blue"),
+                stroke="none",
+            )
+
+            dwg.defs.add(path)
+            shape_registry[mol_gr.group_id] = shape_id
+
+        # -------------------------
+        # PLACE MOLECULES
+        # -------------------------
+        for mol_gr in amgs:
+            group = dwg.g()
+
+            mask = (
+                    self.mol_data.stored_data["exists"]
+                    & (self.mol_data.stored_data["mol_group"] == mol_gr.group_id)
+            )
+
+            for molinf in self.mol_data.stored_data[mask]:
+                rot_idx: int = int(molinf["rot_idx"])
+
+                x: float = float(molinf["x_coord"])
+                y: float = float(molinf["y_coord"])
+
+                angle, reflect_x = _idx_to_transform(
+                    idx=rot_idx,
+                    allowed_rotations=mol_gr.allowed_rotations,
+                    reflection_symmetry=mol_gr.reflection_symmetry,
+                )
+
+                transform_parts: list[str] = [f"translate({x},{y})"]
+
+                # Translation MUST come first in the string
+
+                # Then rotation
+                if angle != 0.0:
+                    transform_parts.append(f"rotate({angle})")
+
+                # Then reflection (across y-axis)
+                if reflect_x:
+                    transform_parts.append("scale(-1,1)")
+
+                transform: str = " ".join(transform_parts)
+
+                use = dwg.use(
+                    href=f"#{shape_registry[mol_gr.group_id]}",
+                    transform=" ".join(transform_parts),
+                )
+
+                group.add(use)
+
+            root_group.add(group)
+
+        # -------------------------
+        # GRID POINTS
+        # -------------------------
+        grid_group = dwg.g(fill="black")
+
+        for center in surf.grid_coordinates.T:
+            x: float = float(center[0])
+            y: float = float(center[1])
+
+            grid_group.add(
+                dwg.circle(
+                    center=(x, y),
+                    r=float(surf.lattice_a) * 0.1,
+                )
+            )
+
+        root_group.add(grid_group)
+
+        # -------------------------
+        # BORDER
+        # -------------------------
+        if surf.bp.hard_flag:
+            root_group.add(
+                dwg.rect(
+                    insert=(0.0, 0.0),
+                    size=(width, height),
+                    stroke="black",
+                    fill="none",
+                    stroke_width=2,
+                )
+            )
+
+        dwg.save(pretty=True)
 
     def attempt_cascading_placement(
         self,
@@ -1093,6 +1274,8 @@ class Simulator:
             distance_to_grid = distance_to_grid[np.nonzero(distance_to_grid)]
 
         return distance_to_grid
+
+
 
 
 class Surface:
@@ -1621,3 +1804,4 @@ class MoleculeData:
         self.stored_mirr_data[current_mirr_idx] = temp_data
         self.mirror_coords[:, current_mirr_idx] = x_coord, y_coord
         self.mirr_tree.insert(current_mirr_idx, polygon.bounds)
+
