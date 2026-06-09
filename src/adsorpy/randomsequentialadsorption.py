@@ -15,7 +15,9 @@ from typing import TYPE_CHECKING, Final, Literal, ParamSpec, cast
 
 import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff
-import svgwrite
+# import svgwrite
+from xml.dom.minidom import parseString
+import svg
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
@@ -42,7 +44,6 @@ if TYPE_CHECKING:
     )
 
     P = ParamSpec("P")  # Helps with static type checkers.
-
 
 plt.rcParams.update(
     {
@@ -135,10 +136,10 @@ class BoundaryParameters:
     )
 
     def __init__(
-        self,
-        boundary_type: str,
-        rot_cnt: int = 0,
-        dbl_max_radius: float = 0.0,
+            self,
+            boundary_type: str,
+            rot_cnt: int = 0,
+            dbl_max_radius: float = 0.0,
     ) -> None:
         """Initialise the boundary parameters for soft, periodic, hard.
 
@@ -226,9 +227,9 @@ class BoundaryParameters:
         return soft_flag, hard_flag, periodic_flag
 
     def generate_boundary_conditions(
-        self,  # For questions about "self", see https://realpython.com/python-classes/#instance-methods-with-self
-        surf: Surface,
-        molgr: MoleculeGroup | None = None,
+            self,  # For questions about "self", see https://realpython.com/python-classes/#instance-methods-with-self
+            surf: Surface,
+            molgr: MoleculeGroup | None = None,
     ) -> None:
         """Generate the boundary conditions and modifies the available sites.
 
@@ -327,15 +328,15 @@ class MoleculeGroup:
     )
 
     def __init__(
-        self,
-        rsa_config: RsaConfig,
-        molecule: Polygon,
-        rotation_symmetry: int,
-        reflection_symmetry: bool,
-        site_count: int,
-        mgc: count[int],
-        rotation_count: int = 360,
-        sticking_probability: float | None = None,
+            self,
+            rsa_config: RsaConfig,
+            molecule: Polygon,
+            rotation_symmetry: int,
+            reflection_symmetry: bool,
+            site_count: int,
+            mgc: count[int],
+            rotation_count: int = 360,
+            sticking_probability: float | None = None,
     ) -> None:
         """Initialise the data for molecule groups.
 
@@ -431,9 +432,9 @@ class MoleculeGroup:
         "Distance as the sum between the circumradius and inradius of two molecules."
 
     def generate_rotated_molecules(
-        self,
-        bopa: BoundaryParameters,
-        amgs: list[MoleculeGroup],
+            self,
+            bopa: BoundaryParameters,
+            amgs: list[MoleculeGroup],
     ) -> BoundaryParameters:
         """Generate rotated molecules and prepared buffer molecules. Generate bounding box in case of hard boundary.
 
@@ -450,12 +451,13 @@ class MoleculeGroup:
         )
 
         mirror_repeat: int = (not self.reflection_symmetry) + 1
-        for kk in range(mirror_repeat):  # Loop twice if not symmetric, else loop once.
-            for idx in np.arange(kk, self.rot_refl_count, step=mirror_repeat):
+        for reflected in range(mirror_repeat):  # Loop twice if not symmetric, else loop once.
+            for idx in np.arange(reflected, self.rot_refl_count, step=mirror_repeat):
                 temp_rotation: np.float64 = self.allowed_rotations[idx]
                 # Define the rotated molecules. Faster than rotating them every time they are called.
-                if not kk:  # On first pass, rotate the molecule.
-                    self.rotated_molecules[idx] = aff.rotate(self.molecule, angle=temp_rotation, origin=(0, 0))  # pyright: ignore[reportArgumentType]
+                if not reflected:  # On first pass, rotate the molecule.
+                    self.rotated_molecules[idx] = aff.rotate(self.molecule, angle=temp_rotation,
+                                                             origin=(0, 0))  # pyright: ignore[reportArgumentType]
 
                 else:  # On second pass, mirror the rotated molecule.
                     self.rotated_molecules[idx] = aff.scale(
@@ -488,7 +490,8 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     "Molecule group index value. Defaults to -1, an invalid value."
     grid_index: int = -1
     "Grid index value. Defaults to -1, an invalid value."
-    coordinates: CoordPair = cast("CoordPair", field(default_factory=lambda: np.empty((2, 1), dtype=np.float64)))  # noqa: RUF009
+    coordinates: CoordPair = cast("CoordPair",
+                                  field(default_factory=lambda: np.empty((2, 1), dtype=np.float64)))  # noqa: RUF009
     "Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.float64)."
     molecule: Polygon = field(default_factory=Polygon)
     "Candidate molecule. Initially empty."
@@ -502,7 +505,7 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     "Flag denoting existence of this molecule. Defaults to True."
 
     def get_canddata(
-        self,
+            self,
     ) -> tuple[int, bool, int, int, int, bool, float, float, Polygon]:
         """Prepare the candidate data for storage in the molecule data storage class.
 
@@ -548,13 +551,13 @@ class Simulator:
     )
 
     def __init__(
-        self,
-        rsa_config: RsaConfig,
-        include_rejected_flux: bool,
-        surf: Surface,
-        mol_groups: list[MoleculeGroup],
-        rng: np.random.Generator,
-        boundary_type: str | None = None,
+            self,
+            rsa_config: RsaConfig,
+            include_rejected_flux: bool,
+            surf: Surface,
+            mol_groups: list[MoleculeGroup],
+            rng: np.random.Generator,
+            boundary_type: str | None = None,
     ) -> None:
         """Initialise the simulator, combine the other classes.
 
@@ -627,11 +630,11 @@ class Simulator:
 
     # @profile
     def attempt_place_molecule(
-        self: Simulator,
-        surf: Surface,
-        pmg: MoleculeGroup,
-        grid_idx: int | np.int_ | None = None,
-        first_rot_idx: int | np.int_ | None = None,
+            self: Simulator,
+            surf: Surface,
+            pmg: MoleculeGroup,
+            grid_idx: int | np.int_ | None = None,
+            first_rot_idx: int | np.int_ | None = None,
     ) -> tuple[bool, int, int, int, int, list[int]]:
         """Try to place a molecule.
 
@@ -794,11 +797,11 @@ class Simulator:
         )
 
     def update_placement(
-        self,
-        cand: CandidateMolecule,
-        surf: Surface,
-        pmg: MoleculeGroup,
-        amgs: list[MoleculeGroup],
+            self,
+            cand: CandidateMolecule,
+            surf: Surface,
+            pmg: MoleculeGroup,
+            amgs: list[MoleculeGroup],
     ) -> np.int_:
         """Update the stored molecules, coordinates, and index arrays.
 
@@ -861,11 +864,11 @@ class Simulator:
 
     # @profile
     def trim_buffer(
-        self,
-        occupier_idx: int,
-        pmg: MoleculeGroup,
-        mol_group: MoleculeGroup,
-        surf: Surface,
+            self,
+            occupier_idx: int,
+            pmg: MoleculeGroup,
+            mol_group: MoleculeGroup,
+            surf: Surface,
     ) -> None:
         """Trim the available sites by removing inaccessible sites.
 
@@ -910,14 +913,14 @@ class Simulator:
 
     # @profile
     def plot_covered_grid(
-        self,
-        surf: Surface,
-        amgs: list[MoleculeGroup],
-        save_flag: bool = False,
-        plt_flag: bool = False,
-        timestr: str = "",
-        results_folder: str | Path = "",
-        use_ax: plt.Axes | None = None,
+            self,
+            surf: Surface,
+            amgs: list[MoleculeGroup],
+            save_flag: bool = False,
+            plt_flag: bool = False,
+            timestr: str = "",
+            results_folder: str | Path = "",
+            use_ax: plt.Axes | None = None,
     ) -> plt.Axes:
         """Plot the molecules with the grid and save it as a figure.
 
@@ -950,7 +953,7 @@ class Simulator:
         if True:
             for mol_gr in amgs:
                 molgr_exists_idx = self.mol_data.stored_data["exists"] & (
-                    self.mol_data.stored_data["mol_group"] == mol_gr.group_id
+                        self.mol_data.stored_data["mol_group"] == mol_gr.group_id
                 )
 
                 verts: list[FloatArray] = []
@@ -1007,190 +1010,227 @@ class Simulator:
 
         return ax
 
-    def svgplot_covered_grid(
-            self,
-            surf: Surface,
-            amgs: list[MoleculeGroup],
-            filename: str | Path,
-    ) -> None:
+    def svgplot_covered_grid(self, surf: Surface, amgs: list[MoleculeGroup], filename: str | Path) -> None:
+        """Plot the covered grid as an SVG.
+
+        :param surf: The surface object.
+        :param amgs: A list of the molecule groups.
+        :param filename: The file name as string or path.
         """
-        Generate an optimized SVG of the covered surface.
-
-        This implementation stores only one base shape per molecule group and places
-        all molecules using SVG transforms (rotation + reflection + translation).
-
-        Reflection is applied across the y-axis (x -> -x), matching the internal
-        generation using xfact=-1.
-
-        :param surf: The surface object containing grid and molecule data.
-        :param amgs: List of molecule groups present on the surface.
-        :param filename: Output SVG file path.
-        :raises OSError: If the file cannot be written.
-        """
-
-        def _polygon_to_path_d(coords: FloatArray) -> str:
-            """
-            Convert an Nx2 array of coordinates into an SVG path string.
-
-            :param coords: Array of shape (N, 2) describing polygon vertices.
-            :returns: SVG path string ("d" attribute).
-            """
-            cmds: list[str] = [f"M {coords[0, 0]} {coords[0, 1]}"]
-            cmds.extend(f"L {x} {y}" for x, y in coords[1:])
-            cmds.append("Z")
-            return " ".join(cmds)
 
         def _idx_to_transform(
-                idx: int,
-                allowed_rotations: FloatArray,
-                reflection_symmetry: bool,
-        ) -> tuple[float, bool]:
-            """
-            Convert rotation/reflection index to transform parameters.
+                idx: IdxArray, allowed_rotations: FloatArray, reflection_symmetry: bool
+        ) -> tuple[FloatArray, BoolArray]:
+            """Transform the molecule array indices to rotations.
 
-            Reflection is ONLY across the y-axis.
+            :param idx: The molecule array indices.
+            :param allowed_rotations: The allowed rotations array.
+            :param reflection_symmetry: Whether the molecule has refleciton symmetry.
 
-            :param idx: Index in rotated_molecules array.
-            :param allowed_rotations: Array of base rotation angles (degrees).
-            :param reflection_symmetry: Whether reflections are symmetric.
-            :returns: (angle [deg], reflect_x)
+            :returns:
+                1) The angles of the molecules.
+                2) Whether the molecules are reflected.
             """
+            angle: FloatArray
+            reflect_x: BoolArray
             if reflection_symmetry:
-                # Only rotations exist
-                angle: float = float(allowed_rotations[idx])
-                reflect_x: bool = False
+                angle = allowed_rotations[idx]
+                reflect_x = np.zeros_like(idx, dtype=np.bool_)
             else:
-                # Even idx = rotation, odd idx = mirrored version
-                base_idx: int = idx // 2
-                angle = float(allowed_rotations[base_idx])
-                reflect_x = (idx % 2) == 1
+                base_idx = 2 * (idx // 2)
+                angle = allowed_rotations[base_idx]
+                reflect_x_if_no_symmetry = (idx % 2) == 1
+                reflect_x = reflect_x_if_no_symmetry
 
             return angle, reflect_x
 
-        filename = Path(filename).with_suffix(".svg")
+        filename: Path = Path(filename).with_suffix(".svg")
 
-        width: float = float(surf.x_max)
-        height: float = float(surf.y_max)
+        tab10_colors: cycle[str] = cycle([
+            "#4e79a7",
+            "#f28e2b",
+            "#e15759",
+            "#76b7b2",
+            "#59a14f",
+            "#edc948",
+            "#b07aa1",
+            "#ff9da7",
+            "#9c755f",
+            "#bab0ac",
+        ])
+        """New Tableau color map."""  # TODO: Leave toggle for legacy?
 
-        dwg: svgwrite.Drawing = svgwrite.Drawing(
-            str(filename),
-            profile="full",
-            size=(width, height),
+        width = float(round(surf.x_max, 5))
+        height = float(round(surf.y_max, 5))
+
+        # Root SVG
+        root = svg.SVG(
+            width=svg.Length(width, "cm"),
+            height=svg.Length(height, "cm"),
+            viewBox=svg.ViewBoxSpec(0, 0, width, height),
+            elements=[],
         )
-        dwg.viewbox(0, 0, width, height)
 
-        # Flip y-axis to match your plotting convention
-        root_group = dwg.g(transform=f"scale(1,-1) translate(0,-{height})")
-        dwg.add(root_group)
+        # defs
+        defs = svg.Defs(elements=[])
+        root.elements.append(defs)
 
-        # -------------------------
-        # DEFINE BASE SHAPES
-        # -------------------------
-        shape_registry: dict[int, str] = {}
+        # Flip y-axis
+        root_group = svg.G(transform=[svg.Scale(x=1, y=-1), svg.Translate(x=0, y=-height)], elements=[])
+        root.elements.append(root_group)
+
+        # -----------------------------------
+        # BASE SHAPES
+        # -----------------------------------
+        shape_registry = {}
 
         for mol_gr in amgs:
-            coords: FloatArray = np.asarray(
-                mol_gr.rotated_molecules[0].exterior.coords,
-                dtype=float,
+
+            # Optimize: Grab coordinates directly as a flat NumPy array
+            coords = np.round(
+                np.asarray(
+                    mol_gr.rotated_molecules[0].exterior.coords,
+                    dtype=float,
+                ),
+                5,
             )
 
-            shape_id: str = f"mol_{mol_gr.group_id}"
+            shape_id = f"mol_{mol_gr.group_id}"
 
-            path = dwg.path(
-                d=_polygon_to_path_d(coords),
+            # FIX: points must be flat (e.g. [x1, y1, x2, y2...]).
+            # coords.flatten() converts the matrix to a clean, flat list instantly.
+            poly = svg.Polygon(
+                points=coords.flatten().tolist(),
                 id=shape_id,
-                fill=getattr(mol_gr, "color", "blue"),
+                fill=getattr(mol_gr, "color", next(tab10_colors)),
                 stroke="none",
             )
 
-            dwg.defs.add(path)
+            defs.elements.append(poly)
             shape_registry[mol_gr.group_id] = shape_id
 
-        # -------------------------
-        # PLACE MOLECULES
-        # -------------------------
-        for mol_gr in amgs:
-            group = dwg.g()
+            group = svg.G(elements=[])
 
-            mask = (
-                    self.mol_data.stored_data["exists"]
-                    & (self.mol_data.stored_data["mol_group"] == mol_gr.group_id)
+            mask = self.mol_data.stored_data["exists"] & (self.mol_data.stored_data["mol_group"] == mol_gr.group_id)
+
+            # 1. Slice the target subset of data once
+            subset = self.mol_data.stored_data[mask]
+            if len(subset) == 0:
+                continue
+
+            # 2. Call your updated, vectorized transform function on the whole array
+            angles, reflects_x = _idx_to_transform(
+                idx=subset["rot_idx"],
+                allowed_rotations=mol_gr.allowed_rotations,
+                reflection_symmetry=mol_gr.reflection_symmetry,
             )
 
-            for molinf in self.mol_data.stored_data[mask]:
-                rot_idx: int = int(molinf["rot_idx"])
-
-                x: float = float(molinf["x_coord"])
-                y: float = float(molinf["y_coord"])
-
-                angle, reflect_x = _idx_to_transform(
-                    idx=rot_idx,
-                    allowed_rotations=mol_gr.allowed_rotations,
-                    reflection_symmetry=mol_gr.reflection_symmetry,
-                )
-
-                transform_parts: list[str] = [f"translate({x},{y})"]
-
-                # Translation MUST come first in the string
-
-                # Then rotation
-                if angle != 0.0:
-                    transform_parts.append(f"rotate({angle})")
-
-                # Then reflection (across y-axis)
-                if reflect_x:
-                    transform_parts.append("scale(-1,1)")
-
-                transform: str = " ".join(transform_parts)
-
-                use = dwg.use(
-                    href=f"#{shape_registry[mol_gr.group_id]}",
-                    transform=" ".join(transform_parts),
-                )
-
-                group.add(use)
-
-            root_group.add(group)
-
-        # -------------------------
-        # GRID POINTS
-        # -------------------------
-        grid_group = dwg.g(fill="black")
-
-        for center in surf.grid_coordinates.T:
-            x: float = float(center[0])
-            y: float = float(center[1])
-
-            grid_group.add(
-                dwg.circle(
-                    center=(x, y),
-                    r=float(surf.lattice_a) * 0.1,
-                )
+            # 3. Vectorize the 'translate(x,y)' string formatting at C-level
+            x_coords = np.round(subset["x_coord"], 5).astype(str)
+            y_coords = np.round(subset["y_coord"], 5).astype(str)
+            translate_strs = np.char.add(
+                np.char.add("translate(", x_coords), np.char.add(",", np.char.add(y_coords, ")"))
             )
 
-        root_group.add(grid_group)
+            # 4. Instantaneous zip generation (skips dictionary overhead entirely)
+            href_target = f"#{shape_registry[mol_gr.group_id]}"
 
-        # -------------------------
+            # 1. Initialize masks for conditions across the entire array
+            has_reflection = reflects_x  # Array of True/False
+            has_rotation = angles != 0.0  # Array of True/False
+
+            # 2. Vectorize conditional string construction using np.select
+            # Path A: Both reflection AND rotation exist
+            cond_both = has_reflection & has_rotation
+            val_both = np.char.add(np.char.add(translate_strs, " scale(-1,1) rotate("), angles.astype(str))
+            val_both = np.char.add(val_both, ")")
+
+            # Path B: Only reflection exists
+            cond_reflect = has_reflection & ~has_rotation
+            val_reflect = np.char.add(translate_strs, " scale(-1,1)")
+
+            # Path C: Only rotation exists
+            cond_rotate = ~has_reflection & has_rotation
+            val_rotate = np.char.add(np.char.add(translate_strs, " rotate("), angles.astype(str))
+            val_rotate = np.char.add(val_rotate, ")")
+
+            # Combine everything using numpy selection logic (fallback to raw translation)
+            conditions = [cond_both, cond_reflect, cond_rotate]
+            choices = [val_both, val_reflect, val_rotate]
+
+            final_transforms = np.select(conditions, choices, default=translate_strs)
+
+            # 3. Bulk append straight to elements using a single fast list comprehension
+            group.elements.extend([svg.Use(href=href_target, transform=[tx]) for tx in final_transforms])
+
+            root_group.elements.append(group)
+
+        # -----------------------------------
+        # GRID POINT TEMPLATE
+        # -----------------------------------
+        # -----------------------------------
+        # GRID POINT TEMPLATE
+        # -----------------------------------
+        point_radius = float(surf.lattice_a) * 0.1
+
+        grid_point_id = "site"
+        defs.elements.append(
+            svg.Circle(
+                id=grid_point_id,
+                r=point_radius,
+                fill="black",
+                stroke="none",
+            )
+        )
+
+        grid_group = svg.G(elements=[])
+
+        # 1. Vectorize coordinate extraction directly from the transposed array
+        # This grabs all X and Y float coordinates simultaneously in two flat arrays
+        x_coords = np.round(surf.grid_coordinates[0].astype(float), 4)
+        y_coords = np.round(surf.grid_coordinates[1].astype(float), 4)
+
+        # 2. Bulk instantiate the svg.Use tags and extend the list in one transaction
+        # Zip iterates over the flat numeric arrays instantly without Python dict overhead
+        grid_group.elements.extend([
+            svg.Use(href=f"#{grid_point_id}", x=x, y=y)
+            for x, y in zip(x_coords, y_coords, strict=True)
+        ])
+
+        root_group.elements.append(grid_group)
+
+        # -----------------------------------
         # BORDER
-        # -------------------------
+        # -----------------------------------
         if surf.bp.hard_flag:
-            root_group.add(
-                dwg.rect(
-                    insert=(0.0, 0.0),
-                    size=(width, height),
+            root_group.elements.append(
+                svg.Rect(
+                    x=0.0,
+                    y=0.0,
+                    width=width,
+                    height=height,
                     stroke="black",
                     fill="none",
                     stroke_width=2,
                 )
             )
 
-        dwg.save(pretty=True)
+        # Save
+        raw_xml = root.as_str()
+        parsed_xml = parseString(raw_xml)
+        pretty_xml = parsed_xml.toprettyxml(indent="    ", encoding="UTF-8")
+
+        # 3. Save the pretty printed text
+        with filename.open("wb") as f:
+            f.write(pretty_xml)
+        # with open(filename, "w", encoding="utf-8") as f:
+        #     f.write(root.as_str())
 
     def attempt_cascading_placement(
-        self,
-        surf: Surface,
-        *molgrs: MoleculeGroup,
-        site_idx: int | None = None,
+            self,
+            surf: Surface,
+            *molgrs: MoleculeGroup,
+            site_idx: int | None = None,
     ) -> tuple[bool, int, int, int | None, int, list[int]]:
         """Try to place molecules in the order of the arguments on the same random site. Stops when one fits.
 
@@ -1214,10 +1254,10 @@ class Simulator:
         return output
 
     def attempt_random_placement(
-        self,
-        surf: Surface,
-        *molgrs: MoleculeGroup,
-        weights: FloatArray | list[float] | None = None,
+            self,
+            surf: Surface,
+            *molgrs: MoleculeGroup,
+            weights: FloatArray | list[float] | None = None,
     ) -> tuple[bool, int, int, int, int, list[int]]:
         """Pick from a list of molecule groups and places a random one.
 
@@ -1276,8 +1316,6 @@ class Simulator:
         return distance_to_grid
 
 
-
-
 class Surface:
     """Store coordinates and occupation data."""
 
@@ -1302,13 +1340,13 @@ class Surface:
     )
 
     def __init__(
-        self,
-        rsa_config: RsaConfig,
-        lattice_type: str = "triangular",
-        site_count: int | None = None,
-        lattice_a: float | None = None,
-        boundary_type: str | None = None,
-        sticking_probability: float | None = None,
+            self,
+            rsa_config: RsaConfig,
+            lattice_type: str = "triangular",
+            site_count: int | None = None,
+            lattice_a: float | None = None,
+            boundary_type: str | None = None,
+            sticking_probability: float | None = None,
     ) -> None:
         """Initialise the surface.
 
@@ -1460,11 +1498,11 @@ class Surface:
                 self.x_max += self.lattice_a  # This is done to make periodic matching easier.
 
     def generate_custom_surface(
-        self,
-        site_x_coords: DistArray,
-        site_y_coords: DistArray,
-        bounding_x_coord: float,
-        bounding_y_coord: float,
+            self,
+            site_x_coords: DistArray,
+            site_y_coords: DistArray,
+            bounding_x_coord: float,
+            bounding_y_coord: float,
     ) -> None:
         """Generate a custom surface from user input.
 
@@ -1660,9 +1698,9 @@ class MoleculeData:
 
     @staticmethod
     def make_struct_array(
-        size: int,
-        nameddtypes: list[tuple[str, type]],
-        fillvals: tuple[bool | int | float | Polygon | list[int], ...],
+            size: int,
+            nameddtypes: list[tuple[str, type]],
+            fillvals: tuple[bool | int | float | Polygon | list[int], ...],
     ) -> np.ndarray[tuple[int], np.dtype[np.void]]:
         """Make a structured array for the molecule storage.
 
@@ -1682,16 +1720,16 @@ class MoleculeData:
         return struct_array
 
     def add_entry(
-        self,
-        _: int,
-        exists: bool,
-        mol_group: int,
-        grid_idx: int,
-        rot_idx: int,
-        has_periodic_images: bool,
-        x_coord: float,
-        y_coord: float,
-        polygon: Polygon,
+            self,
+            _: int,
+            exists: bool,
+            mol_group: int,
+            grid_idx: int,
+            rot_idx: int,
+            has_periodic_images: bool,
+            x_coord: float,
+            y_coord: float,
+            polygon: Polygon,
     ) -> None:
         """Add a new entry to the stored data. All fields are mandatory.
 
@@ -1746,16 +1784,16 @@ class MoleculeData:
         self.mol_tree.insert(self_id, polygon.bounds)
 
     def add_mirror(
-        self,
-        mirr_num: int,
-        orig_id: int,
-        exists: bool,
-        mol_group: int,
-        grid_idx: int,
-        rot_idx: int,
-        x_coord: float,
-        y_coord: float,
-        polygon: Polygon,
+            self,
+            mirr_num: int,
+            orig_id: int,
+            exists: bool,
+            mol_group: int,
+            grid_idx: int,
+            rot_idx: int,
+            x_coord: float,
+            y_coord: float,
+            polygon: Polygon,
     ) -> None:
         """Add a mirror molecule to the stored molecule data.
 
@@ -1804,4 +1842,3 @@ class MoleculeData:
         self.stored_mirr_data[current_mirr_idx] = temp_data
         self.mirror_coords[:, current_mirr_idx] = x_coord, y_coord
         self.mirr_tree.insert(current_mirr_idx, polygon.bounds)
-

@@ -63,6 +63,7 @@ dependencies = [
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
     "rtree>=1.4.1",
+    "svg-py>=1.10.0",
 ]
 
 [project.optional-dependencies]

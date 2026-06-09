@@ -32,6 +32,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "rtree" },
     { name = "shapely" },
+    { name = "svg-py" },
 ]
 
 [package.optional-dependencies]
@@ -133,6 +134,7 @@ requires-dist = [
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=3.0" },
     { name = "sphinx-design", marker = "extra == 'docs'", specifier = ">=0.6.0" },
     { name = "sphinx-pyproject", marker = "extra == 'docs'", specifier = ">=0.3.0" },
+    { name = "svg-py", specifier = ">=1.10.0" },
     { name = "tach", marker = "extra == 'lint'", specifier = ">=0.34.1" },
     { name = "tox", marker = "extra == 'envs'", specifier = ">=4.55.0" },
     { name = "tox-uv", marker = "extra == 'envs'", specifier = ">=1.35.2" },
@@ -3095,6 +3097,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3b/44/6716b257b0aa6bfd51a1b31665d1c205fb12cb5ad56de752dfa15657de2f/sphinxcontrib_serializinghtml-2.0.0.tar.gz", hash = "sha256:e9d912827f872c029017a53f0ef2180b327c3f7fd23c87229f7a8e8b70031d4d", size = 16080, upload-time = "2024-07-29T01:10:09.332Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/a7/d2782e4e3f77c8450f727ba74a8f12756d5ba823d81b941f1b04da9d033a/sphinxcontrib_serializinghtml-2.0.0-py3-none-any.whl", hash = "sha256:6e2cb0eef194e10c27ec0023bfeb25badbbb5868244cf5bc5bdc04e4464bf331", size = 92072, upload-time = "2024-07-29T01:10:08.203Z" },
+]
+
+[[package]]
+name = "svg-py"
+version = "1.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/1e/f36612d46266942c351de904bd9928610c485baee61220892277ac37be65/svg_py-1.10.0.tar.gz", hash = "sha256:2e1391411a205220a0e72ca303f3c2d11dbd564cb1dbc445406c5e11421bcc4b", size = 43808, upload-time = "2025-12-28T09:52:41.124Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/9f/77a405e7b2a334ce774835263c3374d4ed307a3473f3925d9990a8c029e0/svg_py-1.10.0-py3-none-any.whl", hash = "sha256:54c7470347d5d79b30d059584a4f449da08b462903e8ce262981338bab755560", size = 15207, upload-time = "2025-12-28T09:52:39.559Z" },
 ]
 
 [[package]]
