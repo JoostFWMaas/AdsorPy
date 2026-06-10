@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, ParamSpec, cast
+from typing import TYPE_CHECKING, Literal, ParamSpec, cast, TypeVar
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -18,7 +18,7 @@ import shapely
 import shapely.affinity as aff
 import svg
 from pydantic import PositiveFloat, PositiveInt
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QSettings, QTimer
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -37,12 +37,13 @@ from PySide6.QtWidgets import (
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
+
 if TYPE_CHECKING:
 
     from src.adsorpy.types import BoolArray
 
+    T = TypeVar("T", bound=bool | int | str | float)
     P = ParamSpec("P")  # Helps with static type checkers.
-
 
 plt.rcParams.update(
     {
@@ -272,6 +273,8 @@ class MoleculeViewer(QWidget):
         """Initialise the molecule orientation widget."""
         super().__init__()
 
+        self._settings = QSettings("adsorpy", "MoleculeViewer")
+
         # Step 1: Initialise raw variables and data placeholders
         self.atomkeys, self.atompos, self.colours = self._init_data(atomkeys, atompos, colours)
 
@@ -347,6 +350,12 @@ class MoleculeViewer(QWidget):
 
         return temp_atomkeys, temp_atompos, temp_colours
 
+    def _fetch_setting(self, name: str, default: T, return_type: type[T] | None = None) -> T:
+        """Fetch settings by checking if they exist followed by their value."""
+        check_type = type(default) if return_type is None else return_type
+        return self._settings.value(name, defaultValue=default, type=check_type)
+
+
     def _create_filter_panel(self) -> QVBoxLayout:
         """Build the panel component hosting Z-cutoff adjustments and checkboxes.
 
@@ -358,6 +367,7 @@ class MoleculeViewer(QWidget):
         self.bg_toggle: QPushButton = QPushButton("Toggle White Background")
         self.bg_toggle.setCheckable(True)
         self.bg_toggle.clicked.connect(self.toggle_svg_background)
+        self.bg_toggle.setChecked(self._fetch_setting("bg_on", default=False))
         filter_panel.addWidget(self.bg_toggle)
         self.bg_toggle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
@@ -382,7 +392,7 @@ class MoleculeViewer(QWidget):
         self.z_spinbox.setValue(self.z_cutoff)
         self.z_spinbox.setEnabled(False)
         self.z_filter_enable.toggled.connect(self.z_spinbox.setEnabled)
-        self.z_filter_enable.toggled.connect(lambda _: self.apply_filters())
+        self.z_filter_enable.toggled.connect(self.apply_filters)
         self.z_spinbox.valueChanged.connect(self.update_z_cutoff)
 
         z_layout.addWidget(self.z_filter_enable)
@@ -407,7 +417,7 @@ class MoleculeViewer(QWidget):
             cb: QCheckBox = QCheckBox(f"Show {atom}")
             cb.setChecked(True)
             self.atom_toggles[atom] = cb
-            cb.stateChanged.connect(lambda state: self.apply_filters())
+            cb.stateChanged.connect(self.apply_filters)
 
             color_swatch: QLabel = QLabel()
             color_swatch.setFixedSize(QSize(14, 14))
@@ -433,6 +443,7 @@ class MoleculeViewer(QWidget):
         self.svg_widget.setMinimumSize(300, 300)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         plot_toggle_layout.addWidget(self.svg_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.toggle_svg_background(self.bg_toggle.isChecked())
 
 
         plot_workspace.addLayout(plot_toggle_layout)
@@ -506,7 +517,11 @@ class MoleculeViewer(QWidget):
 
     def apply_filters(self) -> None:
         """Calculate boolean masks against root datasets and handle redraw requests."""
-        mask: np.ndarray = self.orig_atompos[:, 2] >= self.z_cutoff
+        mask: BoolArray
+        if self.z_filter_enable.isChecked():
+            mask = self.orig_atompos[:, 2] >= self.z_cutoff
+        else:
+            mask = np.ones_like(self.orig_atompos[:, 2], dtype=np.bool_)
 
         allowed_types: set[str] = {atom for atom, cb in self.atom_toggles.items() if cb.isChecked()}
         type_mask: np.ndarray = np.isin(self.orig_atomkeys, list(allowed_types))
@@ -598,6 +613,7 @@ class MoleculeViewer(QWidget):
             self.svg_widget.setStyleSheet("background-color: white; border-radius: 4px;")
         else:
             self.svg_widget.setStyleSheet("background-color: transparent;")
+        self._settings.setValue("bg_on", checked)
 
     def transform(self):
         rotations = rotation_matrix(self.roll, self.pitch, self.yaw)
@@ -851,7 +867,7 @@ class MoleculeViewer(QWidget):
         # 1. Grab the active rotation matrix from your backend configuration
         rotations = rotation_matrix(self.roll, self.pitch, self.yaw)
 
-        # 2. Define standard, color-coded unit directions: X (Red), Y (Green), Z (Blue)
+        # 2. Define standard, colour-coded unit directions: X (Red), Y (Green), Z (Blue)
         axes_3d = np.array(
             [
                 [1.0, 0.0, 0.0],  # X unit vector
@@ -968,7 +984,7 @@ def first_time_loader(
         "yaw": viewer.yaw,
         "file_name": str(file_name),
         "ignore_atoms": viewer.disabled_molecules,
-        "z_trim": z_trim,
+        "z_trim": viewer.z_cutoff if viewer.z_filter_enable.isChecked() else None,
     }
 
     print(f"kwargs = {result}")
