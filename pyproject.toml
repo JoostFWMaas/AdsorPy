@@ -64,6 +64,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "rtree>=1.4.1",
     "svg-py>=1.10.0",
+    "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]

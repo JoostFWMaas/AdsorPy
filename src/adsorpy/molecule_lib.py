@@ -16,33 +16,30 @@ import matplotlib.pyplot as plt
 import numpy as np
 import shapely
 import shapely.affinity as aff
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import Circle
-from matplotlib.widgets import Slider, TextBox
+import svg
+from pydantic import PositiveFloat, PositiveInt
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QFontMetrics
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QDoubleSpinBox,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
+)
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
-from pydantic import PositiveFloat, PositiveInt
-import json
-from pathlib import Path
-import numpy as np
-
-from PySide6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-    QSlider, QLabel, QLineEdit, QGraphicsScene, QDoubleSpinBox, QPushButton, QSizePolicy
-)
-from PySide6.QtSvgWidgets import QSvgWidget, QGraphicsSvgItem
-from PySide6.QtCore import Qt
-
-from svg import SVG, Circle
-
 if TYPE_CHECKING:
-    from matplotlib import axes, figure
-    from matplotlib.axes import Axes
-    from matplotlib.figure import Figure
-    from numpy.typing import NDArray
 
-    from src.adsorpy.types import BoolArray, FloatArray, InDict, RotMatrix
+    from src.adsorpy.types import BoolArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
 
@@ -75,6 +72,7 @@ RADII: dict[str, float] = dict(
         delimiter=",",
     ),
 )
+"""Key-value pairs of chemical symbols and van der Waals radii."""
 
 
 def discorectangle(
@@ -187,8 +185,6 @@ def xyz_reader(
     pitch: float = 0.0,
     yaw: float = 0.0,
     z_trim: float | None = None,
-    # *args: P.args,
-    # **kwargs: P.kwargs,
 ) -> Polygon:
     """Read files in the xyz format of VASP.
 
@@ -240,8 +236,14 @@ def xyz_reader(
 
     return cast("Polygon", aff.translate(molecule, *centre))
 
-# C:\Users\s137316\OneDrive - TU Eindhoven\Documents\BDEAS.xyz
-def rotation_matrix(roll, pitch, yaw):
+def rotation_matrix(roll: np.floating, pitch: np.floating, yaw: np.floating) -> np.ndarray:
+    """Compute the 3D rotation matrix using roll, pitch, and yaw.
+
+    :param roll: Rotation along the x-axis.
+    :param pitch: Rotation along the y-axis.
+    :param yaw: Rotation along the z-axis.
+    :returns: The rotation matrix.
+    """
     fac = np.pi / 180.0
 
     rot_x = np.array([
@@ -264,39 +266,185 @@ def rotation_matrix(roll, pitch, yaw):
 
 
 class MoleculeViewer(QWidget):
-    def __init__(self, atomkeys, atompos, colours, lattice):
+    """Molecule orientation widget."""
+
+    def __init__(self, atomkeys, atompos, colours, lattice) -> None:
+        """Initialise the molecule orientation widget."""
         super().__init__()
 
-        self.atomkeys = atomkeys
-        self.atompos = atompos
-        self.colours = colours
-        self.lattice = lattice
+        # Step 1: Initialise raw variables and data placeholders
+        self.atomkeys, self.atompos, self.colours = self._init_data(atomkeys, atompos, colours)
 
-        self.roll = 0.0
-        self.pitch = 0.0
-        self.yaw = 0.0
-        self.x_offset = 0.0
-        self.y_offset = 0.0
+        self.lattice: float = lattice if lattice is not None else 1.0
+        self.show_bonds: bool = False
+        """Bool flag: are bonds displayed or not?"""
+        self.atom_toggles: dict[str, QCheckBox] = {}
 
-        layout = QVBoxLayout()
+        # Step 2: Build the structural layout tree
+        main_vert_layout: QVBoxLayout = QVBoxLayout()
+        top_horizontal_layout: QHBoxLayout = QHBoxLayout()
 
-        # Initialize and center SVG widget
-        self.svg_widget = QSvgWidget()
-        self.svg_widget.setMinimumSize(300, 300)
-        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        layout.addWidget(self.svg_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        # Generate structural UI modules (A, B, and C)
+        filter_panel: QVBoxLayout = self._create_filter_panel()
+        plot_workspace: QVBoxLayout = self._create_plot_panel()
 
-        # Add background toggle button
-        self.bg_toggle = QPushButton("Toggle White Background")
+        # Assemble Top Row (A | B)
+        self.setup_bond_controls(filter_panel)
+        top_horizontal_layout.addLayout(filter_panel, stretch=1)
+        self.setup_lattice_controls(filter_panel)
+        top_horizontal_layout.addLayout(plot_workspace, stretch=5)
+        main_vert_layout.addLayout(top_horizontal_layout, stretch=1)
+
+        # Assemble Bottom Row (-C-) directly into the layout tree
+        self._add_slider_panel(main_vert_layout)
+
+        # Finalise and trigger the initial filter pipeline pass
+        self.setLayout(main_vert_layout)
+        self.apply_filters()
+
+    @property
+    def disabled_molecules(self) -> list[str] | None:
+        """Get a sorted list of disabled molecule names, or None if empty."""
+        # Gather keys where the visual checkbox is unchecked
+        disabled = [str(atom) for atom, checkbox in self.atom_toggles.items() if not checkbox.isChecked()]
+
+        if not disabled:
+            return None
+
+        return sorted(disabled, key=list(RADII.keys()).index)
+
+    def _init_data(
+        self,
+        atomkeys: list[str] | np.ndarray,
+        atompos: list[list[float]] | np.ndarray,
+        colours: list[str] | np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Initialise internal tracking parameters, limits, and array structures.
+
+        :param atomkeys: Atoms keys.
+        :returns:
+            1) Atom keys
+            2) Atom positions
+            3) Atom colours
+        """
+        self.orig_atomkeys: np.ndarray = np.array(atomkeys, dtype=str)
+        self.orig_atompos: np.ndarray = np.array(atompos, dtype=np.float64)
+        self.orig_colours: np.ndarray = np.array(colours, dtype=str)
+
+        temp_atomkeys: np.ndarray = self.orig_atomkeys.copy()
+        temp_atompos: np.ndarray = self.orig_atompos.copy()
+        temp_colours: np.ndarray = self.orig_colours.copy()
+
+        self.roll: float = 0.0
+        self.pitch: float = 0.0
+        self.yaw: float = 0.0
+        self.x_offset: float = 0.0
+        self.y_offset: float = 0.0
+
+        self.min_z: float = float(np.min(self.orig_atompos[:, 2])) if self.orig_atompos.size else -10.0
+        self.max_z: float = float(np.max(self.orig_atompos[:, 2])) if self.orig_atompos.size else 10.0
+        self.z_cutoff: float = self.min_z - 0.1
+
+        return temp_atomkeys, temp_atompos, temp_colours
+
+    def _create_filter_panel(self) -> QVBoxLayout:
+        """Build the panel component hosting Z-cutoff adjustments and checkboxes.
+
+        :return: Main target layout framework representing Column A.
+        """
+        filter_panel: QVBoxLayout = QVBoxLayout()
+        filter_panel.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        self.bg_toggle: QPushButton = QPushButton("Toggle White Background")
         self.bg_toggle.setCheckable(True)
         self.bg_toggle.clicked.connect(self.toggle_svg_background)
-        layout.addWidget(self.bg_toggle)
+        filter_panel.addWidget(self.bg_toggle)
         self.bg_toggle.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        hint = self.bg_toggle.sizeHint()
-        self.bg_toggle.setFixedWidth(hint.width() + 20)
-        # layout.addWidget(self.bg_toggle, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        slider_params = {
+        hint: QSize = self.bg_toggle.sizeHint()
+        self.bg_toggle.setFixedWidth(hint.width() + 20)
+
+        # 1. Z-Cutoff Group
+        z_group: QGroupBox = QGroupBox("Z-Cutoff Filter")
+        z_layout: QHBoxLayout = QHBoxLayout(z_group)
+        z_label: QLabel = QLabel("Z-Min Cut:")
+        z_toggle_layout = QHBoxLayout()
+        self.z_filter_enable = QCheckBox()
+        self.z_filter_enable.setChecked(False)  # Disabled by default
+        self.z_filter_enable.setToolTip("Toggle Z-cutoff filter active/inactive")
+        z_layout.addLayout(z_toggle_layout)
+
+
+        self.z_spinbox: QDoubleSpinBox = QDoubleSpinBox()
+        self.z_spinbox.setRange(self.min_z - 1.0, self.max_z + 1.0)
+        self.z_spinbox.setDecimals(2)
+        self.z_spinbox.setSingleStep(0.1)
+        self.z_spinbox.setValue(self.z_cutoff)
+        self.z_spinbox.setEnabled(False)
+        self.z_filter_enable.toggled.connect(self.z_spinbox.setEnabled)
+        self.z_filter_enable.toggled.connect(lambda _: self.apply_filters())
+        self.z_spinbox.valueChanged.connect(self.update_z_cutoff)
+
+        z_layout.addWidget(self.z_filter_enable)
+
+        z_layout.addWidget(z_label)
+        z_layout.addWidget(self.z_spinbox)
+        filter_panel.addWidget(z_group)
+
+        # 2. Dynamic Atom Checkbox Toggles Group
+        atom_group: QGroupBox = QGroupBox("Filter Atoms by Type")
+        atom_checkbox_layout: QVBoxLayout = QVBoxLayout(atom_group)
+
+        unique_atoms: list[str] = sorted(set(self.orig_atomkeys), key=list(RADII.keys()).index)
+
+        for atom in unique_atoms:
+            idx: np.ndarray = np.where(self.orig_atomkeys == atom)
+            color_hex: str = self.orig_colours[idx][0] if idx[0].size else "#FFFFFF"
+
+            item_row: QHBoxLayout = QHBoxLayout()
+            item_row.setContentsMargins(0, 2, 0, 2)
+
+            cb: QCheckBox = QCheckBox(f"Show {atom}")
+            cb.setChecked(True)
+            self.atom_toggles[atom] = cb
+            cb.stateChanged.connect(lambda state: self.apply_filters())
+
+            color_swatch: QLabel = QLabel()
+            color_swatch.setFixedSize(QSize(14, 14))
+            color_swatch.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #555555; border-radius: 2px;")
+
+            item_row.addWidget(color_swatch)
+            item_row.addWidget(cb)
+            item_row.addStretch()
+            atom_checkbox_layout.addLayout(item_row)
+
+        filter_panel.addWidget(atom_group)
+        return filter_panel
+
+    def _create_plot_panel(self) -> QVBoxLayout:
+        """Build the panel viewport frame displaying rendered molecular assets.
+
+        :return: Main canvas workspace framework representing Column B.
+        """
+        plot_workspace: QVBoxLayout = QVBoxLayout()
+        plot_toggle_layout: QHBoxLayout = QHBoxLayout()
+
+        self.svg_widget: QSvgWidget = QSvgWidget()
+        self.svg_widget.setMinimumSize(300, 300)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        plot_toggle_layout.addWidget(self.svg_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+
+
+        plot_workspace.addLayout(plot_toggle_layout)
+
+        return plot_workspace
+
+    def _add_slider_panel(self, target_layout: QVBoxLayout) -> None:
+        """Append transformation sliders directly across the bottom container.
+
+        :param target_layout: Top-level root layout accepting row insertions.
+        """
+        slider_params: dict[str, tuple[int, int]] = {
             "roll": (-180, 180),
             "pitch": (-180, 180),
             "yaw": (-180, 180),
@@ -304,72 +452,148 @@ class MoleculeViewer(QWidget):
             "y_offset": (-5, 5),
         }
 
-        # Step 1: compute max width
-        max_width = 0
-        font_metrics = self.fontMetrics()
+        max_width: int = 0
+        font_metrics: QFontMetrics = self.fontMetrics()
 
         for param in slider_params:
-            width = font_metrics.horizontalAdvance(param)
+            width: int = font_metrics.horizontalAdvance(param)
             max_width = max(max_width, width)
 
         max_width += 10
 
-        self.sliders = {}
         for name, val_range in slider_params.items():
-            row = QHBoxLayout()
+            row: QHBoxLayout = QHBoxLayout()
 
-            label = QLabel(name)
+            label: QLabel = QLabel(name)
             label.setFixedWidth(max_width)
 
-            slider = QSlider(Qt.Horizontal)
+            slider: QSlider = QSlider(Qt.Horizontal)
             slider.setMinimum(val_range[0] * 10)
             slider.setMaximum(val_range[1] * 10)
 
-            box = QDoubleSpinBox()
-            box.setRange(val_range[0], val_range[1])
+            box: QDoubleSpinBox = QDoubleSpinBox()
+            box.setRange(float(val_range[0]), float(val_range[1]))
             box.setDecimals(2)
             box.setSingleStep(0.1)
             box.setValue(0.0)
             box.setFixedWidth(120)
 
-            # Connect slider to update logic using safe lambda parameter isolation
             slider.valueChanged.connect(
-                lambda val, n=name, b=box: self.update_values(val, n, b)
+                lambda val, n=name, b=box: self.update_values(val, n, b),
             )
 
-            # Connect spinbox finishing steps using safe lambda parameter isolation
             box.editingFinished.connect(
-                lambda s=slider, b=box: self.submit_values(s, b)
+                lambda s=slider, b=box, n=name: self.submit_values(s, b, n),
             )
 
             row.addWidget(label)
-            row.addWidget(slider)
+            row.addWidget(slider, 1)
             row.addWidget(box)
-            layout.addLayout(row)
+            target_layout.addLayout(row)
 
-        self.setLayout(layout)
+    def toggle_bonds(self, checked: bool) -> None:
+        """Toggle bond rendering on or off and update the view.
+
+        :param checked: Toggle bond rendering on or off.
+        """
+        self.show_bonds = checked
         self.draw()
 
-    def update_values(self, val, name, box_widget):
+    def update_z_cutoff(self, value: float) -> None:
+        """Slot targeting real-time spinbox adjustments to update pipeline state."""
+        self.z_cutoff = value
+        self.apply_filters()
+
+    def apply_filters(self) -> None:
+        """Calculate boolean masks against root datasets and handle redraw requests."""
+        mask: np.ndarray = self.orig_atompos[:, 2] >= self.z_cutoff
+
+        allowed_types: set[str] = {atom for atom, cb in self.atom_toggles.items() if cb.isChecked()}
+        type_mask: np.ndarray = np.isin(self.orig_atomkeys, list(allowed_types))
+
+        combined_mask: np.ndarray = mask & type_mask
+
+        self.atomkeys = self.orig_atomkeys[combined_mask]
+        self.atompos = self.orig_atompos[combined_mask]
+        self.colours = self.orig_colours[combined_mask]
+
+        self.draw()
+
+    def setup_bond_controls(self, layout) -> None:
+        """Create and connect the atomic bond visualisation toggle.
+
+        :param layout: The QLayout instance (e.g., QVBoxLayout) where the checkbox should be added.
+        """
+        # Ensure the underlying rendering property exists
+        if not hasattr(self, "show_bonds"):
+            self.show_bonds = False
+
+        # Initialise the checkbox widget
+        self.bond_checkbox = QCheckBox("Show Atomic Bonds (visual guide)")
+        self.bond_checkbox.setChecked(self.show_bonds)
+
+        # Connect the native toggle signal directly to your slot method
+        self.bond_checkbox.toggled.connect(self.toggle_bonds)
+
+        # Insert the checkbox into the provided layout panel
+        layout.addWidget(self.bond_checkbox)
+
+    def update_values(self, val, name, box_widget) -> None:
         """Unified slider-to-backend slot keeping widgets cleanly scoped."""
         v = val / 10
         # Block signals to avoid feedback looping when setting the companion value
-        box_widget.blockSignals(True)
+        box_widget.blockSignals(True)  # noqa: FBT003
         box_widget.setValue(v)
-        box_widget.blockSignals(False)
+        box_widget.blockSignals(False)  # noqa: FBT003
 
         setattr(self, name, v)
         self.draw()
 
-    def submit_values(self, slider_widget, box_widget):
+    def setup_lattice_controls(self, layout) -> None:
+        """Create and connect a standalone double spinbox for lattice spacing.
+
+        :param layout: The QLayout instance where the widget should be added.
+        """
+        # Create a sub-layout container for clean side-by-side alignment
+        container = QHBoxLayout()
+        label = QLabel("Lattice Spacing:")
+
+        # Initialise Double SpinBox (Native floats, 2 decimal precision)
+        self.lattice_spin = QDoubleSpinBox()
+        self.lattice_spin.setRange(0.0, 100.0)
+        self.lattice_spin.setSingleStep(0.01)
+        self.lattice_spin.setDecimals(2)
+        self.lattice_spin.setValue(self.lattice)
+
+        # Connect the change signal directly to the updater slot
+        self.lattice_spin.valueChanged.connect(self.update_lattice_value)
+
+        # Assemble the widgets
+        container.addWidget(label)
+        container.addWidget(self.lattice_spin)
+        layout.addLayout(container)
+
+    def update_lattice_value(self, float_val: float) -> None:
+        """Directly sync the backend lattice variable and re-render the SVG canvas."""
+        self.lattice = float_val
+        self.draw()
+
+    def submit_values(self, slider_widget, box_widget) -> None:
         """Unified spinbox-to-slider slot handling native numerical typing."""
         v = box_widget.value()
-        slider_widget.blockSignals(True)
+        # Block signals to avoid feedback looping when setting the companion value
+        slider_widget.blockSignals(True)  # noqa: FBT003
         slider_widget.setValue(int(v * 10))
-        slider_widget.blockSignals(False)
+        slider_widget.blockSignals(False)  # noqa: FBT003
 
-    def toggle_svg_background(self, checked):
-        """Swaps rendering canvas stylesheets dynamically."""
+        setattr(self, slider_widget, v)
+        self.draw()
+
+    def toggle_svg_background(self, checked: bool) -> None:
+        """Swap rendering canvas stylesheets dynamically.
+
+        :param checked: True for background, False for foreground.
+        """
         if checked:
             self.svg_widget.setStyleSheet("background-color: white; border-radius: 4px;")
         else:
@@ -397,163 +621,312 @@ class MoleculeViewer(QWidget):
 
             r = RADII.get(key, 0.5) * 20
 
-            elements.append(Circle(cx=px, cy=py, r=r, fill=col, opacity=0.8))
-            elements.append(Circle(cx=px, cy=py, r=r, fill="none", stroke="black"))
+            elements.append(svg.Circle(cx=px, cy=py, r=r, fill=col, opacity=0.8))
+            elements.append(svg.Circle(cx=px, cy=py, r=r, fill="none", stroke="black"))
 
         return elements
 
-    def draw(self):
+    def draw(self) -> None:
         pts = self.transform()
 
         xs, ys, zs = pts.T
 
-        xmin, xmax = np.min(xs), np.max(xs)
-        ymin, ymax = np.min(ys), np.max(ys)
-        zmin, zmax = np.min(zs), np.max(zs)
-
         # --- SVG full size ---
         W, H = 1000, 800
 
-        # force square drawing region
+        # Force square drawing region
         side = min(W, H)
 
-        # center square inside SVG
+        # Center square inside SVG
         offset_x = (W - side) / 2
         offset_y = (H - side) / 2
 
         # 2x2 grid inside square
         panel = side / 2
+        scale = panel * 0.45
+
+        # --- UNIFIED BOUNDARY & BUFFER CALCULATIONS ---
+        lattice_x = self.lattice * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5])
+        lattice_y = self.lattice * np.array(
+            [0, 0, 0, np.sqrt(3) / 2, np.sqrt(3) / 2, -np.sqrt(3) / 2, -np.sqrt(3) / 2],
+        )
+
+        all_x = np.concatenate([xs, zs, lattice_x])
+        all_y = np.concatenate([ys, zs, lattice_y])
+
+        xmin_v, xmax_v = np.min(all_x), np.max(all_x)
+        ymin_v, ymax_v = np.min(all_y), np.max(all_y)
+
+        span = max(xmax_v - xmin_v, ymax_v - ymin_v) * 1.5
+        if span < 1e-9:
+            span = 1.0
+
+        cx_data = (xmin_v + xmax_v) / 2
+        cy_data = (ymin_v + ymax_v) / 2
+
+        unit_to_pixel_ratio = (scale * 2) / span
 
         elements = []
 
-        # --- helper for normalization (SHARED scale per panel) ---
-        def norm(val, vmin, vmax, span, center):
+        # --- 3D BOND DETECTION ---
+        bond_pairs = []
+        if getattr(self, "show_bonds", False):
+            num_atoms = len(pts)
+            # Threshold parameters: modify these numbers to fit your dataset's units
+            min_dist = 0.4
+            max_dist = 1.9
+
+            for jj in range(num_atoms):
+                for j in range(jj + 1, num_atoms):
+                    # Calculate true Euclidean distance in 3D space
+                    dist = np.linalg.norm(pts[jj] - pts[j])
+                    if min_dist <= dist <= max_dist:
+                        bond_pairs.append((jj, j))
+
+        def add_axis_arrows(panel_cx, panel_cy, label_h, label_v):
+            base_x = panel_cx - panel * 0.45
+            base_y = panel_cy + panel * 0.45
+            arrow_len = 35
+
+            elements.append(
+                svg.Line(x1=base_x, y1=base_y, x2=base_x + arrow_len, y2=base_y, stroke="black", stroke_width=1.5)
+            )
+            elements.append(
+                svg.Polygon(
+                    points=[
+                        (base_x + arrow_len, base_y),
+                        (base_x + arrow_len - 6, base_y - 3),
+                        (base_x + arrow_len - 6, base_y + 3),
+                    ],
+                    fill="black",
+                )
+            )
+            elements.append(
+                svg.Text(
+                    text=label_h,
+                    x=base_x + arrow_len + 5,
+                    y=base_y + 4,
+                    font_size=svg.Length(14, "px"),
+                    font_family="sans-serif",
+                    fill="black",
+                )
+            )
+
+            elements.append(
+                svg.Line(x1=base_x, y1=base_y, x2=base_x, y2=base_y - arrow_len, stroke="black", stroke_width=1.5)
+            )
+            elements.append(
+                svg.Polygon(
+                    points=[
+                        (base_x, base_y - arrow_len),
+                        (base_x - 3, base_y - arrow_len + 6),
+                        (base_x + 3, base_y - arrow_len + 6),
+                    ],
+                    fill="black",
+                )
+            )
+            elements.append(
+                svg.Text(
+                    text=label_v,
+                    x=base_x - 4,
+                    y=base_y - arrow_len - 6,
+                    text_anchor="middle",
+                    font_size=svg.Length(14, "px"),
+                    font_family="sans-serif",
+                    fill="black",
+                )
+            )
+
+        def norm(val, center):
             return (val - center) / span
 
-        def get_bounds(arr):
-            return np.min(arr), np.max(arr)
-
-        # ✅ scatter projection (NOT vdW)
         def scatter_proj(xdata, ydata, depth, col, row):
-            cx = panel * (col + 0.5)
-            cy = panel * (row + 0.5)
-            scale = panel * 0.45
+            cx = offset_x + panel * (col + 0.5)
+            cy = offset_y + panel * (row + 0.5)
 
-            xmin_, xmax_ = get_bounds(xdata)
-            ymin_, ymax_ = get_bounds(ydata)
+            # 1. Render bonds first if enabled, so they sit visually behind the atom markers
+            for idx1, idx2 in bond_pairs:
+                nx1, ny1 = norm(xdata[idx1], cx_data), norm(ydata[idx1], cy_data)
+                nx2, ny2 = norm(xdata[idx2], cx_data), norm(ydata[idx2], cy_data)
 
-            span = max(xmax_ - xmin_, ymax_ - ymin_)
-            if span < 1e-9:
-                span = 1.0
+                px1, py1 = cx + nx1 * scale * 2, cy - ny1 * scale * 2
+                px2, py2 = cx + nx2 * scale * 2, cy - ny2 * scale * 2
 
-            cx_data = (xmin_ + xmax_) / 2
-            cy_data = (ymin_ + ymax_) / 2
+                elements.append(
+                    svg.Line(x1=px1, y1=py1, x2=px2, y2=py2, stroke="#aaaaaa", stroke_width=2, stroke_dasharray="4,4")
+                )
 
-            # ✅ match your matplotlib: depth sorting + size scaling
+            # 2. Render depth-sorted atoms
             order = np.argsort(depth)
-
-            # marker size scaling (same idea as your _update)
             dmin, dmax = np.min(depth), np.max(depth)
-            size = 30 + (depth - dmin) / (dmax - dmin + 1e-9) * 30
+            depth_range = dmax - dmin if (dmax - dmin) > 1e-9 else 1.0
+            size = 30 + (depth - dmin) / depth_range * 30
 
-            for i in order:
-                nx = norm(xdata[i], xmin_, xmax_, span, cx_data)
-                ny = norm(ydata[i], ymin_, ymax_, span, cy_data)
+            for ii in order:
+                nx = norm(xdata[ii], cx_data)
+                ny = norm(ydata[ii], cy_data)
 
                 px = cx + nx * scale * 2
                 py = cy - ny * scale * 2
 
-                r = size[i] * 0.2  # convert marker size → pixel radius
+                r = size[ii] * 0.2
 
-                elements.append(Circle(
-                    cx=px, cy=py, r=r,
-                    fill=self.colours[i],
-                    stroke="none"
-                ))
+                elements.append(
+                    svg.Circle(
+                        cx=px,
+                        cy=py,
+                        r=r,
+                        fill=self.colours[ii],
+                        stroke="none",
+                    )
+                )
 
-        # ✅ XY (depth = z)
+        # Render the 3 traditional scatter projections
         scatter_proj(xs, ys, zs, 0, 0)
-
-        # ✅ ZY (depth = x)
         scatter_proj(zs, ys, xs, 1, 0)
-
-        # ✅ XZ (depth = y)
         scatter_proj(xs, zs, ys, 0, 1)
 
-        # --- vdW ---
+        # --- vdW (Panel 4) ---
         cx = offset_x + panel * 1.5
         cy = offset_y + panel * 1.5
-        scale = panel * 0.45
-
-        span = max(xmax - xmin, ymax - ymin)
-        if span < 1e-9:
-            span = 1.0
-
-        cx_data = (xmin + xmax) / 2
-        cy_data = (ymin + ymax) / 2
 
         order = np.argsort(zs)
 
-        for i in order:
-            nx = (xs[i] - cx_data) / span
-            ny = (ys[i] - cy_data) / span
+        for jj in order:
+            nx = norm(xs[jj], cx_data)
+            ny = norm(ys[jj], cy_data)
 
             px = cx + nx * scale * 2
             py = cy - ny * scale * 2
 
-            r = RADII[self.atomkeys[i]] * scale * 0.3
+            physical_radius = RADII[self.atomkeys[jj]]
+            r = physical_radius * unit_to_pixel_ratio
 
-            # fill
-            elements.append(Circle(
-                cx=px, cy=py, r=r,
-                fill=self.colours[i],
-                opacity=0.25
-            ))
+            elements.append(
+                svg.Circle(
+                    cx=px,
+                    cy=py,
+                    r=r,
+                    fill=self.colours[jj],
+                    opacity=0.25,
+                )
+            )
 
-            # outline
-            elements.append(Circle(
-                cx=px, cy=py, r=r,
-                fill="none",
-                stroke=self.colours[i]
-            ))
+            elements.append(
+                svg.Circle(
+                    cx=px,
+                    cy=py,
+                    r=r,
+                    fill="none",
+                    stroke=self.colours[jj],
+                )
+            )
 
-        # --- lattice points (preserved) ---
-        lattice_x = self.lattice * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5])
-        lattice_y = self.lattice * np.array(
-            [0, 0, 0, np.sqrt(3) / 2, np.sqrt(3) / 2, -np.sqrt(3) / 2, -np.sqrt(3) / 2]
+            elements.append(
+                svg.Circle(
+                    cx=px,
+                    cy=py,
+                    r=r * 0.1,
+                    fill=self.colours[jj],
+                    stroke="black",
+                )
+            )
+
+        # --- lattice points ---
+        for lx, ly in zip(lattice_x, lattice_y, strict=True):
+            nx = norm(lx, cx_data)
+            ny = norm(ly, cy_data)
+
+            px = cx + nx * scale * 2
+            py = cy - ny * scale * 2
+
+            elements.append(svg.Circle(cx=px, cy=py, r=6, fill="black"))
+
+        # --- Add Axis Arrows into the Corners ---
+        add_axis_arrows(offset_x + panel * 0.5, offset_y + panel * 0.5, "x", "y")
+        add_axis_arrows(offset_x + panel * 1.5, offset_y + panel * 0.5, "z", "y")
+        add_axis_arrows(offset_x + panel * 0.5, offset_y + panel * 1.5, "x", "z")
+        add_axis_arrows(offset_x + panel * 1.5, offset_y + panel * 1.5, "x", "y")
+
+        # 1. Grab the active rotation matrix from your backend configuration
+        rotations = rotation_matrix(self.roll, self.pitch, self.yaw)
+
+        # 2. Define standard, color-coded unit directions: X (Red), Y (Green), Z (Blue)
+        axes_3d = np.array(
+            [
+                [1.0, 0.0, 0.0],  # X unit vector
+                [0.0, 1.0, 0.0],  # Y unit vector
+                [0.0, 0.0, 1.0],  # Z unit vector
+            ]
         )
 
-        for lx, ly in zip(lattice_x, lattice_y):
-            nx = (lx - cx_data) / span
-            ny = (ly - cy_data) / span
+        # 3. Rotate the basis vectors with the exact matrix your atoms use
+        rotated_axes = axes_3d @ rotations
 
-            px = cx + nx * scale * 2
-            py = cy - ny * scale * 2
+        # Anchor point in the bottom-left quadrant area of Panel 4
+        rot_base_x = cx + panel * 0.35
+        rot_base_y = cy - panel * 0.35
+        axis_pixel_len = 35  # Visual size of the vectors
 
-            elements.append(Circle(cx=px, cy=py, r=6, fill="black"))
+        # Axis properties for mapping loops: colours, labels, and drawing order (by depth/Z)
+        axis_meta = [
+            {"vec": rotated_axes[0], "color": "#d32f2f", "label": "x"},  # Red X
+            {"vec": rotated_axes[1], "color": "#388e3c", "label": "y"},  # Green Y
+            {"vec": rotated_axes[2], "color": "#1976d2", "label": "z"},  # Blue Z
+        ]
+        # Sort by depth (Z-value) so background vectors don't overlap foreground elements uglily
+        axis_meta.sort(key=lambda item: item["vec"][2])
 
-        # panel borders (debug/visual clarity)
-        from svg import Rect
-        for c in range(2):
-            for r in range(2):
-                elements.append(Rect(
-                    x=offset_x + c * panel,
-                    y=offset_y + r * panel,
-                    width=panel,
-                    height=panel,
-                    fill="none",
-                    stroke="#888"
-                ))
+        for axis in axis_meta:
+            vx, vy, vz = axis["vec"]
 
-        svg = SVG(
-            width="100%",
-            height="100%",
-            viewBox=f"0 0 {W} {H}",
-            preserveAspectRatio="xMidYMid meet",
+            # Map components to 2D view screen (X maps right, Y maps inverted up)
+            end_x = rot_base_x + vx * axis_pixel_len
+            end_y = rot_base_y - vy * axis_pixel_len
+
+            # Draw the rotated vector line segment
+            elements.append(
+                svg.Line(x1=rot_base_x, y1=rot_base_y, x2=end_x, y2=end_y, stroke=axis["color"], stroke_width=2.5)
+            )
+
+            # Add tip circles to make the 3D projection readable
+            elements.append(svg.Circle(cx=end_x, cy=end_y, r=3, fill=axis["color"]))
+
+            # Label string offset
+            elements.append(
+                svg.Text(
+                    text=axis["label"],
+                    x=end_x + (5 if vx >= 0 else -12),
+                    y=end_y + (4 if vy <= 0 else -6),
+                    font_size=svg.Length(13, "px"),
+                    font_weight="bold",
+                    font_family="sans-serif",
+                    fill=axis["color"],
+                ),
+            )
+
+        # Panel borders
+        elements.extend([
+            svg.Rect(
+                x=offset_x + c * panel,
+                y=offset_y + r * panel,
+                width=panel,
+                height=panel,
+                fill="none",
+                stroke="#888",
+            )
+            for c in range(2) for r in range(2)
+        ])
+
+        svg_out = svg.SVG(
+            width=svg.Length(100, "%"),
+            height=svg.Length(100, "%"),
+            viewBox=svg.ViewBoxSpec(0, 0, W, H),
+            preserveAspectRatio=svg.PreserveAspectRatio(),
             elements=elements,
         )
 
-        self.svg_widget.load(str(svg).encode("utf-8"))
+        self.svg_widget.load(str(svg_out).encode("utf-8"))
 
 def first_time_loader(
     file_name,
@@ -594,153 +967,13 @@ def first_time_loader(
         "pitch": viewer.pitch,
         "yaw": viewer.yaw,
         "file_name": str(file_name),
-        "ignore_atoms": ignore_atoms,
+        "ignore_atoms": viewer.disabled_molecules,
         "z_trim": z_trim,
     }
 
     print(f"kwargs = {result}")
     return result
 
-
-# def _update(  # noqa: PLR0913
-#     val: float,
-#     ang_x: Slider,
-#     ang_y: Slider,
-#     ang_z: Slider,
-#     translate_x: Slider,
-#     translate_y: Slider,
-#     box_x: TextBox,
-#     box_y: TextBox,
-#     box_z: TextBox,
-#     box_xoff: TextBox,
-#     box_yoff: TextBox,
-#     atompos: FloatArray,
-#     axs: list[axes.Axes],
-#     fig: figure.Figure,
-#     atomcolours: NDArray[np.str_],
-#     atomkeys: NDArray[np.str_],
-#     reference_lattice_spacing: float,
-# ) -> None:
-#     roll = ang_z.val
-#     pitch = ang_y.val
-#     yaw = ang_x.val
-#     x_offset = translate_x.val
-#     y_offset = translate_y.val
-#
-#     box_z.set_val(f"{roll:.3f}")
-#     box_y.set_val(f"{pitch:.3f}")
-#     box_x.set_val(f"{yaw:.3f}")
-#     box_xoff.set_val(f"{x_offset:.3f}")
-#     box_yoff.set_val(f"{y_offset:.3f}")
-#
-#     ident_mat: RotMatrix = cast("RotMatrix", np.identity(3))
-#
-#     rollmat = ident_mat.copy()
-#     pitchmat = ident_mat.copy()
-#     yawmat = ident_mat.copy()
-#     fac = np.pi / 180.0
-#     rollmat[1, [1, 2]] = np.cos(roll * fac), -np.sin(roll * fac)
-#     rollmat[2, [1, 2]] = np.sin(roll * fac), np.cos(roll * fac)
-#     pitchmat[0, [0, 2]] = np.cos(pitch * fac), np.sin(pitch * fac)
-#     pitchmat[2, [0, 2]] = -np.sin(pitch * fac), np.cos(pitch * fac)
-#     yawmat[0, [0, 1]] = np.cos(yaw * fac), -np.sin(yaw * fac)
-#     yawmat[1, [0, 1]] = np.sin(yaw * fac), np.cos(yaw * fac)
-#
-#     ident_mat = ident_mat @ yawmat @ pitchmat @ rollmat
-#
-#     newatompos = atompos.copy()
-#
-#     for crdx, coords in enumerate(atompos):
-#         newatompos[crdx] = coords @ ident_mat
-#
-#     newatompos -= np.mean(newatompos, axis=0)
-#     if x_offset is not None:
-#         newatompos[:, 0] -= x_offset
-#     if y_offset is not None:
-#         newatompos[:, 1] -= y_offset
-#
-#     for ax in axs:
-#         ax.set_aspect("equal", "box")
-#         ax.clear()
-#
-#     axs[0].set_xlabel("x-ax")
-#     axs[0].set_ylabel("y-ax")
-#     axs[1].set_xlabel("z-ax")
-#     axs[1].set_ylabel("y-ax")
-#     axs[2].set_xlabel("x-ax")
-#     axs[2].set_ylabel("z-ax")
-#     axs[3].set_xlabel("x-ax")
-#     axs[3].set_ylabel("y-ax")
-#
-#     xs: FloatArray
-#     ys: FloatArray
-#     zs: FloatArray
-#     xs, ys, zs = newatompos.T
-#
-#     xminmax = np.min(xs), np.max(xs)
-#     yminmax = np.min(ys), np.max(ys)
-#     zminmax = np.min(zs), np.max(zs)
-#
-#     xmarker = 30 + (xs - xminmax[0]) / (xminmax[1] - xminmax[0]) * 30
-#     ymarker = 30 + (ys - yminmax[0]) / (yminmax[1] - yminmax[0]) * 30
-#     zmarker = 30 + (zs - zminmax[0]) / (zminmax[1] - zminmax[0]) * 30
-#
-#     xsort = np.argsort(xs)
-#     ysort = np.argsort(ys)
-#     zsort = np.argsort(zs)
-#
-#     axs[0].scatter(xs[zsort], ys[zsort], c=atomcolours[zsort], s=zmarker[zsort])
-#     axs[1].scatter(zs[xsort], ys[xsort], c=atomcolours[xsort], s=xmarker[xsort])
-#     axs[2].scatter(xs[ysort], zs[ysort], c=atomcolours[ysort], s=ymarker[ysort])
-#
-#     circles = np.array(
-#         [Circle((xval, yval), RADII[atmk]) for xval, yval, atmk in zip(xs, ys, atomkeys, strict=True)],
-#     )
-#     axs[3].add_collection(PatchCollection(circles[zsort], fc=atomcolours[zsort], edgecolors="none", alpha=0.25))
-#     axs[3].add_collection(PatchCollection(circles[zsort], ec=atomcolours[zsort], fc="none"))
-#
-#     axs[3].scatter(
-#         reference_lattice_spacing * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5]),
-#         reference_lattice_spacing
-#         * np.array(
-#             [
-#                 0,
-#                 0,
-#                 0,
-#                 np.sqrt(3) / 2,
-#                 np.sqrt(3) / 2,
-#                 -np.sqrt(3) / 2,
-#                 -np.sqrt(3) / 2,
-#             ],
-#         ),
-#         c="k",
-#         s=200,
-#     )
-#     axs[3].scatter(xs[zsort], ys[zsort], c=atomcolours[zsort], edgecolors="w")
-#
-#     xlim: tuple[float, float] = axs[3].get_xlim()
-#     ylim: tuple[float, float] = axs[3].get_ylim()
-#     xmean: float = np.mean(xlim, dtype=float)
-#     ymean: float = np.mean(ylim, dtype=float)
-#     xlim = xlim[0] * 1.1 - 0.1 * xmean, xlim[1] * 1.1 - 0.1 * xmean
-#     ylim = ylim[0] * 1.1 - 0.1 * ymean, ylim[1] * 1.1 - 0.1 * ymean
-#
-#     axs[3].set_xlim(xlim)
-#     axs[3].set_ylim(ylim)
-#
-#     axs[0].set_xlim(xlim)
-#     axs[0].set_ylim(ylim)
-#     axs[1].set_ylim(ylim)
-#     xmin, xmax = axs[1].get_xlim()
-#     if xmax - xmin < 2:  # noqa: PLR2004
-#         axs[1].set_xlim((xmin - 1, xmax + 1))
-#     axs[2].set_xlim(xlim)
-#     ymin, ymax = axs[2].get_ylim()
-#     if ymax - ymin < 2:  # noqa: PLR2004
-#         axs[2].set_ylim((ymin - 1, ymax + 1))
-#
-#     fig.canvas.blit(fig.bbox)
-#     fig.canvas.flush_events()
 
 def _xyz_verifier(
         atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]],
@@ -823,7 +1056,7 @@ def _initialise_reader(
     elif ignore_atoms is None:
         pass
     elif isinstance(ignore_atoms[0], str):
-        mask = np.ones(atomkeys.size, dtype=bool)
+        mask = np.ones(atomkeys.size, dtype=np.bool_)
         for ign_atm in ignore_atoms:
             mask &= atomkeys != ign_atm
 
@@ -845,5 +1078,5 @@ def _initialise_reader(
 if __name__ == "__main__":  # Best practice
     # while (file := input("File path name, or q to quit: ")).lower() not in {"q", "quit"}:
     #     first_time_loader(file)
-    file = r"C:\Users\s137316\OneDrive - TU Eindhoven\Documents\BDEAS.xyz"
+    file = r"C:\Users\Flash User\Downloads\xyz_examples\fluorochloromethanol.xyz"
     first_time_loader(file)

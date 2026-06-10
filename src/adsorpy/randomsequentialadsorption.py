@@ -15,9 +15,8 @@ from typing import TYPE_CHECKING, Final, Literal, ParamSpec, cast
 
 import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff
-# import svgwrite
-from xml.dom.minidom import parseString
 import svg
+from defusedxml.minidom import parseString
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
@@ -1045,6 +1044,7 @@ class Simulator:
             return angle, reflect_x
 
         filename: Path = Path(filename).with_suffix(".svg")
+        rounding: Final[int] = 5
 
         tab10_colors: cycle[str] = cycle([
             "#4e79a7",
@@ -1060,8 +1060,23 @@ class Simulator:
         ])
         """New Tableau color map."""  # TODO: Leave toggle for legacy?
 
-        width = float(round(surf.x_max, 5))
-        height = float(round(surf.y_max, 5))
+        tab10_colors_old = cycle([
+            "#1f77b4",
+            "#ff7f0e",
+            "#2ca02c",
+            "#d62728",
+            "#9467bd",
+            "#8c564b",
+            "#e377c2",
+            "#7f7f7f",
+            "#bcbd22",
+            "#17becf",
+
+        ])
+        """Old Tableau color map."""
+
+        width = float(round(surf.x_max, rounding))
+        height = float(round(surf.y_max, rounding))
 
         # Root SVG
         root = svg.SVG(
@@ -1086,23 +1101,20 @@ class Simulator:
 
         for mol_gr in amgs:
 
-            # Optimize: Grab coordinates directly as a flat NumPy array
             coords = np.round(
                 np.asarray(
                     mol_gr.rotated_molecules[0].exterior.coords,
                     dtype=float,
                 ),
-                5,
+                rounding,
             )
 
             shape_id = f"mol_{mol_gr.group_id}"
 
-            # FIX: points must be flat (e.g. [x1, y1, x2, y2...]).
-            # coords.flatten() converts the matrix to a clean, flat list instantly.
             poly = svg.Polygon(
                 points=coords.flatten().tolist(),
                 id=shape_id,
-                fill=getattr(mol_gr, "color", next(tab10_colors)),
+                fill=getattr(mol_gr, "color", next(tab10_colors_old)),
                 stroke="none",
             )
 
@@ -1113,61 +1125,47 @@ class Simulator:
 
             mask = self.mol_data.stored_data["exists"] & (self.mol_data.stored_data["mol_group"] == mol_gr.group_id)
 
-            # 1. Slice the target subset of data once
             subset = self.mol_data.stored_data[mask]
             if len(subset) == 0:
                 continue
 
-            # 2. Call your updated, vectorized transform function on the whole array
             angles, reflects_x = _idx_to_transform(
                 idx=subset["rot_idx"],
                 allowed_rotations=mol_gr.allowed_rotations,
                 reflection_symmetry=mol_gr.reflection_symmetry,
             )
 
-            # 3. Vectorize the 'translate(x,y)' string formatting at C-level
-            x_coords = np.round(subset["x_coord"], 5).astype(str)
-            y_coords = np.round(subset["y_coord"], 5).astype(str)
+            x_coords = np.round(subset["x_coord"], rounding).astype(str)
+            y_coords = np.round(subset["y_coord"], rounding).astype(str)
             translate_strs = np.char.add(
                 np.char.add("translate(", x_coords), np.char.add(",", np.char.add(y_coords, ")"))
             )
 
-            # 4. Instantaneous zip generation (skips dictionary overhead entirely)
             href_target = f"#{shape_registry[mol_gr.group_id]}"
 
-            # 1. Initialize masks for conditions across the entire array
-            has_reflection = reflects_x  # Array of True/False
-            has_rotation = angles != 0.0  # Array of True/False
+            has_reflection = reflects_x
+            has_rotation = angles != 0.0
 
-            # 2. Vectorize conditional string construction using np.select
-            # Path A: Both reflection AND rotation exist
             cond_both = has_reflection & has_rotation
             val_both = np.char.add(np.char.add(translate_strs, " scale(-1,1) rotate("), angles.astype(str))
             val_both = np.char.add(val_both, ")")
 
-            # Path B: Only reflection exists
             cond_reflect = has_reflection & ~has_rotation
             val_reflect = np.char.add(translate_strs, " scale(-1,1)")
 
-            # Path C: Only rotation exists
             cond_rotate = ~has_reflection & has_rotation
             val_rotate = np.char.add(np.char.add(translate_strs, " rotate("), angles.astype(str))
             val_rotate = np.char.add(val_rotate, ")")
 
-            # Combine everything using numpy selection logic (fallback to raw translation)
             conditions = [cond_both, cond_reflect, cond_rotate]
             choices = [val_both, val_reflect, val_rotate]
 
             final_transforms = np.select(conditions, choices, default=translate_strs)
 
-            # 3. Bulk append straight to elements using a single fast list comprehension
             group.elements.extend([svg.Use(href=href_target, transform=[tx]) for tx in final_transforms])
 
             root_group.elements.append(group)
 
-        # -----------------------------------
-        # GRID POINT TEMPLATE
-        # -----------------------------------
         # -----------------------------------
         # GRID POINT TEMPLATE
         # -----------------------------------
@@ -1185,13 +1183,9 @@ class Simulator:
 
         grid_group = svg.G(elements=[])
 
-        # 1. Vectorize coordinate extraction directly from the transposed array
-        # This grabs all X and Y float coordinates simultaneously in two flat arrays
-        x_coords = np.round(surf.grid_coordinates[0].astype(float), 4)
-        y_coords = np.round(surf.grid_coordinates[1].astype(float), 4)
+        x_coords = np.round(surf.grid_coordinates[0].astype(float), rounding)
+        y_coords = np.round(surf.grid_coordinates[1].astype(float), rounding)
 
-        # 2. Bulk instantiate the svg.Use tags and extend the list in one transaction
-        # Zip iterates over the flat numeric arrays instantly without Python dict overhead
         grid_group.elements.extend([
             svg.Use(href=f"#{grid_point_id}", x=x, y=y)
             for x, y in zip(x_coords, y_coords, strict=True)
@@ -1220,11 +1214,8 @@ class Simulator:
         parsed_xml = parseString(raw_xml)
         pretty_xml = parsed_xml.toprettyxml(indent="    ", encoding="UTF-8")
 
-        # 3. Save the pretty printed text
         with filename.open("wb") as f:
             f.write(pretty_xml)
-        # with open(filename, "w", encoding="utf-8") as f:
-        #     f.write(root.as_str())
 
     def attempt_cascading_placement(
             self,
