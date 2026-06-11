@@ -7,7 +7,6 @@ import re
 import sys
 import webbrowser
 from collections import OrderedDict
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg

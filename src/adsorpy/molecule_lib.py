@@ -10,15 +10,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, ParamSpec, cast, TypeVar
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import shapely
 import shapely.affinity as aff
 import svg
-from pydantic import PositiveFloat, PositiveInt
-from PySide6.QtCore import QSize, Qt, QSettings, QTimer
+from pydantic import FilePath, PositiveFloat, PositiveInt, validate_call
+from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
 )
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
-
 
 if TYPE_CHECKING:
 
@@ -75,7 +74,7 @@ RADII: dict[str, float] = dict(
 )
 """Key-value pairs of chemical symbols and van der Waals radii."""
 
-
+@validate_call
 def discorectangle(
     radius: PositiveFloat ,
     distance: PositiveFloat ,
@@ -109,7 +108,7 @@ def discorectangle(
 
     return cast("Polygon", unary_union([rectangle, circles]))
 
-
+@validate_call
 def circulium(
     radius: PositiveFloat,
     x_offset: float = 0.0,
@@ -128,7 +127,7 @@ def circulium(
     """
     return Point((x_offset, y_offset)).buffer(radius, quad_segs=quad_segs)
 
-
+@validate_call
 def dogbonium(scale: PositiveFloat = 1) -> Polygon:
     """Make a molecule shaped like a bone. Used as a pathological case.
 
@@ -146,7 +145,7 @@ def dogbonium(scale: PositiveFloat = 1) -> Polygon:
 
     return dogbone
 
-
+@validate_call
 def polygonium(
     verts: PositiveInt = 3,
     scale: PositiveFloat = 1.0,
@@ -176,9 +175,9 @@ def polygonium(
 
     return cast("Polygon", shapely.make_valid(molecule))
 
-
+@validate_call
 def xyz_reader(
-    file_name: str | Path,
+    file_name: FilePath,
     ignore_atoms: str | list[str] | None = None,
     x_offset: float = 0.0,
     y_offset: float = 0.0,
@@ -237,7 +236,7 @@ def xyz_reader(
 
     return cast("Polygon", aff.translate(molecule, *centre))
 
-def rotation_matrix(roll: np.floating, pitch: np.floating, yaw: np.floating) -> np.ndarray:
+def rotation_matrix(roll: np.floating | float, pitch: np.floating | float, yaw: np.floating | float) -> np.ndarray:
     """Compute the 3D rotation matrix using roll, pitch, and yaw.
 
     :param roll: Rotation along the x-axis.
@@ -269,14 +268,14 @@ def rotation_matrix(roll: np.floating, pitch: np.floating, yaw: np.floating) -> 
 class MoleculeViewer(QWidget):
     """Molecule orientation widget."""
 
-    def __init__(self, atomkeys, atompos, colours, lattice) -> None:
+    def __init__(self, atomkeys, atompos, colours, init_roll, init_pitch, init_yaw, init_x_offset, init_y_offset, lattice) -> None:
         """Initialise the molecule orientation widget."""
         super().__init__()
 
         self._settings = QSettings("adsorpy", "MoleculeViewer")
 
         # Step 1: Initialise raw variables and data placeholders
-        self.atomkeys, self.atompos, self.colours = self._init_data(atomkeys, atompos, colours)
+        self.atomkeys, self.atompos, self.colours = self._init_data(atomkeys, atompos, colours, init_roll, init_pitch, init_yaw, init_x_offset, init_y_offset)
 
         self.lattice: float = lattice if lattice is not None else 1.0
         self.show_bonds: bool = False
@@ -321,6 +320,11 @@ class MoleculeViewer(QWidget):
         atomkeys: list[str] | np.ndarray,
         atompos: list[list[float]] | np.ndarray,
         colours: list[str] | np.ndarray,
+        init_roll: float | None = None,
+        init_pitch: float | None = None,
+        init_yaw: float | None = None,
+        init_x_offset: float | None = None,
+        init_y_offset: float | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Initialise internal tracking parameters, limits, and array structures.
 
@@ -338,11 +342,19 @@ class MoleculeViewer(QWidget):
         temp_atompos: np.ndarray = self.orig_atompos.copy()
         temp_colours: np.ndarray = self.orig_colours.copy()
 
-        self.roll: float = 0.0
-        self.pitch: float = 0.0
-        self.yaw: float = 0.0
-        self.x_offset: float = 0.0
-        self.y_offset: float = 0.0
+        def default_zero(value: float | None = None) -> float:
+            """Return 0.0 if None, else value.
+
+            :param value: The value to return if it is not None.
+            :returns: value or 0.0
+            """
+            return 0.0 if value is None else value
+
+        self.roll: float = default_zero(init_roll)
+        self.pitch: float = default_zero(init_pitch)
+        self.yaw: float = default_zero(init_yaw)
+        self.x_offset: float = default_zero(init_x_offset)
+        self.y_offset: float = default_zero(init_y_offset)
 
         self.min_z: float = float(np.min(self.orig_atompos[:, 2])) if self.orig_atompos.size else -10.0
         self.max_z: float = float(np.max(self.orig_atompos[:, 2])) if self.orig_atompos.size else 10.0
@@ -353,7 +365,7 @@ class MoleculeViewer(QWidget):
     def _fetch_setting(self, name: str, default: T, return_type: type[T] | None = None) -> T:
         """Fetch settings by checking if they exist followed by their value."""
         check_type = type(default) if return_type is None else return_type
-        return self._settings.value(name, defaultValue=default, type=check_type)
+        return cast("T", self._settings.value(name, defaultValue=default, type=check_type))
 
 
     def _create_filter_panel(self) -> QVBoxLayout:
@@ -593,7 +605,7 @@ class MoleculeViewer(QWidget):
         self.lattice = float_val
         self.draw()
 
-    def submit_values(self, slider_widget, box_widget) -> None:
+    def submit_values(self, slider_widget, box_widget, name: str) -> None:
         """Unified spinbox-to-slider slot handling native numerical typing."""
         v = box_widget.value()
         # Block signals to avoid feedback looping when setting the companion value
@@ -601,7 +613,7 @@ class MoleculeViewer(QWidget):
         slider_widget.setValue(int(v * 10))
         slider_widget.blockSignals(False)  # noqa: FBT003
 
-        setattr(self, slider_widget, v)
+        setattr(self, name, v)
         self.draw()
 
     def toggle_svg_background(self, checked: bool) -> None:
@@ -625,11 +637,11 @@ class MoleculeViewer(QWidget):
         return pts
 
     def _circles(self, pts, idx1, idx2, offset_x):
-        elements = []
+        elements: list[svg.Circle] = []
         scale = 80
         cx, cy = 150, 150
 
-        for (x, y, z), col, key in zip(pts, self.colours, self.atomkeys):
+        for (x, y, z), col, key in zip(pts, self.colours, self.atomkeys, strict=True):
             coords = [x, y, z]
 
             px = cx + scale * coords[idx1] + offset_x
@@ -682,22 +694,22 @@ class MoleculeViewer(QWidget):
 
         unit_to_pixel_ratio = (scale * 2) / span
 
-        elements = []
+        elements: list[svg.Line | svg.Text | svg.Polygon | svg.Circle | svg.Rect] = []
 
         # --- 3D BOND DETECTION ---
         bond_pairs = []
         if getattr(self, "show_bonds", False):
             num_atoms = len(pts)
             # Threshold parameters: modify these numbers to fit your dataset's units
-            min_dist = 0.4
-            max_dist = 1.9
+            min_dist: float = 0.4
+            max_dist: float = 1.9
 
             for jj in range(num_atoms):
-                for j in range(jj + 1, num_atoms):
+                for kk in range(jj + 1, num_atoms):
                     # Calculate true Euclidean distance in 3D space
-                    dist = np.linalg.norm(pts[jj] - pts[j])
+                    dist = np.linalg.norm(pts[jj] - pts[kk])
                     if min_dist <= dist <= max_dist:
-                        bond_pairs.append((jj, j))
+                        bond_pairs.append((jj, kk))
 
         def add_axis_arrows(panel_cx, panel_cy, label_h, label_v):
             base_x = panel_cx - panel * 0.45
@@ -705,17 +717,17 @@ class MoleculeViewer(QWidget):
             arrow_len = 35
 
             elements.append(
-                svg.Line(x1=base_x, y1=base_y, x2=base_x + arrow_len, y2=base_y, stroke="black", stroke_width=1.5)
+                svg.Line(x1=base_x, y1=base_y, x2=base_x + arrow_len, y2=base_y, stroke="black", stroke_width=1.5),
             )
             elements.append(
                 svg.Polygon(
                     points=[
-                        (base_x + arrow_len, base_y),
-                        (base_x + arrow_len - 6, base_y - 3),
-                        (base_x + arrow_len - 6, base_y + 3),
+                        svg.Point(base_x + arrow_len, base_y),
+                        svg.Point(base_x + arrow_len - 6, base_y - 3),
+                        svg.Point(base_x + arrow_len - 6, base_y + 3),
                     ],
                     fill="black",
-                )
+                ),
             )
             elements.append(
                 svg.Text(
@@ -725,21 +737,21 @@ class MoleculeViewer(QWidget):
                     font_size=svg.Length(14, "px"),
                     font_family="sans-serif",
                     fill="black",
-                )
+                ),
             )
 
             elements.append(
-                svg.Line(x1=base_x, y1=base_y, x2=base_x, y2=base_y - arrow_len, stroke="black", stroke_width=1.5)
+                svg.Line(x1=base_x, y1=base_y, x2=base_x, y2=base_y - arrow_len, stroke="black", stroke_width=1.5),
             )
             elements.append(
                 svg.Polygon(
                     points=[
-                        (base_x, base_y - arrow_len),
-                        (base_x - 3, base_y - arrow_len + 6),
-                        (base_x + 3, base_y - arrow_len + 6),
+                        svg.Point(base_x, base_y - arrow_len),
+                        svg.Point(base_x - 3, base_y - arrow_len + 6),
+                        svg.Point(base_x + 3, base_y - arrow_len + 6),
                     ],
                     fill="black",
-                )
+                ),
             )
             elements.append(
                 svg.Text(
@@ -750,13 +762,17 @@ class MoleculeViewer(QWidget):
                     font_size=svg.Length(14, "px"),
                     font_family="sans-serif",
                     fill="black",
-                )
+                ),
             )
 
-        def norm(val, center):
+        def norm(val: float, center: float) -> float:
+            """Calculate the norm."""
             return (val - center) / span
 
         def scatter_proj(xdata, ydata, depth, col, row):
+            """Give the 2D projection scatter plot of the molecule.
+
+            """
             cx = offset_x + panel * (col + 0.5)
             cy = offset_y + panel * (row + 0.5)
 
@@ -769,7 +785,7 @@ class MoleculeViewer(QWidget):
                 px2, py2 = cx + nx2 * scale * 2, cy - ny2 * scale * 2
 
                 elements.append(
-                    svg.Line(x1=px1, y1=py1, x2=px2, y2=py2, stroke="#aaaaaa", stroke_width=2, stroke_dasharray="4,4")
+                    svg.Line(x1=px1, y1=py1, x2=px2, y2=py2, stroke="#aaaaaa", stroke_width=2, stroke_dasharray=[4, 4]),
                 )
 
             # 2. Render depth-sorted atoms
@@ -792,9 +808,9 @@ class MoleculeViewer(QWidget):
                         cx=px,
                         cy=py,
                         r=r,
-                        fill=self.colours[ii],
+                        fill=cast("str", self.colours[ii]),
                         stroke="none",
-                    )
+                    ),
                 )
 
         # Render the 3 traditional scatter projections
@@ -815,17 +831,19 @@ class MoleculeViewer(QWidget):
             px = cx + nx * scale * 2
             py = cy - ny * scale * 2
 
-            physical_radius = RADII[self.atomkeys[jj]]
+            physical_radius = RADII[cast("str", self.atomkeys[jj])]
             r = physical_radius * unit_to_pixel_ratio
+
+            colour: str = cast("str", self.colours[jj])
 
             elements.append(
                 svg.Circle(
                     cx=px,
                     cy=py,
                     r=r,
-                    fill=self.colours[jj],
+                    fill=colour,
                     opacity=0.25,
-                )
+                ),
             )
 
             elements.append(
@@ -834,8 +852,8 @@ class MoleculeViewer(QWidget):
                     cy=py,
                     r=r,
                     fill="none",
-                    stroke=self.colours[jj],
-                )
+                    stroke=colour,
+                ),
             )
 
             elements.append(
@@ -843,9 +861,9 @@ class MoleculeViewer(QWidget):
                     cx=px,
                     cy=py,
                     r=r * 0.1,
-                    fill=self.colours[jj],
+                    fill=colour,
                     stroke="black",
-                )
+                ),
             )
 
         # --- lattice points ---
@@ -868,13 +886,7 @@ class MoleculeViewer(QWidget):
         rotations = rotation_matrix(self.roll, self.pitch, self.yaw)
 
         # 2. Define standard, colour-coded unit directions: X (Red), Y (Green), Z (Blue)
-        axes_3d = np.array(
-            [
-                [1.0, 0.0, 0.0],  # X unit vector
-                [0.0, 1.0, 0.0],  # Y unit vector
-                [0.0, 0.0, 1.0],  # Z unit vector
-            ]
-        )
+        axes_3d = np.identity(3, dtype=float)
 
         # 3. Rotate the basis vectors with the exact matrix your atoms use
         rotated_axes = axes_3d @ rotations
@@ -894,7 +906,7 @@ class MoleculeViewer(QWidget):
         axis_meta.sort(key=lambda item: item["vec"][2])
 
         for axis in axis_meta:
-            vx, vy, vz = axis["vec"]
+            vx, vy, _ = axis["vec"]
 
             # Map components to 2D view screen (X maps right, Y maps inverted up)
             end_x = rot_base_x + vx * axis_pixel_len
@@ -902,7 +914,7 @@ class MoleculeViewer(QWidget):
 
             # Draw the rotated vector line segment
             elements.append(
-                svg.Line(x1=rot_base_x, y1=rot_base_y, x2=end_x, y2=end_y, stroke=axis["color"], stroke_width=2.5)
+                svg.Line(x1=rot_base_x, y1=rot_base_y, x2=end_x, y2=end_y, stroke=axis["color"], stroke_width=2.5),
             )
 
             # Add tip circles to make the 3D projection readable
@@ -944,17 +956,19 @@ class MoleculeViewer(QWidget):
 
         self.svg_widget.load(str(svg_out).encode("utf-8"))
 
+@validate_call
 def first_time_loader(
-    file_name,
-    ignore_atoms=None,
-    x_offset=None,
-    y_offset=None,
-    roll=None,
-    pitch=None,
-    yaw=None,
-    z_trim=None,
-    reference_lattice_spacing=4.74,
-):
+    file_name: FilePath,
+    ignore_atoms: str | list[str] | None = None,
+    roll: float | None = None,
+    pitch: float | None = None,
+    yaw: float | None = None,
+    x_offset: float | None = None,
+    y_offset: float | None = None,
+    z_trim: float | None = None,
+    reference_lattice_spacing: float= 4.74,
+) -> dict[str, str | float | list[str] | None]:
+    """Load molecule for the first time to save settings."""
     atomkeys, atompos = _initialise_reader(file_name, ignore_atoms, z_trim)
 
     with (Path(__file__).parent / "molecule_colour.json").open() as f:
@@ -968,6 +982,11 @@ def first_time_loader(
         atomkeys,
         atompos,
         colours,
+        roll,
+        pitch,
+        yaw,
+        x_offset,
+        y_offset,
         reference_lattice_spacing,
     )
     viewer.resize(1600, 900)
@@ -976,13 +995,13 @@ def first_time_loader(
 
     app.exec()
 
-    result = {
-        "x_offset": viewer.x_offset,
-        "y_offset": viewer.y_offset,
+    result: dict[str, str | float | list[str] | None] = {
+        "file_name": str(file_name),
         "roll": viewer.roll,
         "pitch": viewer.pitch,
         "yaw": viewer.yaw,
-        "file_name": str(file_name),
+        "x_offset": viewer.x_offset,
+        "y_offset": viewer.y_offset,
         "ignore_atoms": viewer.disabled_molecules,
         "z_trim": viewer.z_cutoff if viewer.z_filter_enable.isChecked() else None,
     }
