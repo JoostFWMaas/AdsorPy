@@ -261,7 +261,7 @@ jobs:
           find . -maxdepth 2 -type f
 
       - name: Sign SBOM (Sigstore)
-        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        uses: sigstore/gh-action-sigstore-python@5b79a39c381910c090341a2c9b0bf022c8b387e1
         with:
           inputs: sbom.cdx.json
           staging: false
@@ -272,7 +272,7 @@ jobs:
           release-signing-artifacts: false
 
       - name: Sign artifacts (Sigstore)
-        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        uses: sigstore/gh-action-sigstore-python@5b79a39c381910c090341a2c9b0bf022c8b387e1
         with:
           inputs: dist/*.whl dist/*.tar.gz hashes.txt
           staging: false
