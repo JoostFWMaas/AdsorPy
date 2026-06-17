@@ -9,6 +9,7 @@ The config.json can be found in the adsorpy folder as well.
 
 from __future__ import annotations
 
+import io
 from sys import version_info
 
 if version_info >= (3, 11):
@@ -556,6 +557,8 @@ def show_surface(
     # site_y_coords: DistArray | None = None,
     # bounding_x_coord: float | None = None,
     # bounding_y_coord: float | None = None,
+    svg_flag: bool = False,
+    filepath: str | Path | io.BytesIO = "",
     ax: Tax = None,
     ) -> Tax:
     """Show the simulation surface.
@@ -565,11 +568,12 @@ def show_surface(
     :param site_count: The site count along one axis. Optional. If None, defaults to the value in config.json.
     :param lattice_a: The lattice spacing in Angstrom. If None, defaults to the value in config.json.
     :param seed: The seed for the simulation. If None, takes the datetime in microseconds: YYYMMDDhhmmssuuuuuu.
-    :param ax: Plot Axes.
+    :param svg_flag: If True, show the simulation surface in SVG format.
+    :param filepath: Where to save the file to.
+    :param ax: Plot Axes. Ignored if svg_flag is True.
     :return: Updated plot Axes.
     """
     rsa_config = RsaConfig(Path(__file__).parent / "config.json") if rsa_config is None else rsa_config
-
 
     # The seed is defined as the datetime in microseconds. The seed is stored so simulations can be verified.
     how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
@@ -583,7 +587,14 @@ def show_surface(
     surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
     surf.generate_grid(rng)
 
-    return surf.plot_surface_sites("", "", ax)
+    if svg_flag:
+        surf.svgplot_surface_sites(filename=filepath)
+    else:
+        if isinstance(filepath, io.BytesIO):
+            errmsg: str = "Plotter does not accept 'io.BytesIO' as directory."
+            raise TypeError(errmsg)
+        return surf.plot_surface_sites("", filepath, ax)
+    return ax
 
 def main() -> Literal[0]:
     """Run the RSA script, for demonstration purposes.

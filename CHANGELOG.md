@@ -6,7 +6,9 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ## [unreleased]
 ### Added
 ### Changed
+- ``Change VdW_Radii.csv`` into ``vdw_radii.json`` with stricter pydantic checking.
 ### Fixed
+- Fix broken HTML colour code for Pd. Leading 00 was missing.
 ### Removed
 
 ## 1.2.2 - 2026-05-22

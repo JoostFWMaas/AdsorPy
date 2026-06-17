@@ -1,18 +1,19 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """GUI module of adsorpy."""  # TODO: Make a new repo for this!
+from __future__ import annotations
+
 import inspect
 import io
 import re
 import sys
 import webbrowser
-from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, ClassVar, cast, Any
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import QObject, QRegularExpression, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator
+from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator, QWheelEvent
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,10 +28,13 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QStyle,
     QTabWidget,
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QFileDialog,
+    QScrollArea,
 )
 from shapely import MultiPolygon, Polygon
 from shapely.plotting import plot_polygon
@@ -41,30 +45,19 @@ from src.adsorpy.run_simulation import run_simulation, show_surface
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-
-def list_public_molecules() -> list[str]:
-    """List all molecules in molecule_lib.
-
-    :returns: The molecules list, sorted.
-    """
-    molecules: list[str] = []
-
-    for name in dir(molecule_lib):
-        if name.startswith("_"):
-            continue  # skip private members
-
-        attr: object = getattr(molecule_lib, name)
-
-        # Keep only objects that look like molecule definitions
-        if callable(attr) and attr.__module__ == "adsorpy.molecule_lib":
-            molecules.append(name)
-
-    return sorted(molecules)
-
 def extract_param_docs(func: Callable) -> dict[str, str]:
+    """Extract parameters and their types from the docstring of a function.
+
+    This function is written for reStructuredText (rst) style docstrings.
+
+    :param func: The function from which the docstring is extracted.
+    :return: The dictionary of parameters and their types (as strings).
+    :raises ValueError: If the function has no docstring.
+    """
     doc = inspect.getdoc(func)
     if not doc:
-        return {}
+        errmsg: str = f"Docstring of {func.__name__} is not defined."
+        raise ValueError(errmsg)
 
     param_docs: dict[str, str] = {}
     lines = doc.splitlines()
@@ -90,9 +83,61 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
 
     return param_docs
 
+class ZoomableSvgWidget(QSvgWidget):
+    def __init__(self, parent: QSvgWidget | None = None):
+        super().__init__(parent)
+        self.zoom_factor = 1.15
+        # Set a baseline size so it doesn't collapse to 0x0
+        if parent is None:
+            self.setFixedSize(800, 600)
+
+    def wheelEvent(self, event: QWheelEvent):
+        modifiers = event.modifiers()
+        scroll_area = self.window().findChild(QScrollArea)
+
+        # 1. CTRL + SCROLL = ZOOM TO MOUSE CURSOR
+        if modifiers == Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            scale = self.zoom_factor if delta > 0 else 1.0 / self.zoom_factor
+
+            old_size = self.size()
+            new_size = old_size * scale
+
+            if 100 < new_size.width() < 50000:
+                mouse_pos = event.position()
+                self.setFixedSize(new_size)
+
+                if scroll_area:
+                    h_bar = scroll_area.horizontalScrollBar()
+                    v_bar = scroll_area.verticalScrollBar()
+
+                    new_h_val = int(h_bar.value() + mouse_pos.x() * (scale - 1.0))
+                    new_v_val = int(v_bar.value() + mouse_pos.y() * (scale - 1.0))
+
+                    h_bar.setValue(new_h_val)
+                    v_bar.setValue(new_v_val)
+            event.accept()
+
+        # 2. SHIFT + SCROLL = LEFT / RIGHT PANNING
+        elif modifiers == Qt.KeyboardModifier.ShiftModifier:
+            if scroll_area:
+                h_bar = scroll_area.horizontalScrollBar()
+                # Determine scroll distance based on wheel rotation (typically 120 units per notch)
+                steps = event.angleDelta().y()
+                # Invert steps so scrolling up goes left, scrolling down goes right
+                h_bar.setValue(h_bar.value() - steps)
+            event.accept()
+
+        # 3. NO MODIFIERS = STANDARD VERTICAL PANNING
+        else:
+            event.ignore()  # Hands control over to QScrollArea naturally
+
 
 class AutoStateMeta(type(QObject)):
+    """Metaclass for AppState to automatically communicate between tabs."""
+
     def __new__(cls, name, bases, attrs):
+        """Create an AutoState class instance."""
         fields = attrs.get("fields", {})
 
         for field_name, field_type in fields.items():
@@ -115,7 +160,7 @@ class AutoStateMeta(type(QObject)):
     def __call__(cls, *args, **kwargs):
         obj = super().__call__(*args, **kwargs)
 
-        # Auto‑initialize private fields
+        # Auto‑initialise private fields
         for field_name in cls.fields:
             private_name = f"_{field_name}"
             if not hasattr(obj, private_name):
@@ -127,10 +172,16 @@ class AutoStateMeta(type(QObject)):
 class AppState(QObject, metaclass=AutoStateMeta):
     """AppState class to communicate between tabs."""
 
+    filepath: str
+    seed_input: QLineEdit
+    count: int
+    step_limit: int
+
     fields: ClassVar[dict[str, type]] = {
-        "filepathm": str,
+        "filepath": str,
         "seed_input": QLineEdit,
         "count": int,
+        "step_limit": int,
     }
 
 
@@ -245,7 +296,9 @@ class GeneralSettings(QWidget):
         self.step_limit = QLineEdit()
         self.step_limit.setPlaceholderText("e.g. 1")
         self.step_limit.setValidator(gt_one_validator)
+        self.step_limit.textChanged.connect(self.on_step_limit_changed)
         controls_layout.addWidget(self.step_limit)
+
         main_layout.addLayout(controls_layout)
 
         self.canvas = MplCanvas()
@@ -253,15 +306,17 @@ class GeneralSettings(QWidget):
         self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
         svg_data = svg_buffer.getvalue()
         self.svg_widget = QSvgWidget()
-        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         self.svg_widget.load(svg_data)
 
         # Add the SVG widget to layout
-        # layout.addWidget(svg_widget)
-        # main_layout.addWidget(self.canvas, stretch=1)
         main_layout.addWidget(self.svg_widget, stretch=1)
 
         self.setLayout(main_layout)
+
+    def on_step_limit_changed(self, value):
+        self.state.step_limit = int(value) if value else -1
+
 
 
 class MoleculeGeneration(QWidget):
@@ -275,8 +330,8 @@ class MoleculeGeneration(QWidget):
         super().__init__()
         self.state = state
 
-        main_layout = QHBoxLayout()
-        controls_layout = QVBoxLayout()
+        self.main_layout = QHBoxLayout()
+        self.controls_layout = QVBoxLayout()
         gt_one_validator = QIntValidator(bottom=1)
         pos_float_validator = QDoubleValidator(bottom=0)
         seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
@@ -285,54 +340,61 @@ class MoleculeGeneration(QWidget):
         # Add molecule button
         self.add_molecule_button = QPushButton("Add new molecule")
         # self.add_molecule_button.clicked.connect(self.add_molecule)
-        controls_layout.addWidget(self.add_molecule_button)
-        main_layout.addLayout(controls_layout)
+        self.controls_layout.addWidget(self.add_molecule_button)
+        self.main_layout.addLayout(self.controls_layout)
 
         self.func_dropdown = QComboBox()
-        controls_layout.addWidget(QLabel("Select molecule generator:"))
-        controls_layout.addWidget(self.func_dropdown)
+        self.controls_layout.addWidget(QLabel("Select molecule"), alignment=Qt.AlignmentFlag.AlignTop)
+        self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
         temp_generators = {
-            name: func for name, func in molecule_lib.__dict__.items() if callable(func) and not name.startswith("_") and func.__module__ == "adsorpy.molecule_lib"
+            name: func for name, func in molecule_lib.__dict__.items() if inspect.isfunction(func) and not name.startswith("_") and func.__module__ == molecule_lib.__name__
         }
 
-        # self.generators = OrderedDict(sorted(temp_generators.items(), key=lambda item: item[0]))
-        self.generators: OrderedDict[str, Callable[[...], Polygon]] = OrderedDict(sorted(temp_generators.items()))
+        self.generators: dict[str, Callable[[...], Polygon]] = dict(sorted(temp_generators.items()))
 
         self.func_dropdown.addItems(self.generators.keys())
         self.func_dropdown.currentTextChanged.connect(self.build_param_inputs)
+        mol_param_group = QGroupBox("Parameters")
+        mol_param_layout = QVBoxLayout()
+
+        mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
 
         self.param_widgets = {}
         self.param_layout = QVBoxLayout()
-        controls_layout.addLayout(self.param_layout)
+        mol_param_layout.addLayout(self.param_layout)
+
+        mol_param_group.setLayout(mol_param_layout)
+        self.controls_layout.addWidget(mol_param_group, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Molecule dropdown
-        controls_layout.addWidget(QLabel("Molecule:"))
-        self.molecule_dropdown = QComboBox()
-        self.molecule_names = list_public_molecules()
-        self.molecule_dropdown.addItems(self.molecule_names)
-        controls_layout.addWidget(self.molecule_dropdown)
+        # controls_layout.addWidget(QLabel("Molecule:"))
+        # self.molecule_dropdown = QComboBox()
+        # self.molecule_names = list_public_molecules()
+        # self.molecule_dropdown.addItems(self.molecule_names)
+        # controls_layout.addWidget(self.molecule_dropdown)
 
 
         # Plot molecules
-        self.canvas = MplCanvas()
-        svg_buffer = io.BytesIO()
-        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
-        svg_data = svg_buffer.getvalue()
-        self.svg_widget = QSvgWidget()
-        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
-        self.svg_widget.load(svg_data)
+        # self.canvas = MplCanvas()
+        # svg_buffer = io.BytesIO()
+        # self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        # svg_data = svg_buffer.getvalue()
+        self.svg_widget = ZoomableSvgWidget()
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        # self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        # self.svg_widget.load(svg_data)
 
         # Add the SVG widget to layout
         # layout.addWidget(svg_widget)
         # main_layout.addWidget(self.canvas, stretch=1)
-        main_layout.addWidget(self.svg_widget, stretch=1)
+        self.main_layout.addWidget(self.svg_widget, stretch=1)
 
-        self.setLayout(main_layout)
+        self.setLayout(self.main_layout)
 
         self.output_label = QLabel("")
-        controls_layout.addWidget(self.output_label)
-        main_layout.addLayout(controls_layout)
+        self.controls_layout.addWidget(self.output_label)
+        self.main_layout.addLayout(self.controls_layout)
 
         right_col = QVBoxLayout()
 
@@ -351,7 +413,7 @@ class MoleculeGeneration(QWidget):
         right_col.addWidget(group)
 
         # Add right column to main layout
-        main_layout.addLayout(right_col)
+        self.main_layout.addLayout(right_col)
 
         # Build initial parameter UI
         self.build_param_inputs(self.func_dropdown.currentText())
@@ -362,11 +424,7 @@ class MoleculeGeneration(QWidget):
     # ---------------------------------------------------------
     # Build parameter widgets dynamically
     # ---------------------------------------------------------
-    def build_param_inputs(self, func_name: str) -> None:
-        """Build the parameter inputs.
-
-        :param func_name: Name of the function
-        """
+    def delete_previous_layout(self):
         while self.param_layout.count():
             item = self.param_layout.takeAt(0)
             w = item.widget()
@@ -381,82 +439,141 @@ class MoleculeGeneration(QWidget):
                     if cw is not None:
                         cw.deleteLater()
 
+
+    def build_param_inputs(self, func_name: str) -> None:
+        """Build the parameter inputs.
+
+        :param func_name: Name of the function
+        """
+        self.delete_previous_layout()
+
         func = self.generators[func_name]
         sig = inspect.signature(func)
+        param_docs = extract_param_docs(func)
+        default_max: int = 999
 
         self.param_widgets = {}
 
         for name, param in sig.parameters.items():
             default = param.default
             is_optional: bool = default is None
-            is_required: bool = param.default is inspect._empty
-            param_docs = extract_param_docs(param)
-            label = QLabel(name)
-
-            # Tooltip on hover
-            if name in param_docs:
-                label.setToolTip(param_docs[name])
-
+            is_required: bool = param.default is inspect.Parameter.empty
             row = QHBoxLayout()
 
-            # Checkbox for optional parameters
+            name_label = QLabel(name)
+            if name in param_docs:
+                name_label.setToolTip(param_docs[name])
+            row.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+            match param.annotation:
+                case "float" | "PositiveFloat" | "NonNegativeFloat":
+                    min_float_val: float = -999.0
+                    if param.annotation == "PositiveFloat":
+                        min_float_val = 0.0001
+                    elif param.annotation == "NonNegativeFloat":
+                        min_float_val = 0.0
+                    widget = QDoubleSpinBox()
+                    widget.setRange(min_float_val, default_max)
+                    widget.setDecimals(4)
+                    widget.setSingleStep(0.1)
+
+                case "int" | "PositiveInt":
+                    min_int_val: int = 1 if param.annotation == "PositiveInt" else -999
+                    widget = QSpinBox()
+                    widget.setRange(min_int_val, default_max)
+
+                case "FilePath":
+                    widget = FilePickerWidget()
+
+                case "str":
+                    widget = QLineEdit()
+
+                case _ if default is None:
+                    widget = QLineEdit()
+                    widget.setPlaceholderText("None")
+
+                case _:
+                    errmsg: str = f"Unsupported parameter annotation: '{param.annotation}'"
+                    raise TypeError(errmsg)
+
+            if not is_required and default is not None:
+                match widget:
+                    case QSpinBox() | QDoubleSpinBox():
+                        widget.setValue(default)
+                    case QLineEdit():
+                        widget.setText(str(default))
+
             if is_optional:
+                # Checkbox for optional parameters
                 opt_checkbox = QCheckBox()
                 opt_checkbox.setChecked(False)
-                row.addWidget(opt_checkbox)
-            else:
-                opt_checkbox = None  # required argument
-
-            if name in param_docs:
-                info_btn = QToolButton()
-                info_btn.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.DialogInformation))
-                info_btn.setIconSize(QSize(16, 16))
-                info_btn.setToolTip("Show parameter help")
-
-                def show_info(_, text=param_docs[name], pname=name):
-                    QMessageBox.information(self, f"Parameter: {pname}", text)
-
-                info_btn.clicked.connect(show_info)
-                row.addWidget(info_btn)
-
-            row.addWidget(QLabel(name))
-
-            # Choose widget type based on default value
-            # if isinstance(default, float) or param.annotation == "float":
-            if param.annotation == "float":
-                widget = QDoubleSpinBox(maximum=999, minimum=-999)
-                widget.setDecimals(4)
-                if not is_required:
-                    widget.setValue(default)
-            elif param.annotation == "PositiveFloat":
-                widget = QDoubleSpinBox(maximum=999, minimum=0)
-                widget.setDecimals(4)
-                if not is_required:
-                    widget.setValue(default)
-            # elif isinstance(default, int) or param.annotation == "int":
-            elif param.annotation == "int":
-                widget = QSpinBox(maximum=999, minimum=-999)
-                if not is_required:
-                    widget.setValue(default)
-            elif param.annotation == "PositiveInt":
-                widget = QSpinBox(maximum=999, minimum=0)
-                if not is_required:
-                    widget.setValue(default)
-
-            elif default is None:
-                widget = QLineEdit()
-                widget.setPlaceholderText("None")
-            else:
-                widget = QComboBox()
-                widget.addItem(str(default))
-
-            if is_optional:
+                row.addWidget(opt_checkbox, alignment=Qt.AlignmentFlag.AlignVCenter)
                 widget.setEnabled(False)
                 opt_checkbox.toggled.connect(widget.setEnabled)
 
-            row.addWidget(widget)
+            if name in param_docs:
+                widget.setToolTip(param_docs[name])
+            row.addWidget(widget, alignment=Qt.AlignmentFlag.AlignVCenter)
             self.param_widgets[name] = widget
             self.param_layout.addLayout(row)
+
+        molecule_buttons = QHBoxLayout()
+        show_molecule_button = QPushButton("Plot Molecule")
+        show_molecule_button.setToolTip("Plot the molecule")
+        show_molecule_button.clicked.connect(self.plot_molecule)
+        molecule_buttons.addWidget(show_molecule_button)
+
+        add_molecule_button = QPushButton("Add Molecule")
+        add_molecule_button.clicked.connect(self.add_molecule)
+        add_molecule_button.setToolTip("Add molecule to list of molecules in simulation")
+        molecule_buttons.addWidget(add_molecule_button)
+        self.param_layout.addLayout(molecule_buttons)
+
+    def get_param_values(self) -> dict[str, Any]:
+        """Extract current user inputs from widgets back into a data dictionary."""
+        values: dict[str, float | int | str | None] = {}
+        name: str
+        widget: QWidget
+
+        for name, widget in self.param_widgets.items():
+            # If the widget is disabled, the optional checkbox was unchecked -> value is None
+            if not widget.isEnabled():
+                values[name] = None
+                continue
+
+            # Extract value based on the PySide6/PyQt6 widget type
+            match widget:
+                case QSpinBox() | QDoubleSpinBox():
+                    values[name] = widget.value()
+
+                case QLineEdit():
+                    values[name] = widget.text()
+
+                case FilePickerWidget():
+                    # Assumes your custom FilePickerWidget has a method/property for the path
+                    # Change .path() or .text() to match your widget's implementation
+                    values[name] = widget.text()
+
+                case _:
+                    values[name] = None
+
+        return values
+
+    def error(self, msg: str) -> None:
+        """Handle the errors."""
+        QMessageBox.critical(self, "Input Error", msg)
+
+    def plot_molecule(self) -> None:
+        """Plot the molecule."""
+        molecule_func = self.generators[self.func_dropdown.currentText()]
+        molecule_dict = self.get_param_values()
+        try:
+            svg_io = io.BytesIO()
+            molecule_lib.save_molecule_svg(molecule_func(**molecule_dict), filename=svg_io)
+            svg_data = svg_io.getvalue()
+            self.svg_widget.load(svg_data)
+        except ValueError as e:
+            self.error(str(e))
 
     def add_molecule(self):
         func_name = self.func_dropdown.currentText()
@@ -501,6 +618,46 @@ class MoleculeGeneration(QWidget):
 
         self.output_label.setText("Molecule deleted")
 
+
+class FilePickerWidget(QWidget):
+    def __init__(self, parent=None, placeholder="Select a file..."):
+        super().__init__(parent)
+
+        # Layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        # Line edit to show the path and hold the actual value
+        self.line_edit = QLineEdit()
+        self.line_edit.setPlaceholderText(placeholder)
+
+        # Browse button
+        self.browse_button = QPushButton("")
+        self.browse_button.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderOpen))
+        self.browse_button.clicked.connect(self.open_file_dialog)
+
+        # Add to layout
+        layout.addWidget(self.line_edit)
+        layout.addWidget(self.browse_button)
+
+    def open_file_dialog(self):
+        # Native OS file dialogue
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            caption="Select File",
+            dir="",  # Start at current directory
+            filter="XYZ File (*.xyz)",
+        )
+        if file_path:
+            self.line_edit.setText(file_path)
+
+    # Mimic standard widget API so it plugs right into your matching code
+    def setText(self, text: str):
+        self.line_edit.setText(text)
+
+    def text(self) -> str:
+        return self.line_edit.text()
 
 
 class SurfaceGeneration(QWidget):
@@ -570,14 +727,21 @@ class SurfaceGeneration(QWidget):
         svg_buffer = io.BytesIO()
         self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
         svg_data = svg_buffer.getvalue()
-        self.svg_widget = QSvgWidget()
-        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        self.svg_widget = ZoomableSvgWidget()
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         self.svg_widget.load(svg_data)
+        self.scroll_area = QScrollArea()
+
+        # CRITICAL: This must be False so the inner widget can expand past the window size
+        self.scroll_area.setWidgetResizable(False)
+
+        # CRITICAL: Directly set the widget. Do NOT wrap it in an extra QWidget layout
+        self.scroll_area.setWidget(self.svg_widget)
 
         # Add the SVG widget to layout
         # layout.addWidget(svg_widget)
         # main_layout.addWidget(self.canvas, stretch=1)
-        main_layout.addWidget(self.svg_widget, stretch=1)
+        main_layout.addWidget(self.scroll_area, stretch=1)
 
         self.setLayout(main_layout)
 
@@ -622,32 +786,27 @@ class SurfaceGeneration(QWidget):
         # ------------------------------------------------------
         # Plot result
         # ------------------------------------------------------
-        self.canvas.ax.clear()
         # self.canvas.ax.set_title("Adsorbed molecules")
-        self.canvas.ax = show_surface(
-            ax = self.canvas.ax,
+        svg_buffer = io.BytesIO()
+        self.canvas = show_surface(
             lattice_a=lattice,
             lattice_type=lattice_type,
             seed=seed,
             site_count=self.surface_count,
+            filepath=svg_buffer,
+            svg_flag=True,
         )
-        self.canvas.ax.set_xlabel("x")
-        self.canvas.ax.set_ylabel("y")
-        self.canvas.ax.set_aspect("equal", "box")
-
-        svg_buffer = io.BytesIO()
-        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
         svg_data = svg_buffer.getvalue()
 
         self.svg_widget.load(svg_data)
-        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
         # Add the SVG widget to layout
         # self.canvas.addWidget(svg_widget)
 
     def run_simulation(self) -> None:
         """Run the simulation."""
         # Validate seed
-        seed_text = self.seed_input.text().strip()
+        seed_text = self.state.seed_input.text().strip()
         seed: int | None = None
         if seed_text:
             if not seed_text.isnumeric() or int(seed_text) < 0:
@@ -665,16 +824,30 @@ class SurfaceGeneration(QWidget):
                 self.error(str(e))
                 return
 
-        # Validate step limit
-        step_text = self.step_limit.text().strip()
-        step_limit: int | None = None
-        if step_text:
-            if not step_text.isdigit() or int(step_text) <= 0:
-                self.error("Step limit must be a positive integer")
-                return
-            step_limit = int(step_text)
+        def get_run_sim_default(name: str) -> str | int | float | None:
+            """Get the default value of a function.
 
-        molecule = self.molecule_dropdown.currentText()
+            :param name: Name of the parameter.
+            :returns: Default value of the parameter.
+            :raises ValueError: If the parameter has no default value.
+            :raises KeyError: If the parameter does not exist.
+            """
+            sig: inspect.Signature = inspect.signature(run_simulation)
+            param: inspect.Parameter = sig.parameters[name]
+            if param.default is inspect.Parameter.empty:
+                errmsg: str = f"{name} has no default"
+                raise ValueError(errmsg)
+            return param.default
+
+        # Validate step limit
+        step_limit_val: int | None = self.state.step_limit
+        good_limit: bool = step_limit_val is not None and step_limit_val >= 0
+
+        step_limit: int = int(step_limit_val) if good_limit else cast("int", get_run_sim_default("timestep_limit"))
+
+
+
+        # molecule = self.molecule_dropdown.currentText()
         lattice_type = self.surface_dropdown.currentText()
 
         # Run simulation
@@ -683,28 +856,29 @@ class SurfaceGeneration(QWidget):
             lattice_type=lattice_type,
             lattice_a=lattice,
             site_count=self.surface_count,
+            timestep_limit=step_limit,
         )[-1]
 
         # ------------------------------------------------------
         # Plot result
         # ------------------------------------------------------
-        self.canvas.ax.clear()
-        plot_polygon(MultiPolygon(output.mol_data.stored_mirr_data["polygon"]), ax=self.canvas.ax, add_points=False)
+        # self.canvas.ax.clear()
+        # plot_polygon(MultiPolygon(output.mol_data.stored_mirr_data["polygon"]), ax=self.canvas.ax, add_points=False)
         # self.canvas.ax.set_title("Adsorbed molecules")
-        self.canvas.ax.set_xlabel("x")
-        self.canvas.ax.set_ylabel("y")
-        self.canvas.ax.set_aspect("equal", "box")
-        self.canvas.ax.set_xlim(0, output.surf.x_max)
-        self.canvas.ax.set_ylim(0, output.surf.y_max)
+        # self.canvas.ax.set_xlabel("x")
+        # self.canvas.ax.set_ylabel("y")
+        # self.canvas.ax.set_aspect("equal", "box")
+        # self.canvas.ax.set_xlim(0, output.surf.x_max)
+        # self.canvas.ax.set_ylim(0, output.surf.y_max)
+        # self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        # self.canvas.draw()
 
         svg_buffer = io.BytesIO()
-        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
+        output.svgplot_covered_grid(filename=svg_buffer)
         svg_data = svg_buffer.getvalue()
 
         self.svg_widget.load(svg_data)
-        self.svg_widget.renderer().setAspectRatioMode(Qt.KeepAspectRatio)
-
-        # self.canvas.draw()
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
     def _save_settings_json(self) -> None:
         """Save settings to JSON file."""

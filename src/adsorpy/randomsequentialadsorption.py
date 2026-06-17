@@ -8,6 +8,7 @@ This module contains the lowest level methods for the library. run_simulation is
 
 from __future__ import annotations  # This allows for delayed hinting of classes.
 
+import io
 from dataclasses import dataclass, field  # Used to define the config.
 from itertools import count, cycle
 from pathlib import Path
@@ -66,8 +67,6 @@ plt.rcParams.update(
 class Config:
     """Dataclass containing the config variables read from data/config."""
 
-    # rsa_config: RsaConfig
-    # "The RSA config."
     sites: PositiveInt | None  # Site count in the x-direction.
     "The number of sites in the x-direction."
     xsize: PositiveFloat | None  # The sizes are not yet properly implemented for this.
@@ -93,7 +92,7 @@ def _config_loader(rsa_config: RsaConfig) -> Config:
     :returns: The Config.
     """
     return Config(
-        # rsa_config=rsa_config,
+        # rsa_config=rsa_config,  TODO: Maybe use cast("int | None", ...)?
         sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
         xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
         ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
@@ -490,7 +489,7 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     grid_index: int = -1
     "Grid index value. Defaults to -1, an invalid value."
     coordinates: CoordPair = cast("CoordPair",
-                                  field(default_factory=lambda: np.empty((2, 1), dtype=np.float64)))  # noqa: RUF009
+                                  field(default_factory=lambda: np.empty((2, 1), dtype=np.float64)))
     "Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.float64)."
     molecule: Polygon = field(default_factory=Polygon)
     "Candidate molecule. Initially empty."
@@ -999,7 +998,7 @@ class Simulator:
             results_path = Path(results_folder) / f"{timestr}_covered_surface"
             fig.savefig(f"{results_path}.png", transparent=True)
             fig.savefig(f"{results_path}.pdf", transparent=True)
-            self.svgplot_covered_grid(surf, amgs, results_path)
+            # self.svgplot_covered_grid(surf, amgs, results_path)
 
         if plt_flag:
             plt.show()
@@ -1009,22 +1008,26 @@ class Simulator:
 
         return ax
 
-    def svgplot_covered_grid(self, surf: Surface, amgs: list[MoleculeGroup], filename: str | Path) -> None:
+    def svgplot_covered_grid(self, surf: Surface | None = None, amgs: list[MoleculeGroup] | None = None, filename: str | Path | io.BytesIO = "") -> None:
         """Plot the covered grid as an SVG.
 
         :param surf: The surface object.
         :param amgs: A list of the molecule groups.
         :param filename: The file name as string or path.
         """
+        if surf is None:
+            surf = self.surf
+        if amgs is None:
+            amgs = self.molgroups
 
         def _idx_to_transform(
-                idx: IdxArray, allowed_rotations: FloatArray, reflection_symmetry: bool
+                idx: IdxArray, allowed_rotations: FloatArray, reflection_symmetry: bool,
         ) -> tuple[FloatArray, BoolArray]:
             """Transform the molecule array indices to rotations.
 
             :param idx: The molecule array indices.
             :param allowed_rotations: The allowed rotations array.
-            :param reflection_symmetry: Whether the molecule has refleciton symmetry.
+            :param reflection_symmetry: Whether the molecule has reflection symmetry.
 
             :returns:
                 1) The angles of the molecules.
@@ -1043,7 +1046,7 @@ class Simulator:
 
             return angle, reflect_x
 
-        filename: Path = Path(filename).with_suffix(".svg")
+        filename: Path | io.BytesIO = Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
         rounding: Final[int] = 5
 
         tab10_colors: cycle[str] = cycle([
@@ -1138,7 +1141,7 @@ class Simulator:
             x_coords = np.round(subset["x_coord"], rounding).astype(str)
             y_coords = np.round(subset["y_coord"], rounding).astype(str)
             translate_strs = np.char.add(
-                np.char.add("translate(", x_coords), np.char.add(",", np.char.add(y_coords, ")"))
+                np.char.add("translate(", x_coords), np.char.add(",", np.char.add(y_coords, ")")),
             )
 
             href_target = f"#{shape_registry[mol_gr.group_id]}"
@@ -1178,17 +1181,16 @@ class Simulator:
                 r=point_radius,
                 fill="black",
                 stroke="none",
-            )
+            ),
         )
 
         grid_group = svg.G(elements=[])
 
-        x_coords = np.round(surf.grid_coordinates[0].astype(float), rounding)
-        y_coords = np.round(surf.grid_coordinates[1].astype(float), rounding)
+        rounded_coords = np.round(surf.grid_coordinates, rounding)
 
         grid_group.elements.extend([
             svg.Use(href=f"#{grid_point_id}", x=x, y=y)
-            for x, y in zip(x_coords, y_coords, strict=True)
+            for x, y in rounded_coords.T
         ])
 
         root_group.elements.append(grid_group)
@@ -1206,7 +1208,7 @@ class Simulator:
                     stroke="black",
                     fill="none",
                     stroke_width=2,
-                )
+                ),
             )
 
         # Save
@@ -1214,8 +1216,11 @@ class Simulator:
         parsed_xml = parseString(raw_xml)
         pretty_xml = parsed_xml.toprettyxml(indent="    ", encoding="UTF-8")
 
-        with filename.open("wb") as f:
-            f.write(pretty_xml)
+        if isinstance(filename, io.BytesIO):
+            filename.write(pretty_xml)
+        else:
+            with filename.open("wb") as f:
+                f.write(pretty_xml)
 
     def attempt_cascading_placement(
             self,
@@ -1574,6 +1579,87 @@ class Surface:
             plt.close(fig)
 
         return ax
+
+    def svgplot_surface_sites(self, filename: str | Path | io.BytesIO = "") -> None:
+        """Plot the surface sites as an SVG file.
+
+        :param filename: The filepath of the SVG file. If io.BytesIO is provided, the file will be written to bytes.
+        """
+
+        filename: Path | io.BytesIO = Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
+        rounding: Final[int] = 5
+
+        width = float(round(self.x_max, rounding))
+        height = float(round(self.y_max, rounding))
+
+        # Root SVG
+        root = svg.SVG(
+            width=svg.Length(width, "cm"),
+            height=svg.Length(height, "cm"),
+            viewBox=svg.ViewBoxSpec(0, 0, width, height),
+            elements=[],
+        )
+
+        # defs
+        defs = svg.Defs(elements=[])
+        root.elements.append(defs)
+
+        # Flip y-axis
+        root_group = svg.G(transform=[svg.Scale(x=1, y=-1), svg.Translate(x=0, y=-height)], elements=[])
+        root.elements.append(root_group)
+
+        # -----------------------------------
+        # GRID POINT TEMPLATE
+        # -----------------------------------
+        point_radius = float(self.lattice_a) * 0.1
+
+        grid_point_id = "site"
+        defs.elements.append(
+            svg.Circle(
+                id=grid_point_id,
+                r=point_radius,
+                fill="black",
+                stroke="none",
+            ),
+        )
+
+        grid_group = svg.G(elements=[])
+
+        rounded_coords = np.round(self.grid_coordinates, rounding)
+
+        grid_group.elements.extend([
+            svg.Use(href=f"#{grid_point_id}", x=x, y=y)
+            for x, y in rounded_coords.T
+        ])
+
+        root_group.elements.append(grid_group)
+
+        # -----------------------------------
+        # BORDER
+        # -----------------------------------
+        if self.bp.hard_flag:
+            root_group.elements.append(
+                svg.Rect(
+                    x=0.0,
+                    y=0.0,
+                    width=width,
+                    height=height,
+                    stroke="black",
+                    fill="none",
+                    stroke_width=2,
+                ),
+            )
+
+        # Save
+        raw_xml = root.as_str()
+        parsed_xml = parseString(raw_xml)
+        pretty_xml = parsed_xml.toprettyxml(indent="    ", encoding="UTF-8")
+
+        if isinstance(filename, io.BytesIO):
+            filename.write(pretty_xml)
+        else:
+            with filename.open("wb") as f:
+                f.write(pretty_xml)
 
 
 @dataclass(slots=True)

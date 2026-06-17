@@ -8,16 +8,28 @@ You need to supply your own .xyz files, or you can use preconfigured simple shap
 
 from __future__ import annotations
 
+import io
 import json
+import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Literal, ParamSpec, TypeVar, cast, Final
 
 import matplotlib.pyplot as plt
 import numpy as np
 import shapely
 import shapely.affinity as aff
 import svg
-from pydantic import FilePath, PositiveFloat, PositiveInt, validate_call
+from pydantic import (
+    FilePath,
+    PositiveFloat,
+    PositiveInt,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+    validate_call,
+    NonNegativeFloat,
+)
+from pydantic_extra_types import Color
 from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtSvgWidgets import QSvgWidget
@@ -61,23 +73,28 @@ plt.rcParams.update(
     },
 )
 
+AtomKey = Annotated[str, StringConstraints(min_length=1, max_length=2)]
+"""Atom key validator. String of length 1 or 2."""
 
-# Van der Waals radii of atoms. Source: https://doi.org/10.1039/C3DT50599E
-current_dir_file = Path(__file__).parent / "VdW_Radii.csv"
-RADII: dict[str, float] = dict(
-    np.genfromtxt(
-        current_dir_file,
-        dtype=[("s", "U2"), ("f", "f4")],
-        encoding="utf-8-sig",
-        delimiter=",",
-    ),
-)
-"""Key-value pairs of chemical symbols and van der Waals radii."""
+def _load_radii_from_json() -> dict[str, float]:
+    """Load the van der Waals radii from the vdw_radii.json file.
+
+    Uses Pydantic to validate the json.
+
+    :returns: dict of the chemical symbols (keys) and van der Waals radii (values).
+    """
+    radii_adapter = TypeAdapter(dict[AtomKey, PositiveFloat])
+    radii_json_path = Path(__file__).parent / "vdw_radii.json"
+    return radii_adapter.validate_json(radii_json_path.read_bytes())
+
+RADII: Final[dict[str, float]] = _load_radii_from_json()
+"""Key-value pairs of chemical symbols and van der Waals radii. Reference: https://doi.org/10.1039/C3DT50599E"""
+
 
 @validate_call
 def discorectangle(
-    radius: PositiveFloat ,
-    distance: PositiveFloat ,
+    radius: PositiveFloat,
+    distance: NonNegativeFloat,
     offx: float = 0.0,
     offy: float = 0.0,
 ) -> Polygon:
@@ -128,7 +145,7 @@ def circulium(
     return Point((x_offset, y_offset)).buffer(radius, quad_segs=quad_segs)
 
 @validate_call
-def dogbonium(scale: PositiveFloat = 1) -> Polygon:
+def dogbonium(scale: PositiveFloat = 1.0) -> Polygon:
     """Make a molecule shaped like a bone. Used as a pathological case.
 
     :param scale: scale of the shape.
@@ -149,7 +166,7 @@ def dogbonium(scale: PositiveFloat = 1) -> Polygon:
 def polygonium(
     verts: PositiveInt = 3,
     scale: PositiveFloat = 1.0,
-    roundedness: PositiveFloat = 0.0,
+    roundedness: NonNegativeFloat = 0.0,
 ) -> Polygon:
     """Create a simple regular polygon with optional rounding.
 
@@ -189,7 +206,7 @@ def xyz_reader(
     """Read files in the xyz format of VASP.
 
     :param file_name: The name of the file, including the .xyz extension. Include the path.
-    :param ignore_atoms: Atoms to ignore when making the molecule. Useful if the slab is empty.
+    :param ignore_atoms: Atoms to ignore when making the molecule. Useful to filter out a slab.
     :param x_offset: The offset in the x direction.
     :param y_offset: The offset in the x direction.
     :param yaw: Rotation along the x-axis.
@@ -236,7 +253,7 @@ def xyz_reader(
 
     return cast("Polygon", aff.translate(molecule, *centre))
 
-def rotation_matrix(roll: np.floating | float, pitch: np.floating | float, yaw: np.floating | float) -> np.ndarray:
+def _rotation_matrix(roll: np.floating | float, pitch: np.floating | float, yaw: np.floating | float) -> np.ndarray:
     """Compute the 3D rotation matrix using roll, pitch, and yaw.
 
     :param roll: Rotation along the x-axis.
@@ -268,7 +285,17 @@ def rotation_matrix(roll: np.floating | float, pitch: np.floating | float, yaw: 
 class MoleculeViewer(QWidget):
     """Molecule orientation widget."""
 
-    def __init__(self, atomkeys, atompos, colours, init_roll, init_pitch, init_yaw, init_x_offset, init_y_offset, lattice) -> None:
+    def __init__(self,
+                 atomkeys: list[str] | np.ndarray,
+                 atompos: list[list[float]] | np.ndarray,
+                 colours: list[str] | np.ndarray,
+                 init_roll: float | None = None,
+                 init_pitch: float | None = None,
+                 init_yaw: float | None = None,
+                 init_x_offset: float | None = None,
+                 init_y_offset: float | None = None,
+                 lattice: float | None = None,
+        ) -> None:
         """Initialise the molecule orientation widget."""
         super().__init__()
 
@@ -628,7 +655,7 @@ class MoleculeViewer(QWidget):
         self._settings.setValue("bg_on", checked)
 
     def transform(self):
-        rotations = rotation_matrix(self.roll, self.pitch, self.yaw)
+        rotations = _rotation_matrix(self.roll, self.pitch, self.yaw)
         pts = self.atompos @ rotations
         pts -= np.mean(pts, axis=0)
 
@@ -660,14 +687,14 @@ class MoleculeViewer(QWidget):
         xs, ys, zs = pts.T
 
         # --- SVG full size ---
-        W, H = 1000, 800
+        width, height = 1000, 800
 
         # Force square drawing region
-        side = min(W, H)
+        side = min(width, height)
 
         # Center square inside SVG
-        offset_x = (W - side) / 2
-        offset_y = (H - side) / 2
+        offset_x = (width - side) / 2
+        offset_y = (height - side) / 2
 
         # 2x2 grid inside square
         panel = side / 2
@@ -883,7 +910,7 @@ class MoleculeViewer(QWidget):
         add_axis_arrows(offset_x + panel * 1.5, offset_y + panel * 1.5, "x", "y")
 
         # 1. Grab the active rotation matrix from your backend configuration
-        rotations = rotation_matrix(self.roll, self.pitch, self.yaw)
+        rotations = _rotation_matrix(self.roll, self.pitch, self.yaw)
 
         # 2. Define standard, colour-coded unit directions: X (Red), Y (Green), Z (Blue)
         axes_3d = np.identity(3, dtype=float)
@@ -949,7 +976,7 @@ class MoleculeViewer(QWidget):
         svg_out = svg.SVG(
             width=svg.Length(100, "%"),
             height=svg.Length(100, "%"),
-            viewBox=svg.ViewBoxSpec(0, 0, W, H),
+            viewBox=svg.ViewBoxSpec(0, 0, width, height),
             preserveAspectRatio=svg.PreserveAspectRatio(),
             elements=elements,
         )
@@ -968,13 +995,47 @@ def first_time_loader(
     z_trim: float | None = None,
     reference_lattice_spacing: float= 4.74,
 ) -> dict[str, str | float | list[str] | None]:
-    """Load molecule for the first time to save settings."""
+    """Load molecule for the first time to save settings. Uses PySide6.
+
+    :param file_name: File path/name for the .xyz file to load the molecule from.
+    :param ignore_atoms: List of atoms to ignore. Leave empty to interactively toggle all.
+    :param roll: Roll angle in degrees. Leave empty for default.
+    :param pitch: Pitch angle in degrees.
+    :param yaw: Yaw angle in degrees.
+    :param x_offset: X offset in angstrom.
+    :param y_offset: Y offset in angstrom.
+    :param z_trim: Z trimming factor in angstrom. Filter all atoms with lower z values.
+    :param reference_lattice_spacing: spacing for the reference lattice in angstrom.
+    :returns:
+        1) "file_name": str,
+        2) "roll": float,
+        3) "pitch": float,
+        4) "yaw": float,
+        5) "x_offset": float,
+        6) "y_offset": float,
+        7) "ignore_atoms": list[str],
+        8) "z_trim": float | None
+    """
     atomkeys, atompos = _initialise_reader(file_name, ignore_atoms, z_trim)
 
-    with (Path(__file__).parent / "molecule_colour.json").open() as f:
-        colourdict = json.load(f)
+    color_map_adapter = TypeAdapter(dict[AtomKey, Color])
+    colour_dict: dict[str, str]
 
-    colours = np.array([colourdict.get(k, "#FFFFFF") for k in atomkeys])
+    try:
+        json_path = Path(__file__).parent / "molecule_colour.json"
+        raw_dict = color_map_adapter.validate_json(json_path.read_bytes())
+
+        colour_dict = {k: v.as_hex() for k, v in raw_dict.items()}
+
+    except (ValidationError, FileNotFoundError, json.JSONDecodeError) as e:
+        warnings.warn(
+            f"Warning: Could not parse colours safely ({e}). Using default #FFFFFF.",
+            category=UserWarning,
+            stacklevel=2,
+        )
+        colour_dict = {}
+
+    colours = np.array([colour_dict.get(k, "#FFFFFF") for k in atomkeys])
 
     app = QApplication.instance() or QApplication([])
 
@@ -1108,6 +1169,79 @@ def _initialise_reader(
         raise ValueError(errmsg)
 
     return atomkeys, atompos
+
+def save_molecule_svg(molecule: Polygon, lattice: float = 4.74, filename: str | Path | io.BytesIO = "") -> None:
+    """Save the molecule shape as an SVG with a locked aspect ratio."""
+    rounding: int = 4
+
+    # 1. Extract and round molecule coordinates
+    coords = np.round(
+        np.asarray(molecule.exterior.coords, dtype=float),
+        rounding,
+    )
+
+    poly = svg.Polygon(
+        points=coords.flatten().tolist(),
+        fill="grey",
+        stroke="none",
+    )
+
+    # 2. Compute lattice circles
+    elements: list[svg.Circle] = []
+    lattice_x = lattice * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5])
+    lattice_y = lattice * np.array(
+        [0, 0, 0, np.sqrt(3) / 2, np.sqrt(3) / 2, -np.sqrt(3) / 2, -np.sqrt(3) / 2],
+    )
+
+    for lx, ly in zip(lattice_x, lattice_y, strict=True):
+        elements.append(svg.Circle(cx=float(lx), cy=float(ly), r=lattice * 0.1, fill="black"))
+
+    # 3. Calculate dynamic viewBox bounds
+    all_x = np.concatenate([coords[:, 0], lattice_x])
+    all_y = np.concatenate([coords[:, 1], lattice_y])
+
+    padding = max(lattice, 5)
+    min_x, max_x = np.min(all_x) - padding, np.max(all_x) + padding
+    min_y, max_y = np.min(all_y) - padding, np.max(all_y) + padding
+
+    view_w = max_x - min_x
+    view_h = max_y - min_y
+
+    max_dim = max(view_w, view_h)
+
+    # Adjust centers so the content remains perfectly framed
+    center_x = (min_x + max_x) / 2
+    center_y = (min_y + max_y) / 2
+
+    min_x = center_x - (max_dim / 2)
+    min_y = center_y - (max_dim / 2)
+    view_w = max_dim
+    view_h = max_dim
+
+    # 4. Force Uniform Scaling Aspect Ratio
+    # This prevents the container from stretching the SVG unevenly.
+    aspect_ratio = svg.PreserveAspectRatio("xMidYMid")
+
+    # 5. Construct the SVG document
+    svg_out = svg.SVG(
+        width=svg.Length(100, "%"),
+        height=svg.Length(100, "%"),
+        viewBox=svg.ViewBoxSpec(min_x, min_y, view_w, view_h),
+        preserveAspectRatio=aspect_ratio, # Injected corrected aspect behavior
+        elements=[poly, *elements],
+    )
+
+    # 6. Handle output
+    svg_string = str(svg_out)
+
+    if isinstance(filename, io.BytesIO):
+        filename.write(svg_string.encode("utf-8"))
+    elif filename:
+        Path(filename).write_text(svg_string, encoding="utf-8")
+    else:
+        print(svg_string)
+
+
 
 
 if __name__ == "__main__":  # Best practice
