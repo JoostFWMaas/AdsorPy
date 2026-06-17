@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """GUI module of adsorpy."""  # TODO: Make a new repo for this!
+
 from __future__ import annotations
 
 import inspect
@@ -8,11 +9,11 @@ import io
 import re
 import sys
 import webbrowser
-from typing import TYPE_CHECKING, ClassVar, cast, Any
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, ParamSpec, Self, TypeVar, cast, override
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6.QtCore import QObject, QRegularExpression, QSize, Qt, Signal
+from PySide6.QtCore import QObject, QRegularExpression, Qt, Signal
 from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator, QWheelEvent
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,23 +29,24 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
-    QStyle,
     QTabWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
-    QFileDialog,
-    QScrollArea,
 )
-from shapely import MultiPolygon, Polygon
-from shapely.plotting import plot_polygon
 
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
+Tqob = TypeVar("Tqob", bound=QObject)
+
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from shapely import Polygon
+    P = ParamSpec("P", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
+
 
 def extract_param_docs(func: Callable) -> dict[str, str]:
     """Extract parameters and their types from the docstring of a function.
@@ -62,7 +65,7 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
     param_docs: dict[str, str] = {}
     lines = doc.splitlines()
 
-    current_param = None
+    current_param: str | None = None
     buffer = []
 
     for line in lines:
@@ -83,15 +86,27 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
 
     return param_docs
 
+
 class ZoomableSvgWidget(QSvgWidget):
-    def __init__(self, parent: QSvgWidget | None = None):
+    """SVG widget with zoom capabilities."""
+
+    def __init__(self, parent: QSvgWidget | None = None) -> None:
+        """Initialise the ZoomableSvgWidget.
+
+        :param parent: The parent QSvgWidget object. If none is provided, create one of fixed size.
+        """
         super().__init__(parent)
         self.zoom_factor = 1.15
         # Set a baseline size so it doesn't collapse to 0x0
         if parent is None:
             self.setFixedSize(800, 600)
 
-    def wheelEvent(self, event: QWheelEvent):
+    @override
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """Override scroll wheel events.
+
+        :param event: The QWheelEvent object.
+        """
         modifiers = event.modifiers()
         scroll_area = self.window().findChild(QScrollArea)
 
@@ -102,8 +117,10 @@ class ZoomableSvgWidget(QSvgWidget):
 
             old_size = self.size()
             new_size = old_size * scale
+            min_scale: int = 100
+            max_scale: int = 5000
 
-            if 100 < new_size.width() < 50000:
+            if min_scale < new_size.width() < max_scale:
                 mouse_pos = event.position()
                 self.setFixedSize(new_size)
 
@@ -133,11 +150,19 @@ class ZoomableSvgWidget(QSvgWidget):
             event.ignore()  # Hands control over to QScrollArea naturally
 
 
-class AutoStateMeta(type(QObject)):
+class AutoStateMeta(type(QObject), Generic[Tqob]):
     """Metaclass for AppState to automatically communicate between tabs."""
 
-    def __new__(cls, name, bases, attrs):
-        """Create an AutoState class instance."""
+    fields: ClassVar[dict[str, type]]
+
+    def __new__(cls: type[Self], name: str, bases: tuple[type, ...], attrs: dict[str, Any]) -> type[Self]:
+        """Create an AutoState class instance.
+
+        :param name: The name of the class.
+        :param bases: The base classes.
+        :param attrs: The class attributes.
+        :return: The AutoState class instance.
+        """
         fields = attrs.get("fields", {})
 
         for field_name, field_type in fields.items():
@@ -146,21 +171,44 @@ class AutoStateMeta(type(QObject)):
 
             attrs[signal_name] = Signal(field_type)
 
-            def getter(self, pn=private_name):
-                return getattr(self, pn)
+            def getter(self: Self, private_name: str = private_name) -> object:
+                """Get the value.
 
-            def setter(self, value, pn=private_name, sn=signal_name):
-                setattr(self, pn, value)
-                getattr(self, sn).emit(value)
+                :param private_name: private name.
+                :returns: the getattr() object.
+                """
+                return getattr(self, private_name)
+
+            def setter(
+                    self: Self,
+                    value: str,
+                    private_name: str = private_name,
+                    signal_name: str = signal_name,
+            ) -> None:
+                """Set the value.
+
+                :param self: the class.
+                :param value: the value to update.
+                :param private_name: private name.
+                :param signal_name: signal name.
+                """
+                setattr(self, private_name, value)
+                getattr(self, signal_name).emit(value)
 
             attrs[field_name] = property(getter, setter)
 
         return super().__new__(cls, name, bases, attrs)
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: P.args, **kwargs: P.kwargs) -> Tqob:
+        """Instantiate the class and auto-initialise its fields.
+
+        :param args: Positional arguments.
+        :param kwargs: Keyword arguments.
+        :returns: The initialised class instance.
+        """
         obj = super().__call__(*args, **kwargs)
 
-        # Auto‑initialise private fields
+        # Auto-initialise private fields
         for field_name in cls.fields:
             private_name = f"_{field_name}"
             if not hasattr(obj, private_name):
@@ -183,7 +231,6 @@ class AppState(QObject, metaclass=AutoStateMeta):
         "count": int,
         "step_limit": int,
     }
-
 
 
 class MplCanvas(FigureCanvasQTAgg):
@@ -249,7 +296,6 @@ class AdsorpyGUI(QMainWindow):
         help_menu.addAction(wiki_action)
         help_menu.addAction(bug_action)
 
-
         central = SurfaceGeneration(self.state)
         self.setCentralWidget(central)
 
@@ -259,12 +305,12 @@ class AdsorpyGUI(QMainWindow):
         controls_layout = QVBoxLayout()
         main_layout.addLayout(controls_layout)
 
-
         tabs = QTabWidget()
         tabs.addTab(GeneralSettings(self.state), "General")
         tabs.addTab(SurfaceGeneration(self.state), "Surface")
         tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
         self.setCentralWidget(tabs)
+
 
 class GeneralSettings(QWidget):
     """General settings generation widget."""
@@ -280,7 +326,7 @@ class GeneralSettings(QWidget):
         main_layout = QHBoxLayout()
         controls_layout = QVBoxLayout()
         gt_one_validator = QIntValidator(bottom=1)
-        pos_float_validator = QDoubleValidator(bottom=0)
+        # pos_float_validator = QDoubleValidator(bottom=0)
         seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
 
         # Seed input
@@ -314,9 +360,12 @@ class GeneralSettings(QWidget):
 
         self.setLayout(main_layout)
 
-    def on_step_limit_changed(self, value):
-        self.state.step_limit = int(value) if value else -1
+    def on_step_limit_changed(self, value: str) -> None:
+        """Update the step limit value.
 
+        :param value: The new step limit value.
+        """
+        self.state.step_limit = int(value) if value else -1
 
 
 class MoleculeGeneration(QWidget):
@@ -332,10 +381,9 @@ class MoleculeGeneration(QWidget):
 
         self.main_layout = QHBoxLayout()
         self.controls_layout = QVBoxLayout()
-        gt_one_validator = QIntValidator(bottom=1)
-        pos_float_validator = QDoubleValidator(bottom=0)
-        seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
-
+        # gt_one_validator = QIntValidator(bottom=1)
+        # pos_float_validator = QDoubleValidator(bottom=0)
+        # seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
 
         # Add molecule button
         self.add_molecule_button = QPushButton("Add new molecule")
@@ -348,7 +396,9 @@ class MoleculeGeneration(QWidget):
         self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
         temp_generators = {
-            name: func for name, func in molecule_lib.__dict__.items() if inspect.isfunction(func) and not name.startswith("_") and func.__module__ == molecule_lib.__name__
+            name: func
+            for name, func in molecule_lib.__dict__.items()
+            if inspect.isfunction(func) and not name.startswith("_") and func.__module__ == molecule_lib.__name__
         }
 
         self.generators: dict[str, Callable[[...], Polygon]] = dict(sorted(temp_generators.items()))
@@ -373,7 +423,6 @@ class MoleculeGeneration(QWidget):
         # self.molecule_names = list_public_molecules()
         # self.molecule_dropdown.addItems(self.molecule_names)
         # controls_layout.addWidget(self.molecule_dropdown)
-
 
         # Plot molecules
         # self.canvas = MplCanvas()
@@ -424,7 +473,8 @@ class MoleculeGeneration(QWidget):
     # ---------------------------------------------------------
     # Build parameter widgets dynamically
     # ---------------------------------------------------------
-    def delete_previous_layout(self):
+    def _delete_previous_layout(self) -> None:
+        """Delete the layout of the previous molecule parameters."""
         while self.param_layout.count():
             item = self.param_layout.takeAt(0)
             w = item.widget()
@@ -439,13 +489,12 @@ class MoleculeGeneration(QWidget):
                     if cw is not None:
                         cw.deleteLater()
 
-
     def build_param_inputs(self, func_name: str) -> None:
         """Build the parameter inputs.
 
         :param func_name: Name of the function
         """
-        self.delete_previous_layout()
+        self._delete_previous_layout()
 
         func = self.generators[func_name]
         sig = inspect.signature(func)
@@ -465,14 +514,19 @@ class MoleculeGeneration(QWidget):
                 name_label.setToolTip(param_docs[name])
             row.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
 
+            # strip_params = param.annotation.split("|")
+            # print(strip_params)
+
             match param.annotation:
-                case "float" | "PositiveFloat" | "NonNegativeFloat":
+                case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
+                    widget = QDoubleSpinBox()
                     min_float_val: float = -999.0
                     if param.annotation == "PositiveFloat":
                         min_float_val = 0.0001
+                        if not isinstance(default, inspect.Parameter.empty):
+                            widget.setValue(1.0)
                     elif param.annotation == "NonNegativeFloat":
                         min_float_val = 0.0
-                    widget = QDoubleSpinBox()
                     widget.setRange(min_float_val, default_max)
                     widget.setDecimals(4)
                     widget.setSingleStep(0.1)
@@ -485,16 +539,13 @@ class MoleculeGeneration(QWidget):
                 case "FilePath":
                     widget = FilePickerWidget()
 
-                case "str":
+                case "str | list[str] | None":
                     widget = QLineEdit()
-
-                case _ if default is None:
-                    widget = QLineEdit()
-                    widget.setPlaceholderText("None")
 
                 case _:
-                    errmsg: str = f"Unsupported parameter annotation: '{param.annotation}'"
+                    errmsg: str = f"Unsupported parameter annotation: '{param.annotation}' for param '{name}'."
                     raise TypeError(errmsg)
+                    # pass
 
             if not is_required and default is not None:
                 match widget:
@@ -529,9 +580,9 @@ class MoleculeGeneration(QWidget):
         molecule_buttons.addWidget(add_molecule_button)
         self.param_layout.addLayout(molecule_buttons)
 
-    def get_param_values(self) -> dict[str, Any]:
+    def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
         """Extract current user inputs from widgets back into a data dictionary."""
-        values: dict[str, float | int | str | None] = {}
+        values: dict[str, float | int | str | list[str] | None] = {}
         name: str
         widget: QWidget
 
@@ -560,7 +611,10 @@ class MoleculeGeneration(QWidget):
         return values
 
     def error(self, msg: str) -> None:
-        """Handle the errors."""
+        """Handle the errors.
+
+        Please open a ticket if this happens when it should not.
+        """
         QMessageBox.critical(self, "Input Error", msg)
 
     def plot_molecule(self) -> None:
@@ -575,7 +629,8 @@ class MoleculeGeneration(QWidget):
         except ValueError as e:
             self.error(str(e))
 
-    def add_molecule(self):
+    def add_molecule(self) -> None:
+        """Add a molecule to the list of molecules to use."""
         func_name = self.func_dropdown.currentText()
         func = self.generators[func_name]
 
@@ -605,7 +660,8 @@ class MoleculeGeneration(QWidget):
     # ---------------------------------------------------------
     # Delete selected molecule
     # ---------------------------------------------------------
-    def delete_molecule(self):
+    def delete_molecule(self) -> None:
+        """Delete the current selected molecule."""
         idx = self.molecule_dropdown.currentIndex()
         if idx < 0:
             return
@@ -620,7 +676,14 @@ class MoleculeGeneration(QWidget):
 
 
 class FilePickerWidget(QWidget):
-    def __init__(self, parent=None, placeholder="Select a file..."):
+    """Widget to help pick a file."""
+
+    def __init__(self, parent: QWidget | None = None, placeholder: str = "Select a file...") -> None:
+        """Initialise the file-picker widget.
+
+        :param parent: Parent widget.
+        :param placeholder: Placeholder text to display in the selector box.
+        """
         super().__init__(parent)
 
         # Layout
@@ -641,7 +704,8 @@ class FilePickerWidget(QWidget):
         layout.addWidget(self.line_edit)
         layout.addWidget(self.browse_button)
 
-    def open_file_dialog(self):
+    def open_file_dialog(self) -> None:
+        """Dialogue to display when selecting a file."""
         # Native OS file dialogue
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -652,11 +716,18 @@ class FilePickerWidget(QWidget):
         if file_path:
             self.line_edit.setText(file_path)
 
-    # Mimic standard widget API so it plugs right into your matching code
-    def setText(self, text: str):
+    def set_text(self, text: str) -> None:
+        """Set the text to be displayed in the widget.
+
+        :param text: Text to be displayed in the widget.
+        """
         self.line_edit.setText(text)
 
     def text(self) -> str:
+        """Get the text of the box being edited.
+
+        :return: Text of the box being edited.
+        """
         return self.line_edit.text()
 
 
@@ -676,7 +747,6 @@ class SurfaceGeneration(QWidget):
         controls_layout = QVBoxLayout()
         gt_one_validator = QIntValidator(bottom=1)
         pos_float_validator = QDoubleValidator(bottom=0)
-        seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
 
         # Surface dropdown
         controls_layout.addWidget(QLabel("Surface Type:"))
@@ -845,8 +915,6 @@ class SurfaceGeneration(QWidget):
 
         step_limit: int = int(step_limit_val) if good_limit else cast("int", get_run_sim_default("timestep_limit"))
 
-
-
         # molecule = self.molecule_dropdown.currentText()
         lattice_type = self.surface_dropdown.currentText()
 
@@ -892,7 +960,6 @@ class SurfaceGeneration(QWidget):
     def error(self, msg: str) -> None:
         """Handle the errors."""
         QMessageBox.critical(self, "Input Error", msg)
-
 
 
 if __name__ == "__main__":

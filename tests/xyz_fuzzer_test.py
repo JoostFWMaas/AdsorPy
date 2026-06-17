@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the .xyz file parsing by fuzzing input."""
+
 from collections.abc import Callable
 from typing import Literal, TypeVar, cast
 
@@ -19,8 +20,11 @@ VALID_KEYS = list(RADII.keys())
 
 # ---- Strategies ----
 
+
 @st.composite
-def valid_xyz_inputs(draw: Callable[[SearchStrategy[T]], T]) -> tuple[
+def valid_xyz_inputs(
+    draw: Callable[[SearchStrategy[T]], T],
+) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.str_]],
     np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]],
     np.int_,
@@ -55,7 +59,9 @@ def valid_xyz_inputs(draw: Callable[[SearchStrategy[T]], T]) -> tuple[
 
 
 @st.composite
-def invalid_xyz_inputs(draw: Callable[[SearchStrategy[T]], T]) -> tuple[
+def invalid_xyz_inputs(
+    draw: Callable[[SearchStrategy[T]], T],
+) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.str_]],
     np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.float64]],
     int | None,
@@ -89,26 +95,30 @@ def invalid_xyz_inputs(draw: Callable[[SearchStrategy[T]], T]) -> tuple[
         ),
     )
 
-    listed_count = cast("int",
-                        draw(
-                            st.one_of(  # pyright: ignore[reportArgumentType]
-                                st.none(),
-                                st.integers(min_value=-5, max_value=100),
-                                ),
-                            ),
-                        )
+    listed_count = cast(
+        "int",
+        draw(
+            st.one_of(  # pyright: ignore[reportArgumentType]
+                st.none(),
+                st.integers(min_value=-5, max_value=100),
+            ),
+        ),
+    )
 
     return atomkeys, atompos, listed_count
 
 
 # ---- Tests ----
 
+
 @given(valid_xyz_inputs())
-def test_xyz_verifier_valid(data: tuple[
-    np.ndarray[tuple[int], np.dtype[np.str_]],
-    np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]],
-    np.int_,
-]) -> None:
+def test_xyz_verifier_valid(
+    data: tuple[
+        np.ndarray[tuple[int], np.dtype[np.str_]],
+        np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]],
+        np.int_,
+    ],
+) -> None:
     """Test correct response to valid input.
 
     :param data: method turning strategies into values.
@@ -120,11 +130,13 @@ def test_xyz_verifier_valid(data: tuple[
 
 
 @given(invalid_xyz_inputs())
-def test_xyz_verifier_invalid(data: tuple[
-    np.ndarray[tuple[int], np.dtype[np.str_]],
-    np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.float64]],
-    np.int_,
-]) -> None:
+def test_xyz_verifier_invalid(
+    data: tuple[
+        np.ndarray[tuple[int], np.dtype[np.str_]],
+        np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.float64]],
+        np.int_,
+    ],
+) -> None:
     """Test correct response to invalid input.
 
     :param data: method turning strategies into values.

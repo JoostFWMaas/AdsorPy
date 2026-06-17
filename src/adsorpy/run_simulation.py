@@ -155,7 +155,6 @@ def run_simulation(  # noqa: PLR0913
 
     surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
 
-
     if custom_grid_flg:
         if TYPE_CHECKING:
             if site_x_coords is None or site_y_coords is None or bounding_x_coord is None or bounding_y_coord is None:
@@ -560,7 +559,7 @@ def show_surface(
     svg_flag: bool = False,
     filepath: str | Path | io.BytesIO = "",
     ax: Tax = None,
-    ) -> Tax:
+) -> Tax:
     """Show the simulation surface.
 
     :param rsa_config: Input parameters defined in the config.
@@ -596,6 +595,7 @@ def show_surface(
         return surf.plot_surface_sites("", filepath, ax)
     return ax
 
+
 def main() -> Literal[0]:
     """Run the RSA script, for demonstration purposes.
 
@@ -604,7 +604,9 @@ def main() -> Literal[0]:
     config_path = Path(__file__).parent / "config.json"
     rsa_config = RsaConfig(config_path)
     start = time.perf_counter()
-    run_simulation(rsa_config, plot_output_flag=True, include_rejected_flux=False, molecules_list=mol.dogbonium(1), site_count=10)
+    run_simulation(
+        rsa_config, plot_output_flag=True, include_rejected_flux=False, molecules_list=mol.dogbonium(1), site_count=10,
+    )
     end = time.perf_counter()
     totaltime = f"{(end - start):.0f} seconds elapsed since start."
     print(totaltime)
