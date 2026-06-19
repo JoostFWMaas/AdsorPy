@@ -51,7 +51,7 @@ from shapely.ops import unary_union
 if TYPE_CHECKING:
     from PySide6.QtGui import QFontMetrics
 
-    from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, RotMatrix
+    from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, RotMatrix, StrArray
 
     T = TypeVar("T", bound=bool | int | str | float)
     Tfloat = TypeVar("Tfloat", bound=float | np.float64)
@@ -178,7 +178,7 @@ def polygonium(
 
     :param verts: The vertex count.
     :param scale: The scale factor of the polygon.
-    :param roundedness: The roundedness.
+    :param roundedness: The roundedness, removes sharp corners. Theoretical limit at infinity is a disk.
     :return: The regular (rounded) polygon.
     """
     points = np.arange(verts, dtype=np.float64)
@@ -209,6 +209,7 @@ def xyz_reader(
     pitch: float = 0.0,
     yaw: float = 0.0,
     z_trim: float | None = None,
+    reference_lattice_spacing: float = 4.74,
 ) -> Polygon:
     """Read files in the xyz format of VASP.
 
@@ -310,17 +311,34 @@ class MoleculeViewer(QWidget):
         """
         super().__init__()
 
-        self._settings = QSettings("adsorpy", "MoleculeViewer")
+        self._settings = QSettings("adsorpy", type(self).__name__)
+        """Load the settings between sessions."""
+
+        self.atomkeys: StrArray
+        """Atom keys as an array of chemical symbol strings."""
+        self.atmpos: CoordsArray3D
+        "Atom positions as a 3D array of coordinates."
+        self.colours: StrArray
+        """Atom colours as an array of hexadecimal colour strings."""
 
         # Step 1: Initialise raw variables and data placeholders
         self.atomkeys, self.atompos, self.colours = self._init_data(
-            atomkeys, atompos, colours, init_roll, init_pitch, init_yaw, init_x_offset, init_y_offset,
+            atomkeys,
+            atompos,
+            colours,
+            init_roll,
+            init_pitch,
+            init_yaw,
+            init_x_offset,
+            init_y_offset,
         )
 
         self.lattice: float = lattice if lattice is not None else 1.0
+        """Lattice spacing. Defaults to 1.0."""
         self.show_bonds: bool = False
-        """Bool flag: are bonds displayed or not?"""
+        """Bool flag: True if bonds are shown, else False."""
         self.atom_toggles: dict[str, QCheckBox] = {}
+        """Dynamic dictionary of atom toggle checkboxes. Sorted by atomic number."""
 
         # Step 2: Build the structural layout tree
         main_vert_layout: QVBoxLayout = QVBoxLayout()
@@ -346,29 +364,30 @@ class MoleculeViewer(QWidget):
 
     @property
     def disabled_molecules(self) -> list[str] | None:
-        """Get a sorted list of disabled molecule names, or None if empty.
+        """Get a sorted list of disabled molecule names, or None if empty/disabled.
 
-        :returns: None if disabled, else a list of chemical symbols.
+        :returns: None if disabled, else a list of chemical symbols (sorted by atomic number).
         """
         # Gather keys where the visual checkbox is unchecked
-        disabled = [str(atom) for atom, checkbox in self.atom_toggles.items() if not checkbox.isChecked()]
+        disabled: list[str] = [atom for atom, checkbox in self.atom_toggles.items() if not checkbox.isChecked()]
+        """The list of disabled atoms (as chemical symbol strings). Disabled atoms are added to the list."""
 
-        if not disabled:
+        if not disabled:  # If the list of disabled molecules is empty, i.e., [], this evaluates to True.
             return None
 
         return sorted(disabled, key=list(RADII.keys()).index)
 
     def _init_data(
         self,
-        atomkeys: list[str] | np.ndarray,
+        atomkeys: list[str] | StrArray,
         atompos: CoordsArray3D,
-        colours: list[str] | np.ndarray,
+        colours: list[str] | StrArray,
         init_roll: float | None = None,
         init_pitch: float | None = None,
         init_yaw: float | None = None,
         init_x_offset: float | None = None,
         init_y_offset: float | None = None,
-    ) -> tuple[np.ndarray, CoordsArray3D, np.ndarray]:
+    ) -> tuple[StrArray, CoordsArray3D, StrArray]:
         """Initialise internal tracking parameters, limits, and array structures.
 
         :param atomkeys: Atoms keys.
@@ -384,13 +403,13 @@ class MoleculeViewer(QWidget):
             2) Atom positions
             3) Atom colours
         """
-        self.orig_atomkeys: np.ndarray = np.array(atomkeys, dtype=str)
-        self.orig_atompos: np.ndarray = np.array(atompos, dtype=np.float64)
-        self.orig_colours: np.ndarray = np.array(colours, dtype=str)
+        self.orig_atomkeys: StrArray = np.array(atomkeys, dtype=np.str_)
+        self.orig_atompos: CoordsArray3D = np.array(atompos, dtype=np.float64)
+        self.orig_colours: StrArray = np.array(colours, dtype=np.str_)
 
-        temp_atomkeys: np.ndarray = self.orig_atomkeys.copy()
-        temp_atompos: CoordsArray3D = self.orig_atompos.copy()
-        temp_colours: np.ndarray = self.orig_colours.copy()
+        temp_atomkeys = self.orig_atomkeys.copy()
+        temp_atompos = self.orig_atompos.copy()
+        temp_colours = self.orig_colours.copy()
 
         def default_zero(value: float | None = None) -> float:
             """Return 0.0 if None, else value.
@@ -480,17 +499,17 @@ class MoleculeViewer(QWidget):
             item_row: QHBoxLayout = QHBoxLayout()
             item_row.setContentsMargins(0, 2, 0, 2)
 
-            cb: QCheckBox = QCheckBox(f"Show {atom}")
-            cb.setChecked(True)
-            self.atom_toggles[atom] = cb
-            cb.stateChanged.connect(self.apply_filters)
+            atom_checkbox: QCheckBox = QCheckBox(f"Show {atom}")
+            atom_checkbox.setChecked(True)
+            self.atom_toggles[atom] = atom_checkbox
+            atom_checkbox.stateChanged.connect(self.apply_filters)
 
             color_swatch: QLabel = QLabel()
             color_swatch.setFixedSize(QSize(14, 14))
             color_swatch.setStyleSheet(f"background-color: {color_hex}; border: 1px solid #555555; border-radius: 2px;")
 
             item_row.addWidget(color_swatch)
-            item_row.addWidget(cb)
+            item_row.addWidget(atom_checkbox)
             item_row.addStretch()
             atom_checkbox_layout.addLayout(item_row)
 
@@ -697,7 +716,10 @@ class MoleculeViewer(QWidget):
         self._settings.setValue("bg_on", checked)
 
     def transform(self) -> CoordsArray3D:
-        """Transform the 3D atom coordinates using the roll, pitch, yaw, x-offset, and y-offset."""
+        """Transform the 3D atom coordinates using the roll, pitch, yaw, x-offset, and y-offset.
+
+        :returns: The transformed 3D atom coordinates.
+        """
         rotations = _rotation_matrix(self.roll, self.pitch, self.yaw)
         pts: CoordsArray3D = self.atompos @ rotations
         pts -= np.mean(pts, axis=0)
@@ -706,17 +728,29 @@ class MoleculeViewer(QWidget):
         pts[:, 1] -= self.y_offset
         return pts
 
-    def _circles(self, pts: CoordsArray3D, idx1: int, idx2: int, offset_x: float) -> list[svg.Circle]:
+    def _circles(
+        self, pts: CoordsArray3D, idx1: Literal[0, 1, 2], idx2: Literal[0, 1, 2], offset: float,
+    ) -> list[svg.Circle]:
+        """Create svg Circles using the atom coordinates.
+
+        :param pts: The 3D atom coordinates.
+        :param idx1: The first index. 0 = x, 1 = y, 2 = z.
+        :param idx2: The second index. 0 = x, 1 = y, 2 = z.
+        :param offset: The offset from the first axis.
+        :returns: A list of svg Circles.
+        """
         scale = 80
         cx, cy = 150, 150
 
-        px_array: DistArray = cx + scale * pts[:, idx1] + offset_x
+        px_array: DistArray = cx + scale * pts[:, idx1] + offset
         py_array: DistArray = cy - scale * pts[:, idx2]
 
         radii = [RADII.get(key, 0.5) * 20 for key in self.atomkeys]
 
-        return [svg.Circle(cx=px, cy=py, r=rad, fill=colour, fill_opacity=0.8, stroke="black")
-                for px, py, rad, colour in zip(px_array, py_array, radii, self.colours, strict=True)]
+        return [
+            svg.Circle(cx=px, cy=py, r=rad, fill=colour, fill_opacity=0.8, stroke="black")
+            for px, py, rad, colour in zip(px_array, py_array, radii, self.colours, strict=True)
+        ]
 
     def draw(self) -> None:  # noqa: PLR0915
         """Draw the molecule projection as a 2D SVG file with 4 tiles.
@@ -782,14 +816,27 @@ class MoleculeViewer(QWidget):
                     if min_dist <= dist <= max_dist:
                         bond_pairs.append((jj, kk))
 
-        def add_axis_arrows(panel_cx: float, panel_cy: float, label_h: str, label_v: str) -> None:
+        def add_axis_arrows(
+            panel_cx: float,
+            panel_cy: float,
+            label_h: str,
+            label_v: str,
+        ) -> list[svg.Line | svg.Polygon | svg.Text]:
+            """Add arrows to indicate the axes.
+
+            :param panel_cx: The x coordinate of the panel centre.
+            :param panel_cy: The y coordinate of the panel centre.
+            :param label_h: The horizontal label.
+            :param label_v: The vertical label.
+            :returns: List of the svg elements for the axes arrows.
+            """
             base_x = panel_cx - panel * 0.45
             base_y = panel_cy + panel * 0.45
             arrow_len = 35
 
-            elements.append(
+            elements: list[svg.Line | svg.Polygon | svg.Text] = [
                 svg.Line(x1=base_x, y1=base_y, x2=base_x + arrow_len, y2=base_y, stroke="black", stroke_width=1.5),
-            )
+            ]
             elements.append(
                 svg.Polygon(
                     points=[
@@ -836,14 +883,32 @@ class MoleculeViewer(QWidget):
                 ),
             )
 
+            return elements
+
         def norm(val: Tfloat, center: Tfloat) -> Tfloat:
-            """Calculate the norm."""
+            """Calculate the norm.
+
+            :param val: Value to calculate the norm.
+            :param center: Centre point.
+            :returns: The norm.
+            """
             return (val - center) / span
 
-        def scatter_proj(xdata: DistArray, ydata: DistArray, depth: DistArray, col: int, row: int) -> None:
-            """Give the 2D projection scatter plot of the molecule."""
+        def scatter_proj(
+            xdata: DistArray, ydata: DistArray, depth: DistArray, col: int, row: int,
+        ) -> list[svg.Line | svg.Circle]:
+            """Give the 2D projection scatter plot of the molecule.
+
+            :param xdata: The x coordinates of the molecule.
+            :param ydata: The y coordinates of the molecule.
+            :param depth: The depth (z coordinates) of the molecule.
+            :param col: The column number of the panel.
+            :param row: The row number of the panel.
+            :returns: The 2D scatter plot elements.
+            """
             cx = offset_x + panel * (col + 0.5)
             cy = offset_y + panel * (row + 0.5)
+            elements: list[svg.Line | svg.Circle] = []
 
             # 1. Render bonds first if enabled, so they sit visually behind the atom markers
             for idx1, idx2 in bond_pairs:
@@ -885,11 +950,12 @@ class MoleculeViewer(QWidget):
                     for ii, px, py, r in zip(order, px_array, py_array, r_array, strict=True)
                 ],
             )
+            return elements
 
         # Render the 3 traditional scatter projections
-        scatter_proj(xs, ys, zs, 0, 0)
-        scatter_proj(zs, ys, xs, 1, 0)
-        scatter_proj(xs, zs, ys, 0, 1)
+        elements.extend(scatter_proj(xs, ys, zs, 0, 0))
+        elements.extend(scatter_proj(zs, ys, xs, 1, 0))
+        elements.extend(scatter_proj(xs, zs, ys, 0, 1))
 
         # --- vdW (Panel 4) ---
         cx = offset_x + panel * 1.5
@@ -944,12 +1010,12 @@ class MoleculeViewer(QWidget):
             elements.append(svg.Circle(cx=px, cy=py, r=6, fill="black"))
 
         # --- Add Axis Arrows into the Corners ---
-        add_axis_arrows(offset_x + panel * 0.5, offset_y + panel * 0.5, "x", "y")
-        add_axis_arrows(offset_x + panel * 1.5, offset_y + panel * 0.5, "z", "y")
-        add_axis_arrows(offset_x + panel * 0.5, offset_y + panel * 1.5, "x", "z")
-        add_axis_arrows(offset_x + panel * 1.5, offset_y + panel * 1.5, "x", "y")
+        elements.extend(add_axis_arrows(offset_x + panel * 0.5, offset_y + panel * 0.5, "x", "y"))
+        elements.extend(add_axis_arrows(offset_x + panel * 1.5, offset_y + panel * 0.5, "z", "y"))
+        elements.extend(add_axis_arrows(offset_x + panel * 0.5, offset_y + panel * 1.5, "x", "z"))
+        elements.extend(add_axis_arrows(offset_x + panel * 1.5, offset_y + panel * 1.5, "x", "y"))
 
-        # 1. Grab the active rotation matrix from your backend configuration
+        # 1. Grab the active rotation matrix from the backend configuration
         rotations = _rotation_matrix(self.roll, self.pitch, self.yaw)
 
         # 2. Define standard, colour-coded unit directions: X (Red), Y (Green), Z (Blue)
@@ -964,7 +1030,7 @@ class MoleculeViewer(QWidget):
         axis_pixel_len = 35  # Visual size of the vectors
 
         # Axis properties for mapping loops: colours, labels, and drawing order (by depth/Z)
-        axis_meta = [
+        axis_meta: list[dict[str, str | np.float64]] = [
             {"vec": rotated_axes[0], "color": "#d32f2f", "label": "x"},  # Red X
             {"vec": rotated_axes[1], "color": "#388e3c", "label": "y"},  # Green Y
             {"vec": rotated_axes[2], "color": "#1976d2", "label": "z"},  # Blue Z
@@ -1162,7 +1228,7 @@ def _initialise_reader(
     file_name: str | Path,
     ignore_atoms: str | list[str] | None = None,
     z_trim: float | None = None,
-) -> tuple[np.ndarray[tuple[int], np.dtype[np.str_]], np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]]:
+) -> tuple[StrArray, CoordsArray3D]:
     """Initialise the xyz_reader and first_time_loader.
 
     :param file_name: name of the file to read.
@@ -1179,11 +1245,8 @@ def _initialise_reader(
         raise ValueError(errmsg)
     data = np.loadtxt(file_path, dtype=str, skiprows=2)
     listed_molecule_count: np.int_ = cast("np.int_", np.loadtxt(file_path, dtype=np.int_, max_rows=1))
-    atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]] = data[:, 0]
-    atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]] = cast(
-        "np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]",
-        data[:, 1:].astype(np.float64),
-    )
+    atomkeys: StrArray = data[:, 0]
+    atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.float64))
 
     _xyz_verifier(atomkeys, atompos, listed_molecule_count)
 

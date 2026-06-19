@@ -9,11 +9,12 @@ import io
 import re
 import sys
 import webbrowser
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, ParamSpec, Self, TypeVar, cast, override
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
-from PySide6.QtCore import QObject, QRegularExpression, Qt, Signal
+from PySide6.QtCore import QObject, QRegularExpression, QSettings, Qt, Signal
 from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator, QWheelEvent
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -36,15 +37,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from adsorpy.molecule_lib import first_time_loader, xyz_reader
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
 Tqob = TypeVar("Tqob", bound=QObject)
+T = TypeVar("T", bound=bool | int | str | float)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from shapely import Polygon
+
     P = ParamSpec("P", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
 
 
@@ -180,10 +184,10 @@ class AutoStateMeta(type(QObject), Generic[Tqob]):
                 return getattr(self, private_name)
 
             def setter(
-                    self: Self,
-                    value: str,
-                    private_name: str = private_name,
-                    signal_name: str = signal_name,
+                self: Self,
+                value: str,
+                private_name: str = private_name,
+                signal_name: str = signal_name,
             ) -> None:
                 """Set the value.
 
@@ -377,6 +381,8 @@ class MoleculeGeneration(QWidget):
         :param state: AppState shared state between tabs.
         """
         super().__init__()
+        self._settings = QSettings("adsorpy", type(self).__name__)
+        """Load the settings between sessions."""
         self.state = state
 
         self.main_layout = QHBoxLayout()
@@ -398,7 +404,10 @@ class MoleculeGeneration(QWidget):
         temp_generators = {
             name: func
             for name, func in molecule_lib.__dict__.items()
-            if inspect.isfunction(func) and not name.startswith("_") and func.__module__ == molecule_lib.__name__
+            if inspect.isfunction(func)
+            and not name.startswith("_")
+            and func.__module__ == molecule_lib.__name__
+            and inspect.signature(func).return_annotation in {"Polygon", "dict[str, str | float | list[str] | None]"}
         }
 
         self.generators: dict[str, Callable[[...], Polygon]] = dict(sorted(temp_generators.items()))
@@ -410,12 +419,14 @@ class MoleculeGeneration(QWidget):
 
         mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
 
-        self.param_widgets = {}
+        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog] = {}
+        self.opt_checkboxes: dict[str, QCheckBox] = {}
         self.param_layout = QVBoxLayout()
         mol_param_layout.addLayout(self.param_layout)
 
         mol_param_group.setLayout(mol_param_layout)
         self.controls_layout.addWidget(mol_param_group, alignment=Qt.AlignmentFlag.AlignTop)
+        self.func_dropdown.setCurrentIndex(self._fetch_setting("current_molecule", 0))
 
         # Molecule dropdown
         # controls_layout.addWidget(QLabel("Molecule:"))
@@ -470,6 +481,17 @@ class MoleculeGeneration(QWidget):
         # Internal molecule storage
         self.molecules = []
 
+    def _fetch_setting(self, name: str, default: T, return_type: type[T] | None = None) -> T:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type = type(default) if return_type is None else return_type
+        return cast("T", self._settings.value(name, defaultValue=default, type=check_type))
+
     # ---------------------------------------------------------
     # Build parameter widgets dynamically
     # ---------------------------------------------------------
@@ -477,17 +499,17 @@ class MoleculeGeneration(QWidget):
         """Delete the layout of the previous molecule parameters."""
         while self.param_layout.count():
             item = self.param_layout.takeAt(0)
-            w = item.widget()
-            if w is not None:
-                w.deleteLater()
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
             # if it's a nested layout, clear it too
             child_layout = item.layout()
             if child_layout is not None:
                 while child_layout.count():
                     child_item = child_layout.takeAt(0)
-                    cw = child_item.widget()
-                    if cw is not None:
-                        cw.deleteLater()
+                    child_widget = child_item.widget()
+                    if child_widget is not None:
+                        child_widget.deleteLater()
 
     def build_param_inputs(self, func_name: str) -> None:
         """Build the parameter inputs.
@@ -495,13 +517,21 @@ class MoleculeGeneration(QWidget):
         :param func_name: Name of the function
         """
         self._delete_previous_layout()
+        self._settings.setValue("current_molecule", self.func_dropdown.currentIndex())
 
         func = self.generators[func_name]
         sig = inspect.signature(func)
         param_docs = extract_param_docs(func)
         default_max: int = 999
 
+        if func_name == "first_time_loader":
+            launch_loader_button = QPushButton("Launch first time loader")
+            launch_loader_button.setToolTip("Start the first_time_loader script in a separate window.")
+            launch_loader_button.clicked.connect(self.launch_first_time_loader)
+            self.param_layout.addWidget(launch_loader_button)
+
         self.param_widgets = {}
+        self.opt_checkboxes: dict[str, QCheckBox] = {}
 
         for name, param in sig.parameters.items():
             default = param.default
@@ -556,11 +586,11 @@ class MoleculeGeneration(QWidget):
 
             if is_optional:
                 # Checkbox for optional parameters
-                opt_checkbox = QCheckBox()
-                opt_checkbox.setChecked(False)
-                row.addWidget(opt_checkbox, alignment=Qt.AlignmentFlag.AlignVCenter)
+                self.opt_checkboxes[name] = QCheckBox()
+                self.opt_checkboxes[name].setChecked(False)
+                row.addWidget(self.opt_checkboxes[name], alignment=Qt.AlignmentFlag.AlignVCenter)
                 widget.setEnabled(False)
-                opt_checkbox.toggled.connect(widget.setEnabled)
+                self.opt_checkboxes[name].toggled.connect(widget.setEnabled)
 
             if name in param_docs:
                 widget.setToolTip(param_docs[name])
@@ -569,16 +599,42 @@ class MoleculeGeneration(QWidget):
             self.param_layout.addLayout(row)
 
         molecule_buttons = QHBoxLayout()
-        show_molecule_button = QPushButton("Plot Molecule")
-        show_molecule_button.setToolTip("Plot the molecule")
-        show_molecule_button.clicked.connect(self.plot_molecule)
-        molecule_buttons.addWidget(show_molecule_button)
-
+        self.show_molecule_checkbox = QCheckBox("Plot Molecule")
+        self.show_molecule_checkbox.setToolTip("Plot the molecule")
+        self.show_molecule_checkbox.setChecked(False)
+        self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
+        molecule_buttons.addWidget(self.show_molecule_checkbox)
+        for widget_object in self.param_widgets.values():
+            if not isinstance(widget_object, QLineEdit | QDoubleSpinBox | QSpinBox):
+                continue
+            if isinstance(widget_object, QLineEdit):
+                widget_object.textChanged.connect(self.plot_molecule)
+            else:
+                widget_object.valueChanged.connect(self.plot_molecule)
+        for optional_checkbox in self.opt_checkboxes.values():
+            optional_checkbox.toggled.connect(self.plot_molecule)
         add_molecule_button = QPushButton("Add Molecule")
         add_molecule_button.clicked.connect(self.add_molecule)
         add_molecule_button.setToolTip("Add molecule to list of molecules in simulation")
         molecule_buttons.addWidget(add_molecule_button)
         self.param_layout.addLayout(molecule_buttons)
+
+    def launch_first_time_loader(self) -> None:
+        """Launch the first time loader from molecule_lib.
+
+        If no file path has been provided, prompt the user to add one before running the first time loader.
+        """
+        if not self.param_widgets["file_name"].text():
+            self.param_widgets["file_name"].browse_button.click()
+        output = first_time_loader(self.param_widgets["file_name"].text())
+        for first_time_key, first_time_value in output.items():
+            if first_time_value is not None:
+                if isinstance(self.param_widgets[first_time_key], QLineEdit | FilePickerWidget):
+                    self.param_widgets[first_time_key].setText(first_time_value)
+                else:
+                    self.param_widgets[first_time_key].setValue(first_time_value)
+                if first_time_key in self.opt_checkboxes:
+                    self.opt_checkboxes[first_time_key].setChecked(True)
 
     def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
         """Extract current user inputs from widgets back into a data dictionary."""
@@ -589,7 +645,6 @@ class MoleculeGeneration(QWidget):
         for name, widget in self.param_widgets.items():
             # If the widget is disabled, the optional checkbox was unchecked -> value is None
             if not widget.isEnabled():
-                values[name] = None
                 continue
 
             # Extract value based on the PySide6/PyQt6 widget type
@@ -601,8 +656,6 @@ class MoleculeGeneration(QWidget):
                     values[name] = widget.text()
 
                 case FilePickerWidget():
-                    # Assumes your custom FilePickerWidget has a method/property for the path
-                    # Change .path() or .text() to match your widget's implementation
                     values[name] = widget.text()
 
                 case _:
@@ -619,8 +672,12 @@ class MoleculeGeneration(QWidget):
 
     def plot_molecule(self) -> None:
         """Plot the molecule."""
+        if not self.show_molecule_checkbox.isChecked():
+            return
         molecule_func = self.generators[self.func_dropdown.currentText()]
         molecule_dict = self.get_param_values()
+        if molecule_func.__name__ == "first_time_loader":
+            molecule_func = xyz_reader
         try:
             svg_io = io.BytesIO()
             molecule_lib.save_molecule_svg(molecule_func(**molecule_dict), filename=svg_io)
@@ -685,6 +742,8 @@ class FilePickerWidget(QWidget):
         :param placeholder: Placeholder text to display in the selector box.
         """
         super().__init__(parent)
+        self._settings = QSettings("adsorpy", type(self).__name__)
+        """Load the settings between sessions."""
 
         # Layout
         layout = QHBoxLayout(self)
@@ -694,6 +753,7 @@ class FilePickerWidget(QWidget):
         # Line edit to show the path and hold the actual value
         self.line_edit = QLineEdit()
         self.line_edit.setPlaceholderText(placeholder)
+        self.setText = self.line_edit.setText
 
         # Browse button
         self.browse_button = QPushButton("")
@@ -704,24 +764,29 @@ class FilePickerWidget(QWidget):
         layout.addWidget(self.line_edit)
         layout.addWidget(self.browse_button)
 
+    def _fetch_setting(self, name: str, default: T, return_type: type[T] | None = None) -> T:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type = type(default) if return_type is None else return_type
+        return cast("T", self._settings.value(name, defaultValue=default, type=check_type))
+
     def open_file_dialog(self) -> None:
         """Dialogue to display when selecting a file."""
         # Native OS file dialogue
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             caption="Select File",
-            dir="",  # Start at current directory
+            dir=self._fetch_setting("last_visited_directory", default=""),  # Start at current directory
             filter="XYZ File (*.xyz)",
         )
         if file_path:
             self.line_edit.setText(file_path)
-
-    def set_text(self, text: str) -> None:
-        """Set the text to be displayed in the widget.
-
-        :param text: Text to be displayed in the widget.
-        """
-        self.line_edit.setText(text)
+            self._settings.setValue("last_visited_directory", str(Path(file_path).parent))
 
     def text(self) -> str:
         """Get the text of the box being edited.
@@ -958,7 +1023,10 @@ class SurfaceGeneration(QWidget):
         """Orient the molecule with first_time_loader."""
 
     def error(self, msg: str) -> None:
-        """Handle the errors."""
+        """Handle the errors.
+
+        :param msg: Error message to display in a new window.
+        """
         QMessageBox.critical(self, "Input Error", msg)
 
 

@@ -1011,12 +1011,14 @@ class Simulator:
         surf: Surface | None = None,
         amgs: list[MoleculeGroup] | None = None,
         filename: str | Path | io.BytesIO = "",
+        rounding: int = 4,
     ) -> None:
         """Plot the covered grid as an SVG.
 
         :param surf: The surface object.
         :param amgs: A list of the molecule groups.
         :param filename: The file name as string or path.
+        :param rounding: How many digits to round all values to.
         """
         if surf is None:
             surf = self.surf
@@ -1054,7 +1056,6 @@ class Simulator:
         filename: Path | io.BytesIO = (
             Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
         )
-        rounding: Final[int] = 5
 
         # tab10_colors: cycle[str] = cycle(
         #     [
@@ -1088,13 +1089,9 @@ class Simulator:
         )
         """Old Tableau color map."""
 
-        width = float(round(surf.x_max, rounding))
-        height = float(round(surf.y_max, rounding))
-
         # Define the svg elements for all different levels.
-        root_elements: list[svg.Defs | svg.G] = []
-        defs_elements: list[svg.Polygon | svg.Circle] = []
-        root_group_elements: list[svg.G | svg.Rect] = []
+        defs_elements: list[svg.Polygon] = []
+        root_group_elements: list[svg.G | svg.Rect | svg.Point] = []
 
         # -----------------------------------
         # BASE SHAPES
@@ -1162,71 +1159,16 @@ class Simulator:
 
             final_transforms = np.select(conditions, choices, default=translate_strs)
 
-            root_group_elements.append(svg.G(elements=[svg.Use(href=href_target, transform=[tx]) for tx in final_transforms]))
-
-        # -----------------------------------
-        # GRID POINT TEMPLATE
-        # -----------------------------------
-        point_radius = float(surf.lattice_a) * 0.1
-
-        grid_point_id = "site"
-        defs_elements.append(
-            svg.Circle(
-                id=grid_point_id,
-                r=point_radius,
-                fill="black",
-                stroke="none",
-            ),
-        )
-
-        rounded_coords = np.round(surf.grid_coordinates, rounding)
-
-        root_elements.append(svg.Defs(elements=defs_elements))
-
-        root_group_elements.append(svg.G(elements=[svg.Use(href=f"#{grid_point_id}", x=x, y=y) for x, y in rounded_coords.T]))
-
-        # -----------------------------------
-        # BORDER
-        # -----------------------------------
-        if surf.bp.hard_flag:
             root_group_elements.append(
-                svg.Rect(
-                    x=0.0,
-                    y=0.0,
-                    width=width,
-                    height=height,
-                    stroke="black",
-                    fill="none",
-                    stroke_width=2,
-                ),
+                svg.G(elements=[svg.Use(href=href_target, transform=[tx]) for tx in final_transforms]),
             )
 
-        root_group = svg.G(transform=
-        [
-            svg.Scale(x=1, y=-1),
-            svg.Translate(x=0, y=-height),
-        ],
-            elements=root_group_elements)
-        root_elements.append(root_group)
+        site_template, site_group, width, height = surf.make_surface_svg_elements(rounding=rounding)
+        definitions = svg.Defs(elements=[*defs_elements, site_template])
 
-        # Root SVG
-        root = svg.SVG(
-            width=svg.Length(width, "cm"),
-            height=svg.Length(height, "cm"),
-            viewBox=svg.ViewBoxSpec(0, 0, width, height),
-            elements=root_elements,
-        )
+        root_group_elements.extend(site_group)
 
-        # Save
-        raw_xml = root.as_str()
-        parsed_xml = parseString(raw_xml)
-        pretty_xml = parsed_xml.toprettyxml(indent="    ", encoding="UTF-8")
-
-        if isinstance(filename, io.BytesIO):
-            filename.write(pretty_xml)
-        else:
-            with filename.open("wb") as f:
-                f.write(pretty_xml)
+        surf.create_and_write_svg(filename, root_group_elements, width, height, definitions)
 
     def attempt_cascading_placement(
         self,
@@ -1251,7 +1193,7 @@ class Simulator:
                 grid_idx=output[3],
             )  # Try to place a molecule.
             if output[0]:
-                break  # Stop when the first one has been placed.
+                break  # Stop when a molecule has been placed.
 
         return output
 
@@ -1626,7 +1568,9 @@ class Surface:
 
         rounded_coords: CoordsArray = np.round(self.grid_coordinates, rounding)
 
-        root_group_elements.append(svg.G(elements=[svg.Use(href=f"#{grid_point_id}", x=x, y=y) for x, y in rounded_coords.T]))
+        root_group_elements.append(
+            svg.G(elements=[svg.Use(href=f"#{grid_point_id}", x=x, y=y) for x, y in rounded_coords.T]),
+        )
 
         # -----------------------------------
         # BORDER
@@ -1663,12 +1607,13 @@ class Surface:
         :param definitions: The definitions (templates) to add to the SVG.
         """
         root_elements: list[svg.Defs | svg.G] = [definitions]
-        root_group = svg.G(transform=
-        [
-            svg.Scale(x=1, y=-1),
-            svg.Translate(x=0, y=-height),
-        ],
-            elements=root_group_elements)
+        root_group = svg.G(
+            transform=[
+                svg.Scale(x=1, y=-1),
+                svg.Translate(x=0, y=-height),
+            ],
+            elements=root_group_elements,
+        )
         root_elements.append(root_group)
 
         root = svg.SVG(

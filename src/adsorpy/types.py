@@ -39,3 +39,5 @@ PrepGeoArray: TypeAlias = np.ndarray[tuple[int], np.dtype[PreparedGeometry]]  # 
 """1D array of PreparedGeometry[Polygon]s, used for fast vectorised evaluation of overlap and coordinates."""
 RotMatrix: TypeAlias = np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]
 """3x3 array of floats, used as a rotation matrix."""
+StrArray: TypeAlias = np.ndarray[tuple[int], np.dtype[np.str_]]
+"""1D array of strings. Used for e.g. names and colours."""
