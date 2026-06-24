@@ -8,14 +8,25 @@ import inspect
 import io
 import re
 import sys
+import textwrap
 import webbrowser
+from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, ParamSpec, Self, TypeVar, cast, override
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from PySide6.QtCore import QObject, QRegularExpression, QSettings, Qt, Signal
-from PySide6.QtGui import QAction, QDoubleValidator, QIcon, QIntValidator, QRegularExpressionValidator, QWheelEvent
+from PySide6.QtGui import (
+    QAction,
+    QDoubleValidator,
+    QIcon,
+    QIntValidator,
+    QMouseEvent,
+    QRegularExpressionValidator,
+    QResizeEvent,
+    QWheelEvent,
+)
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,6 +34,9 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFrame,
+    QGraphicsView,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -35,14 +49,14 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QSplitter,
 )
 
-from adsorpy.molecule_lib import first_time_loader, xyz_reader
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
 Tqob = TypeVar("Tqob", bound=QObject)
-T = TypeVar("T", bound=bool | int | str | float)
+T_co = TypeVar("T_co", bound=bool | int | str | float, covariant=True)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -100,19 +114,21 @@ class ZoomableSvgWidget(QSvgWidget):
         :param parent: The parent QSvgWidget object. If none is provided, create one of fixed size.
         """
         super().__init__(parent)
+
         self.zoom_factor = 1.15
         # Set a baseline size so it doesn't collapse to 0x0
         if parent is None:
-            self.setFixedSize(800, 600)
+            self.setMinimumSize(600,600)
 
     @override
     def wheelEvent(self, event: QWheelEvent) -> None:
-        """Override scroll wheel events.
-
-        :param event: The QWheelEvent object.
-        """
+        """Override scroll wheel events."""
         modifiers = event.modifiers()
-        scroll_area = self.window().findChild(QScrollArea)
+
+        # Safely locate the scroll area this widget belongs to
+        scroll_area = self.parent()
+        if scroll_area and not isinstance(scroll_area, QScrollArea):
+            scroll_area = self.window().findChild(QScrollArea)
 
         # 1. CTRL + SCROLL = ZOOM TO MOUSE CURSOR
         if modifiers == Qt.KeyboardModifier.ControlModifier:
@@ -125,33 +141,42 @@ class ZoomableSvgWidget(QSvgWidget):
             max_scale: int = 5000
 
             if min_scale < new_size.width() < max_scale:
-                mouse_pos = event.position()
-                self.setFixedSize(new_size)
+                # Capture mouse positions BEFORE resizing
+                mouse_pos_widget = event.position()
 
                 if scroll_area:
                     h_bar = scroll_area.horizontalScrollBar()
                     v_bar = scroll_area.verticalScrollBar()
 
-                    new_h_val = int(h_bar.value() + mouse_pos.x() * (scale - 1.0))
-                    new_v_val = int(v_bar.value() + mouse_pos.y() * (scale - 1.0))
+                    # Calculate where the mouse is relative to the scroll viewport
+                    scroll_view_pos = scroll_area.viewport().mapFromGlobal(event.globalPosition().toPoint())
+
+                # Apply the new size inside the scroll container
+                self.setFixedSize(new_size)
+
+                # Adjust scrollbars so the point under the mouse stays pinned
+                if scroll_area:
+                    new_h_val = int((h_bar.value() + scroll_view_pos.x()) * scale - scroll_view_pos.x())
+                    new_v_val = int((v_bar.value() + scroll_view_pos.y()) * scale - scroll_view_pos.y())
 
                     h_bar.setValue(new_h_val)
                     v_bar.setValue(new_v_val)
+
             event.accept()
 
         # 2. SHIFT + SCROLL = LEFT / RIGHT PANNING
         elif modifiers == Qt.KeyboardModifier.ShiftModifier:
             if scroll_area:
                 h_bar = scroll_area.horizontalScrollBar()
-                # Determine scroll distance based on wheel rotation (typically 120 units per notch)
                 steps = event.angleDelta().y()
-                # Invert steps so scrolling up goes left, scrolling down goes right
                 h_bar.setValue(h_bar.value() - steps)
             event.accept()
 
         # 3. NO MODIFIERS = STANDARD VERTICAL PANNING
+        elif scroll_area:
+            QApplication.sendEvent(scroll_area.viewport(), event)
         else:
-            event.ignore()  # Hands control over to QScrollArea naturally
+            event.ignore()
 
 
 class AutoStateMeta(type(QObject), Generic[Tqob]):
@@ -251,6 +276,8 @@ class MplCanvas(FigureCanvasQTAgg):
 class AdsorpyGUI(QMainWindow):
     """AdsorPy GUI."""
 
+    window_resized = Signal(int, int)
+
     def __init__(self) -> None:
         """Initialise the AdsorPy GUI."""
         super().__init__()
@@ -314,6 +341,21 @@ class AdsorpyGUI(QMainWindow):
         tabs.addTab(SurfaceGeneration(self.state), "Surface")
         tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
         self.setCentralWidget(tabs)
+
+    @override
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Trigger automatically whenever the window size changes.
+
+        :param event: QResizeEvent, an event changing the window size.
+        """
+        # Get the new size from the event object
+        new_size = event.size()
+        width: int = new_size.width()
+        height: int = new_size.height()
+
+        self.window_resized.emit(width, height)
+
+        super().resizeEvent(event)
 
 
 class GeneralSettings(QWidget):
@@ -385,17 +427,17 @@ class MoleculeGeneration(QWidget):
         """Load the settings between sessions."""
         self.state = state
 
-        self.main_layout = QHBoxLayout()
+        # 1. Initialize the Main Splitter (Horizontal layout for Left, Center, and Right panels)
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # -------------------------------------------------------------
+        # LEFT COLUMN: Controls Layout
+        # -------------------------------------------------------------
         self.controls_layout = QVBoxLayout()
-        # gt_one_validator = QIntValidator(bottom=1)
-        # pos_float_validator = QDoubleValidator(bottom=0)
-        # seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
 
         # Add molecule button
         self.add_molecule_button = QPushButton("Add new molecule")
-        # self.add_molecule_button.clicked.connect(self.add_molecule)
         self.controls_layout.addWidget(self.add_molecule_button)
-        self.main_layout.addLayout(self.controls_layout)
 
         self.func_dropdown = QComboBox()
         self.controls_layout.addWidget(QLabel("Select molecule"), alignment=Qt.AlignmentFlag.AlignTop)
@@ -413,10 +455,10 @@ class MoleculeGeneration(QWidget):
         self.generators: dict[str, Callable[[...], Polygon]] = dict(sorted(temp_generators.items()))
 
         self.func_dropdown.addItems(self.generators.keys())
-        self.func_dropdown.currentTextChanged.connect(self.build_param_inputs)
+        # self.func_dropdown.currentTextChanged.connect(self.build_param_inputs) # Connected at runtime if method exists
+
         mol_param_group = QGroupBox("Parameters")
         mol_param_layout = QVBoxLayout()
-
         mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
 
         self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog] = {}
@@ -428,34 +470,28 @@ class MoleculeGeneration(QWidget):
         self.controls_layout.addWidget(mol_param_group, alignment=Qt.AlignmentFlag.AlignTop)
         self.func_dropdown.setCurrentIndex(self._fetch_setting("current_molecule", 0))
 
-        # Molecule dropdown
-        # controls_layout.addWidget(QLabel("Molecule:"))
-        # self.molecule_dropdown = QComboBox()
-        # self.molecule_names = list_public_molecules()
-        # self.molecule_dropdown.addItems(self.molecule_names)
-        # controls_layout.addWidget(self.molecule_dropdown)
-
-        # Plot molecules
-        # self.canvas = MplCanvas()
-        # svg_buffer = io.BytesIO()
-        # self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
-        # svg_data = svg_buffer.getvalue()
-        self.svg_widget = ZoomableSvgWidget()
-        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        # self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        # self.svg_widget.load(svg_data)
-
-        # Add the SVG widget to layout
-        # layout.addWidget(svg_widget)
-        # main_layout.addWidget(self.canvas, stretch=1)
-        self.main_layout.addWidget(self.svg_widget, stretch=1)
-
-        self.setLayout(self.main_layout)
-
         self.output_label = QLabel("")
         self.controls_layout.addWidget(self.output_label)
-        self.main_layout.addLayout(self.controls_layout)
 
+        # Wrap the entire Left Layout into a QWidget container for the splitter
+        left_container = QWidget()
+        left_container.setLayout(self.controls_layout)
+
+        # -------------------------------------------------------------
+        # CENTER COLUMN: Scroll Area & SVG Viewport
+        # -------------------------------------------------------------
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(False)
+
+        self.svg_widget = ZoomableSvgWidget()
+        self.svg_widget.setMinimumSize(600, 600)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        scroll_area.setWidget(self.svg_widget)
+
+        # -------------------------------------------------------------
+        # RIGHT COLUMN: Molecule Selection & Actions
+        # -------------------------------------------------------------
         right_col = QVBoxLayout()
 
         group = QGroupBox("Molecules")
@@ -472,16 +508,36 @@ class MoleculeGeneration(QWidget):
         group.setLayout(group_layout)
         right_col.addWidget(group)
 
-        # Add right column to main layout
-        self.main_layout.addLayout(right_col)
+        # Wrap the entire Right Layout into a QWidget container for the splitter
+        right_container = QWidget()
+        right_container.setLayout(right_col)
+
+        # -------------------------------------------------------------
+        # ASSEMBLE SPLITTER & ROOT LAYOUT
+        # -------------------------------------------------------------
+        # Add the 3 distinct container panels to the splitter
+        self.main_splitter.addWidget(left_container)
+        self.main_splitter.addWidget(scroll_area)
+        self.main_splitter.addWidget(right_container)
+
+        # Enforce reasonable default sizing splits (e.g. Center area takes priority)
+        self.main_splitter.setStretchFactor(0, 1)  # Left Column
+        self.main_splitter.setStretchFactor(1, 3)  # Center Column (grows wider)
+        self.main_splitter.setStretchFactor(2, 1)  # Right Column
+
+        # Set the root layout of this MoleculeGeneration custom widget
+        root_layout = QVBoxLayout(self)
+        root_layout.addWidget(self.main_splitter)
 
         # Build initial parameter UI
         self.build_param_inputs(self.func_dropdown.currentText())
 
         # Internal molecule storage
-        self.molecules = []
+        self.molecule_names: list[str] = []
+        self.molecule_dicts: dict[str, dict[str, str | float | int | list[str] | None]] = {}
+        self.mol_list_counter: count[int] = count()
 
-    def _fetch_setting(self, name: str, default: T, return_type: type[T] | None = None) -> T:
+    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
         """Fetch settings by checking if they exist followed by their value.
 
         :param name: The name of the setting to fetch.
@@ -489,33 +545,47 @@ class MoleculeGeneration(QWidget):
         :param return_type: The default return type if the setting exists. If not given, type(default) is used.
         :returns: The setting value if it exists, or else the default.
         """
-        check_type = type(default) if return_type is None else return_type
-        return cast("T", self._settings.value(name, defaultValue=default, type=check_type))
+        check_type: type[T_co] = type(default) if return_type is None else return_type
+        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
 
     # ---------------------------------------------------------
     # Build parameter widgets dynamically
     # ---------------------------------------------------------
     def _delete_previous_layout(self) -> None:
-        """Delete the layout of the previous molecule parameters."""
-        while self.param_layout.count():
-            item = self.param_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-            # if it's a nested layout, clear it too
-            child_layout = item.layout()
-            if child_layout is not None:
-                while child_layout.count():
-                    child_item = child_layout.takeAt(0)
-                    child_widget = child_item.widget()
-                    if child_widget is not None:
-                        child_widget.deleteLater()
+        """Recursively delete the layout of the previous molecule parameters."""
+        def clear_layout(layout: QVBoxLayout | QHBoxLayout | QGridLayout | None) -> None:
+            """Clear the layout by deleting its widgets or traversing its child layouts.
 
-    def build_param_inputs(self, func_name: str) -> None:
+            :param layout: The layout to clear.
+            """
+            if layout is None:
+                return
+
+            while layout.count():
+                item = layout.takeAt(0)
+
+                # Use structural pattern matching to safely handle the item type
+                match item.widget(), item.layout():
+                    case (widget, _) if widget is not None:
+                        # It is a widget container item
+                        widget.deleteLater()
+
+                    case (_, child_layout) if child_layout is not None:
+                        # It is a nested layout item; recurse down first, then delete it
+                        clear_layout(child_layout)
+                        child_layout.deleteLater()
+
+                    case _:
+                        # It is a spacer item or an empty container
+                        del item
+
+        clear_layout(self.param_layout)
+
+    def build_param_inputs(self, func_name: str) -> None:  # noqa: PLR0912, PLR0915
         """Build the parameter inputs.
 
         :param func_name: Name of the function
-        """
+        """  # noqa: PLR0912  # noqa: PLR0912
         self._delete_previous_layout()
         self._settings.setValue("current_molecule", self.func_dropdown.currentIndex())
 
@@ -530,10 +600,11 @@ class MoleculeGeneration(QWidget):
             launch_loader_button.clicked.connect(self.launch_first_time_loader)
             self.param_layout.addWidget(launch_loader_button)
 
-        self.param_widgets = {}
+        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog] = {}
         self.opt_checkboxes: dict[str, QCheckBox] = {}
 
-        for name, param in sig.parameters.items():
+        param_grid = QGridLayout()
+        for idx, (name, param) in enumerate(sig.parameters.items()):
             default = param.default
             is_optional: bool = default is None
             is_required: bool = param.default is inspect.Parameter.empty
@@ -542,7 +613,8 @@ class MoleculeGeneration(QWidget):
             name_label = QLabel(name)
             if name in param_docs:
                 name_label.setToolTip(param_docs[name])
-            row.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+            # row.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+            param_grid.addWidget(name_label, idx, 0)
 
             # strip_params = param.annotation.split("|")
             # print(strip_params)
@@ -575,7 +647,6 @@ class MoleculeGeneration(QWidget):
                 case _:
                     errmsg: str = f"Unsupported parameter annotation: '{param.annotation}' for param '{name}'."
                     raise TypeError(errmsg)
-                    # pass
 
             if not is_required and default is not None:
                 match widget:
@@ -588,15 +659,58 @@ class MoleculeGeneration(QWidget):
                 # Checkbox for optional parameters
                 self.opt_checkboxes[name] = QCheckBox()
                 self.opt_checkboxes[name].setChecked(False)
+                self.opt_checkboxes[name].setToolTip("If unchecked, the value is None")
                 row.addWidget(self.opt_checkboxes[name], alignment=Qt.AlignmentFlag.AlignVCenter)
+                # param_grid.addWidget(self.opt_checkboxes[name], idx, 1)
                 widget.setEnabled(False)
                 self.opt_checkboxes[name].toggled.connect(widget.setEnabled)
 
             if name in param_docs:
                 widget.setToolTip(param_docs[name])
             row.addWidget(widget, alignment=Qt.AlignmentFlag.AlignVCenter)
+            # param_grid.addWidget(widget, idx, 2)
             self.param_widgets[name] = widget
-            self.param_layout.addLayout(row)
+            param_grid.addLayout(row, idx, 1)
+
+        self.param_layout.addLayout(param_grid)
+        self.param_layout.addWidget(_make_horizontal_line())
+
+        self.refl_sym: bool = False
+        self.rot_sym: int = 1
+        self.rot_cnt: int = 360
+
+        symmetry_options_layout = QGridLayout()
+        refl_sym_label = QLabel("Reflection symmetry")
+        refl_sym_tooltip_text = "Set checked if the molecule has reflection symmetry (symmetric group Cn → Dn)."
+        refl_sym_label.setToolTip(refl_sym_tooltip_text)
+        refl_sym_checkbox = QCheckBox()
+        refl_sym_checkbox.setChecked(self.refl_sym)
+        refl_sym_checkbox.setToolTip(refl_sym_tooltip_text)
+        rot_sym_label = QLabel("Rotation symmetry")
+        self._update_symmetry_tooltip(self.refl_sym, rot_sym_label)
+        refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_label))
+        rot_sym_spinbox = QSpinBox()
+        rot_sym_spinbox.setMinimum(0)
+        rot_sym_spinbox.setValue(self.rot_sym)
+        self._update_symmetry_tooltip(self.refl_sym, rot_sym_spinbox)
+        refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_spinbox))
+        rot_cnt_label = QLabel("Rotation count")
+        rot_cnt_tooltip_text = "Number of rotations to be used for the molecule. The step size is 360/n°."
+        rot_cnt_label.setToolTip(rot_cnt_tooltip_text)
+        rot_cnt_spinbox = QSpinBox()
+        rot_cnt_spinbox.setMinimum(1)
+        rot_cnt_spinbox.setMaximum(99999)
+        rot_cnt_spinbox.setValue(self.rot_cnt)
+        rot_cnt_spinbox.setToolTip(rot_cnt_tooltip_text)
+        symmetry_options_layout.addWidget(refl_sym_label, 0, 0)
+        symmetry_options_layout.addWidget(refl_sym_checkbox, 0, 1)
+        symmetry_options_layout.addWidget(rot_sym_label, 1, 0)
+        symmetry_options_layout.addWidget(rot_sym_spinbox, 1, 1)
+        symmetry_options_layout.addWidget(rot_cnt_label, 2, 0)
+        symmetry_options_layout.addWidget(rot_cnt_spinbox, 2, 1)
+        self.param_layout.addLayout(symmetry_options_layout)
+
+        self.param_layout.addWidget(_make_horizontal_line())
 
         molecule_buttons = QHBoxLayout()
         self.show_molecule_checkbox = QCheckBox("Plot Molecule")
@@ -619,6 +733,25 @@ class MoleculeGeneration(QWidget):
         molecule_buttons.addWidget(add_molecule_button)
         self.param_layout.addLayout(molecule_buttons)
 
+    def _update_symmetry_tooltip(self, is_checked: bool, widget: QWidget) -> None:
+        """Update the tooltip of the rotation symmetry label and spinbox.
+
+        :param is_checked: True if there is reflection symmetry, False otherwise.
+        :param widget: QWidget to update the tooltip of.
+        """
+        symmetry_group = "D" if is_checked else "C"
+        circle_group = "O(2)" if is_checked else "SO(2)"
+
+        rot_sym_tooltip_text = textwrap.dedent(f"""\
+            Keep 1 for no rotation symmetry (symmetric group {symmetry_group}1),
+            2 for 180° symmetry ({symmetry_group}2),
+            3 for 120° symmetry ({symmetry_group}3),
+            n for 360/n° symmetry ({symmetry_group}n),
+            Special case: 0 for circle symmetry ({circle_group}).""",
+        )
+
+        widget.setToolTip(rot_sym_tooltip_text)
+
     def launch_first_time_loader(self) -> None:
         """Launch the first time loader from molecule_lib.
 
@@ -626,7 +759,7 @@ class MoleculeGeneration(QWidget):
         """
         if not self.param_widgets["file_name"].text():
             self.param_widgets["file_name"].browse_button.click()
-        output = first_time_loader(self.param_widgets["file_name"].text())
+        output = molecule_lib.first_time_loader(self.param_widgets["file_name"].text())
         for first_time_key, first_time_value in output.items():
             if first_time_value is not None:
                 if isinstance(self.param_widgets[first_time_key], QLineEdit | FilePickerWidget):
@@ -677,7 +810,7 @@ class MoleculeGeneration(QWidget):
         molecule_func = self.generators[self.func_dropdown.currentText()]
         molecule_dict = self.get_param_values()
         if molecule_func.__name__ == "first_time_loader":
-            molecule_func = xyz_reader
+            molecule_func = molecule_lib.xyz_reader
         try:
             svg_io = io.BytesIO()
             molecule_lib.save_molecule_svg(molecule_func(**molecule_dict), filename=svg_io)
@@ -688,31 +821,23 @@ class MoleculeGeneration(QWidget):
 
     def add_molecule(self) -> None:
         """Add a molecule to the list of molecules to use."""
-        func_name = self.func_dropdown.currentText()
-        func = self.generators[func_name]
+        molecule_func = self.generators[self.func_dropdown.currentText()]
+        molecule_dict = self.get_param_values()
+        if molecule_func.__name__ == "first_time_loader":
+            molecule_func = molecule_lib.xyz_reader
 
-        kwargs = {}
-        for name, (widget, checkbox) in self.param_widgets.items():
-            if checkbox is not None and not checkbox.isChecked():
-                # Optional parameter not enabled → skip it
-                continue
+        result = molecule_func(**molecule_dict)
 
-            if isinstance(widget, (QSpinBox, QDoubleSpinBox)):
-                kwargs[name] = widget.value()
-            else:
-                text = widget.text()
-                kwargs[name] = None if text == "" else text
-
-        result = func(**kwargs)
+        name = self.func_dropdown.currentText() if "file_name" not in molecule_dict else Path(molecule_dict["file_name"]).name
 
         # Store molecule
-        self.molecules.append(result)
+        self.molecule_names.append(name)
 
         # Update dropdown
-        label = f"{result['name']} #{len(self.molecules)}"
+        label = f"{name} #{next(self.mol_list_counter)}"
         self.molecule_dropdown.addItem(label)
 
-        self.output_label.setText(f"Added: {label}")
+        self.output_label.setText(f"Added: {name}")
 
     # ---------------------------------------------------------
     # Delete selected molecule
@@ -724,7 +849,7 @@ class MoleculeGeneration(QWidget):
             return
 
         # Remove from internal list
-        del self.molecules[idx]
+        del self.molecule_names[idx]
 
         # Remove from dropdown
         self.molecule_dropdown.removeItem(idx)
@@ -764,7 +889,7 @@ class FilePickerWidget(QWidget):
         layout.addWidget(self.line_edit)
         layout.addWidget(self.browse_button)
 
-    def _fetch_setting(self, name: str, default: T, return_type: type[T] | None = None) -> T:
+    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
         """Fetch settings by checking if they exist followed by their value.
 
         :param name: The name of the setting to fetch.
@@ -773,7 +898,7 @@ class FilePickerWidget(QWidget):
         :returns: The setting value if it exists, or else the default.
         """
         check_type = type(default) if return_type is None else return_type
-        return cast("T", self._settings.value(name, defaultValue=default, type=check_type))
+        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
 
     def open_file_dialog(self) -> None:
         """Dialogue to display when selecting a file."""
@@ -1019,9 +1144,6 @@ class SurfaceGeneration(QWidget):
     def _load_settings_json(self) -> None:
         """Load settings from JSON file."""
 
-    def _orient_molecule(self) -> None:
-        """Orient the molecule with first_time_loader."""
-
     def error(self, msg: str) -> None:
         """Handle the errors.
 
@@ -1030,9 +1152,19 @@ class SurfaceGeneration(QWidget):
         QMessageBox.critical(self, "Input Error", msg)
 
 
+def _make_horizontal_line() -> QFrame:
+    """Create a horizontal line widget using a QFrame object.
+
+    :returns: A horizontal line widget.
+    """
+    hline = QFrame()
+    hline.setFrameShape(QFrame.Shape.HLine)
+    hline.setFrameShadow(QFrame.Shadow.Sunken)
+    return hline
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     gui = AdsorpyGUI()
-    gui.resize(900, 500)
+    gui.resize(1600, 900)
     gui.show()
     sys.exit(app.exec())
