@@ -46,10 +46,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSpinBox,
+    QSplitter,
     QTabWidget,
     QVBoxLayout,
     QWidget,
-    QSplitter,
 )
 
 from src.adsorpy import molecule_lib
@@ -122,15 +122,21 @@ class ZoomableSvgWidget(QSvgWidget):
 
     @override
     def wheelEvent(self, event: QWheelEvent) -> None:
-        """Override scroll wheel events."""
+        """Override scroll wheel events to support Zoom and Horizontal Pan.
+
+        :param event: The QWheelEvent object, triggered when using the scroll wheel.
+        """
         modifiers = event.modifiers()
 
-        # Safely locate the scroll area this widget belongs to
+        # 1. FIX: Walk up the layout tree to reliably find the QScrollArea
+        # (Necessary since the widget is now inside a centered layout container)
         scroll_area = self.parent()
-        if scroll_area and not isinstance(scroll_area, QScrollArea):
-            scroll_area = self.window().findChild(QScrollArea)
+        while scroll_area and not isinstance(scroll_area, QScrollArea):
+            scroll_area = scroll_area.parent()
 
-        # 1. CTRL + SCROLL = ZOOM TO MOUSE CURSOR
+        # -------------------------------------------------------------
+        # CASE 1: CTRL + SCROLL = ZOOM TO MOUSE CURSOR
+        # -------------------------------------------------------------
         if modifiers == Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
             scale = self.zoom_factor if delta > 0 else 1.0 / self.zoom_factor
@@ -141,46 +147,52 @@ class ZoomableSvgWidget(QSvgWidget):
             max_scale: int = 5000
 
             if min_scale < new_size.width() < max_scale:
-                # Capture mouse positions BEFORE resizing
                 mouse_pos_widget = event.position()
+                self.setFixedSize(new_size)
 
                 if scroll_area:
                     h_bar = scroll_area.horizontalScrollBar()
                     v_bar = scroll_area.verticalScrollBar()
 
-                    # Calculate where the mouse is relative to the scroll viewport
-                    scroll_view_pos = scroll_area.viewport().mapFromGlobal(event.globalPosition().toPoint())
+                    delta_x = mouse_pos_widget.x() * scale - mouse_pos_widget.x()
+                    delta_y = mouse_pos_widget.y() * scale - mouse_pos_widget.y()
 
-                # Apply the new size inside the scroll container
-                self.setFixedSize(new_size)
-
-                # Adjust scrollbars so the point under the mouse stays pinned
-                if scroll_area:
-                    new_h_val = int((h_bar.value() + scroll_view_pos.x()) * scale - scroll_view_pos.x())
-                    new_v_val = int((v_bar.value() + scroll_view_pos.y()) * scale - scroll_view_pos.y())
-
-                    h_bar.setValue(new_h_val)
-                    v_bar.setValue(new_v_val)
+                    h_bar.setValue(int(h_bar.value() + delta_x))
+                    v_bar.setValue(int(v_bar.value() + delta_y))
 
             event.accept()
 
-        # 2. SHIFT + SCROLL = LEFT / RIGHT PANNING
+        # -------------------------------------------------------------
+        # CASE 2: SHIFT + SCROLL = HORIZONTAL PANNING (FIXED)
+        # -------------------------------------------------------------
         elif modifiers == Qt.KeyboardModifier.ShiftModifier:
             if scroll_area:
                 h_bar = scroll_area.horizontalScrollBar()
+                # Determine scroll steps (usually multiples of 120)
                 steps = event.angleDelta().y()
+                # Shift the horizontal slider position directly
                 h_bar.setValue(h_bar.value() - steps)
             event.accept()
 
-        # 3. NO MODIFIERS = STANDARD VERTICAL PANNING
+        # -------------------------------------------------------------
+        # CASE 3: NO MODIFIERS = STANDARD VERTICAL PANNING
+        # -------------------------------------------------------------
         elif scroll_area:
+            # Safely forward the wheel context to the native viewport
             QApplication.sendEvent(scroll_area.viewport(), event)
         else:
             event.ignore()
 
 
 class AutoStateMeta(type(QObject), Generic[Tqob]):
-    """Metaclass for AppState to automatically communicate between tabs."""
+    """Metaclass for AppState to automatically communicate between tabs.
+
+    This metaclass scans the ``fields`` class variable and dynamically
+    generates a private storage field (``_field``), a public property
+    (``field``), and a Qt notification signal (``fieldChanged``) for each entry.
+
+    :cvar fields: A dictionary mapping state field names to their expected types.
+    """
 
     fields: ClassVar[dict[str, type]]
 
@@ -228,7 +240,7 @@ class AutoStateMeta(type(QObject), Generic[Tqob]):
 
         return super().__new__(cls, name, bases, attrs)
 
-    def __call__(cls, *args: P.args, **kwargs: P.kwargs) -> Tqob:
+    def __call__(cls: type[Self], *args: P.args, **kwargs: P.kwargs) -> Tqob:
         """Instantiate the class and auto-initialise its fields.
 
         :param args: Positional arguments.
@@ -247,7 +259,16 @@ class AutoStateMeta(type(QObject), Generic[Tqob]):
 
 
 class AppState(QObject, metaclass=AutoStateMeta):
-    """AppState class to communicate between tabs."""
+    """AppState class to communicate between tabs.
+
+    This class maintains synchronised states across the user interface. Changes
+    to any property automatically emit a corresponding ``<property>Changed`` signal.
+
+    :ivar filepath: The current working file path string.
+    :ivar seed_input: The Qt input widget holding the seed value.
+    :ivar count: The current iteration or item count.
+    :ivar step_limit: The maximum allowable processing steps.
+    """
 
     filepath: str
     seed_input: QLineEdit
@@ -262,85 +283,106 @@ class AppState(QObject, metaclass=AutoStateMeta):
     }
 
 
-class MplCanvas(FigureCanvasQTAgg):
-    """Plot canvas class."""
-
-    def __init__(self) -> None:
-        """Initialise plot canvas class."""
-        self.fig = Figure(figsize=(16, 9))
-        self.ax = self.fig.add_subplot(111)
-        # self.plot_widget = pg.PlotWidget()
-        super().__init__(self.fig)
+# class MplCanvas(FigureCanvasQTAgg):
+#     """Plot canvas class."""
+#
+#     def __init__(self) -> None:
+#         """Initialise plot canvas class."""
+#         self.fig = Figure(figsize=(16, 9))
+#         self.ax = self.fig.add_subplot(111)
+#         # self.plot_widget = pg.PlotWidget()
+#         super().__init__(self.fig)
 
 
 class AdsorpyGUI(QMainWindow):
-    """AdsorPy GUI."""
+    """Main window application shell for the AdsorPy simulation engine framework.
+
+    Coordinates the primary window frame, top level configuration menu bars,
+    and hooks up the shared global data state across tab layout frames.
+    """
 
     window_resized = Signal(int, int)
+    """Signal emitted when the main application window dimensions are modified."""
 
     def __init__(self) -> None:
-        """Initialise the AdsorPy GUI."""
+        """Initialise frame parameters, global context caches, and child windows."""
         super().__init__()
 
-        self.setWindowTitle("Adsorpy Simulation GUI")
+        self.setWindowTitle("AdsorPy Simulation GUI")
 
-        menubar = self.menuBar()
         self.state = AppState()
+        """Shared application runtime cache synchronized across all view frames."""
 
-        # File menu
+        # Delegate initialisation to helper workflows
+        self._init_menu_bar()
+        self._init_tabs()
+
+    def _init_menu_bar(self) -> None:
+        """Construct the top level application drop-down menu navigation bars."""
+        menubar = self.menuBar()
+
+        # ----------------------------------------------------
+        # File Menu Segment
+        # ----------------------------------------------------
         file_menu = menubar.addMenu("File")
 
-        new_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentNew), "New Simulation", self)
-        open_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentOpen), "Open…", self)
-        save_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave), "Save", self)
-        exit_action = QAction(QIcon("assets/door-open-out.png"), "Exit", self)
-        exit_action.triggered.connect(self.close)
+        self._new_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentNew), "New Simulation", self)
+        """Action trigger to wipe runtime matrices and reset configurations."""
 
-        file_menu.addAction(new_action)
-        file_menu.addAction(open_action)
-        file_menu.addAction(save_action)
+        self._open_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentOpen), "Open…", self)
+        """Action trigger to parse a serialized system JSON file from disk."""
+
+        self._save_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave), "Save", self)
+        """Action trigger to serialize current system conditions to disk."""
+
+        self._exit_action = QAction(QIcon("assets/door-open-out.png"), "Exit", self)
+        """Action trigger to safely kill background workers and close window frames."""
+        self._exit_action.triggered.connect(self.close)
+
+        file_menu.addAction(self._new_action)
+        file_menu.addAction(self._open_action)
+        file_menu.addAction(self._save_action)
         file_menu.addSeparator()
-        file_menu.addAction(exit_action)
+        file_menu.addAction(self._exit_action)
 
-        # Help menu
+        # ----------------------------------------------------
+        # Help Menu Segment
+        # ----------------------------------------------------
         help_menu = menubar.addMenu("Help")
 
-        # Documentation
-        doc_action = QAction(QIcon("assets/book-open-list.png"), "Documentation (web)", self)
-        doc_action.triggered.connect(
+        self._doc_action = QAction(QIcon("assets/book-open-list.png"), "Documentation (web)", self)
+        """Action link opening the official Sphinx HTML documentation site."""
+        self._doc_action.triggered.connect(
             lambda: webbrowser.open("https://joostfwmaas.github.io/AdsorPy/"),
         )
 
-        # Wiki
-        wiki_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.HelpFaq), "Wiki (web)", self)
-        wiki_action.triggered.connect(
+        self._wiki_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.HelpFaq), "Wiki (web)", self)
+        """Action link opening the community GitHub developer reference portal."""
+        self._wiki_action.triggered.connect(
             lambda: webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/wiki"),
         )
 
-        # Report bug
-        bug_action = QAction(QIcon("assets/bug--exclamation.png"), "Report bug (web)", self)
-        bug_action.triggered.connect(
+        self._bug_action = QAction(QIcon("assets/bug--exclamation.png"), "Report bug (web)", self)
+        """Action link navigating directly to the open project issue dashboard."""
+        self._bug_action.triggered.connect(
             lambda: webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/issues"),
         )
 
-        help_menu.addAction(doc_action)
-        help_menu.addAction(wiki_action)
-        help_menu.addAction(bug_action)
+        help_menu.addAction(self._doc_action)
+        help_menu.addAction(self._wiki_action)
+        help_menu.addAction(self._bug_action)
 
-        central = SurfaceGeneration(self.state)
-        self.setCentralWidget(central)
+    def _init_tabs(self) -> None:
+        """Assemble the central tab frame layout and register sub-dashboards."""
+        self.tabs = QTabWidget()
+        """Primary navigation container organizing distinct module windows."""
 
-        main_layout = QHBoxLayout()
-        central.setLayout(main_layout)
+        # Instantiate separate view models sharing the single source of truth state
+        self.tabs.addTab(GeneralSettings(self.state), "General")
+        self.tabs.addTab(SurfaceGeneration(self.state), "Surface")
+        self.tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
 
-        controls_layout = QVBoxLayout()
-        main_layout.addLayout(controls_layout)
-
-        tabs = QTabWidget()
-        tabs.addTab(GeneralSettings(self.state), "General")
-        tabs.addTab(SurfaceGeneration(self.state), "Surface")
-        tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
-        self.setCentralWidget(tabs)
+        self.setCentralWidget(self.tabs)
 
     @override
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -359,90 +401,179 @@ class AdsorpyGUI(QMainWindow):
 
 
 class GeneralSettings(QWidget):
-    """General settings generation widget."""
+    """General simulation configuration dashboard tab view.
+
+    Provides inputs for setting the execution step boundaries, absolute pseudo-random
+    number generator seeds, and renders real-time structural vector tracking maps.
+    """
 
     def __init__(self, state: AppState) -> None:
-        """Initialise the general settings widget.
-
-        :param state: AppState shared state between tabs.
-        """
+        """Initialise validation engines and build structural control modules."""
         super().__init__()
         self.state = state
+        """Shared application state cache container."""
+
+        # Run UI Initialization steps
+        self._init_validators()
 
         main_layout = QHBoxLayout()
-        controls_layout = QVBoxLayout()
-        gt_one_validator = QIntValidator(bottom=1)
-        # pos_float_validator = QDoubleValidator(bottom=0)
-        seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
-
-        # Seed input
-        controls_layout.addWidget(QLabel("Optional Seed (positive int):"))
-        self.seed_input = QLineEdit()
-        self.seed_input.setValidator(seed_validator)
-        self.seed_input.setPlaceholderText("e.g. 23")  # Skidoo!
-        controls_layout.addWidget(self.seed_input)
-        self.state.seed_input = self.seed_input
-
-        # Step limit input box
-        controls_layout.addWidget(QLabel("Step limit (optional, > 0 int):"))
-        self.step_limit = QLineEdit()
-        self.step_limit.setPlaceholderText("e.g. 1")
-        self.step_limit.setValidator(gt_one_validator)
-        self.step_limit.textChanged.connect(self.on_step_limit_changed)
-        controls_layout.addWidget(self.step_limit)
+        controls_layout = self._init_controls()
+        svg_widget = self._init_svg_view()
 
         main_layout.addLayout(controls_layout)
-
-        self.canvas = MplCanvas()
-        svg_buffer = io.BytesIO()
-        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
-        svg_data = svg_buffer.getvalue()
-        self.svg_widget = QSvgWidget()
-        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        self.svg_widget.load(svg_data)
-
-        # Add the SVG widget to layout
-        main_layout.addWidget(self.svg_widget, stretch=1)
-
+        main_layout.addWidget(svg_widget, stretch=1)
         self.setLayout(main_layout)
 
-    def on_step_limit_changed(self, value: str) -> None:
-        """Update the step limit value.
+    def _init_validators(self) -> None:
+        """Instantiate validation models for text constraint processing."""
+        self._gt_one_validator = QIntValidator(bottom=1)
+        """Enforces that inputs convert to positive integers greater than or equal to 1."""
 
-        :param value: The new step limit value.
+        self._seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
+        """Restricts string parameters strictly to absolute positive digits."""
+
+    def _init_controls(self) -> QVBoxLayout:
+        """Assemble environment settings selectors and connect state triggers.
+
+        :return: A populated vertical layout holding runtime widgets.
+        """
+        layout = QVBoxLayout()
+
+        # Pseudo-random generator state seed tracking
+        layout.addWidget(QLabel("Optional Seed (positive int):"))
+        self.seed_input = QLineEdit()
+        """Input widget capturing custom random generation bounds."""
+        self.seed_input.setValidator(self._seed_validator)
+        self.seed_input.setPlaceholderText("e.g. 23")
+        layout.addWidget(self.seed_input)
+
+        # Sync the specific text field reference directly to global state tracking
+        self.state.seed_input = self.seed_input
+
+        # Absolute execution cycle step limit constraints
+        layout.addWidget(QLabel("Step limit (optional, > 0 int):"))
+        self.step_limit = QLineEdit()
+        """Input widget restricting maximum sequential process cycles."""
+        self.step_limit.setPlaceholderText("e.g. 1")
+        self.step_limit.setValidator(self._gt_one_validator)
+        layout.addWidget(self.step_limit)
+
+        # Establish signalling loops
+        self.step_limit.textChanged.connect(self.on_step_limit_changed)
+
+        layout.addStretch()
+        return layout
+
+    def _init_svg_view(self) -> QSvgWidget:
+        """Construct the graphics frame and isolate structural canvas layouts.
+
+        :return: An isolated vector viewport container canvas.
+        """
+        self.svg_widget = QSvgWidget()
+        """Custom render context displaying loaded vector data files."""
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        return self.svg_widget
+
+    def on_step_limit_changed(self, value: str) -> None:
+        """Update the step limit cache within the shared state instance.
+
+        :param value: The raw alpha-numeric input string from the user.
         """
         self.state.step_limit = int(value) if value else -1
 
-
 class MoleculeGeneration(QWidget):
-    """Molecule generation widget."""
+    """Molecule layout configuration dashboard tab view.
+
+    Handles dynamic generation of geometric molecule polygon shapes via reflective
+    library lookups, updates parameters on the fly, and lists them inside a tracking layout.
+    """
 
     def __init__(self, state: AppState) -> None:
-        """Initialise the molecule generation widget.
-
-        :param state: AppState shared state between tabs.
-        """
+        """Initialize settings storage engines and compile separate view columns."""
         super().__init__()
+
         self._settings = QSettings("adsorpy", type(self).__name__)
-        """Load the settings between sessions."""
+        """Persistent platform configuration handle cached between user runtime sessions."""
+
         self.state = state
+        """Shared application state cache container."""
 
-        # 1. Initialize the Main Splitter (Horizontal layout for Left, Center, and Right panels)
-        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        # 1. Initialize data storage metrics
+        self._init_data_storage()
 
-        # -------------------------------------------------------------
-        # LEFT COLUMN: Controls Layout
-        # -------------------------------------------------------------
-        self.controls_layout = QVBoxLayout()
+        # 2. Build the three core panel containers
+        left_container = self._build_left_panel()
+        scroll_area = self._build_center_panel()
+        right_container = self._build_right_panel()
 
-        # Add molecule button
+        # 3. Assemble components into the splitter layout interface
+        self._assemble_layout(left_container, scroll_area, right_container)
+
+    def _init_data_storage(self) -> None:
+        """Initialize internal state tracking arrays and counting iterations."""
+        self.molecule_names: list[str] = []
+        """Index tracking labels assigned to generated active molecule instances."""
+
+        self.molecule_dicts: dict[str, dict[str, str | float | int | list[str] | None]] = {}
+        """Nested map storing properties, arguments, and metadata for every generated node."""
+
+        self.mol_list_counter: count[int] = count()
+        """Thread-safe sequential index iterator generating unique instance identifier tags."""
+
+    def _build_left_panel(self) -> QWidget:
+        """Construct the left parameters control dashboard and link active list triggers.
+
+        :return: A populated structural container pane acting as the configuration panel.
+        """
+        container = QWidget()
+        self.controls_layout = QVBoxLayout(container)
+        """Layout frame coordinating selection toggles and configuration property fields."""
+
         self.add_molecule_button = QPushButton("Add new molecule")
         self.controls_layout.addWidget(self.add_molecule_button)
+        """Action button triggering instance generation from the current profile layout."""
 
         self.func_dropdown = QComboBox()
         self.controls_layout.addWidget(QLabel("Select molecule"), alignment=Qt.AlignmentFlag.AlignTop)
         self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
+        """Selection field populated with valid introspected molecule generator workflows."""
 
+        # Discover generators using introspective library lookups
+        self.generators = self._discover_molecule_generators()
+        """Registry cache linking user-facing label text keys directly to underlying library callables."""
+
+        self.func_dropdown.addItems(self.generators.keys())
+        self.func_dropdown.currentTextChanged.connect(self.build_param_inputs)
+
+        # Parameter group layout setup
+        mol_param_group = QGroupBox("Parameters")
+        mol_param_layout = QVBoxLayout(mol_param_group)
+        mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
+
+        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog] = {}
+        """Active reference tracking field maps mapping variable names to their raw UI input views."""
+
+        self.opt_checkboxes: dict[str, QCheckBox] = {}
+        """Active state checkboxes controlling presence flags for optional properties or switches."""
+
+        self.param_layout = QVBoxLayout()
+        mol_param_layout.addLayout(self.param_layout)
+
+        self.controls_layout.addWidget(mol_param_group, alignment=Qt.AlignmentFlag.AlignTop)
+        self.func_dropdown.setCurrentIndex(self._fetch_setting("current_molecule", 0))
+
+        self.output_label = QLabel("")
+        self.controls_layout.addWidget(self.output_label)
+        """Status indicator updating real-time compilation info or syntax exceptions."""
+
+        return container
+
+    def _discover_molecule_generators(self) -> dict[str, Callable[[Any], Polygon]]:
+        """Isolate reflection logic filtering usable library structural definitions.
+
+        :return: A sorted lookup dict mapping valid function names to execution references.
+        """
         temp_generators = {
             name: func
             for name, func in molecule_lib.__dict__.items()
@@ -451,91 +582,74 @@ class MoleculeGeneration(QWidget):
             and func.__module__ == molecule_lib.__name__
             and inspect.signature(func).return_annotation in {"Polygon", "dict[str, str | float | list[str] | None]"}
         }
+        return dict(sorted(temp_generators.items()))
 
-        self.generators: dict[str, Callable[[...], Polygon]] = dict(sorted(temp_generators.items()))
+    def _build_center_panel(self) -> QScrollArea:
+        """Construct the viewport frame area housing the centered vector graphics.
 
-        self.func_dropdown.addItems(self.generators.keys())
-        # self.func_dropdown.currentTextChanged.connect(self.build_param_inputs) # Connected at runtime if method exists
-
-        mol_param_group = QGroupBox("Parameters")
-        mol_param_layout = QVBoxLayout()
-        mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
-
-        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog] = {}
-        self.opt_checkboxes: dict[str, QCheckBox] = {}
-        self.param_layout = QVBoxLayout()
-        mol_param_layout.addLayout(self.param_layout)
-
-        mol_param_group.setLayout(mol_param_layout)
-        self.controls_layout.addWidget(mol_param_group, alignment=Qt.AlignmentFlag.AlignTop)
-        self.func_dropdown.setCurrentIndex(self._fetch_setting("current_molecule", 0))
-
-        self.output_label = QLabel("")
-        self.controls_layout.addWidget(self.output_label)
-
-        # Wrap the entire Left Layout into a QWidget container for the splitter
-        left_container = QWidget()
-        left_container.setLayout(self.controls_layout)
-
-        # -------------------------------------------------------------
-        # CENTER COLUMN: Scroll Area & SVG Viewport
-        # -------------------------------------------------------------
+        :return: A scroll area wrapper managing the interactive central viewport.
+        """
         scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(False)
+        scroll_area.setWidgetResizable(True)
+
+        scroll_container = QWidget()
+        container_layout = QGridLayout(scroll_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
 
         self.svg_widget = ZoomableSvgWidget()
         self.svg_widget.setMinimumSize(600, 600)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+        """Custom structural viewport rendering vector polygon outlines."""
 
-        scroll_area.setWidget(self.svg_widget)
+        container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
+        scroll_area.setWidget(scroll_container)
 
-        # -------------------------------------------------------------
-        # RIGHT COLUMN: Molecule Selection & Actions
-        # -------------------------------------------------------------
-        right_col = QVBoxLayout()
+        return scroll_area
+
+    def _build_right_panel(self) -> QWidget:
+        """Construct the right tracking grid columns managing existing records.
+
+        :return: A secondary control panel listing items added to the current system context.
+        """
+        container = QWidget()
+        right_col = QVBoxLayout(container)
 
         group = QGroupBox("Molecules")
-        group_layout = QVBoxLayout()
+        group_layout = QVBoxLayout(group)
 
         self.molecule_dropdown = QComboBox()
         group_layout.addWidget(self.molecule_dropdown)
+        """Drop-down selection tool indicating current active configuration items."""
 
-        # Delete button
         self.delete_btn = QPushButton("Delete Selected Molecule")
         self.delete_btn.clicked.connect(self.delete_molecule)
         group_layout.addWidget(self.delete_btn)
+        """Action button triggering array removal operations from local caches."""
 
-        group.setLayout(group_layout)
         right_col.addWidget(group)
 
-        # Wrap the entire Right Layout into a QWidget container for the splitter
-        right_container = QWidget()
-        right_container.setLayout(right_col)
+        return container
 
-        # -------------------------------------------------------------
-        # ASSEMBLE SPLITTER & ROOT LAYOUT
-        # -------------------------------------------------------------
-        # Add the 3 distinct container panels to the splitter
-        self.main_splitter.addWidget(left_container)
-        self.main_splitter.addWidget(scroll_area)
-        self.main_splitter.addWidget(right_container)
+    def _assemble_layout(self, left: QWidget, center: QScrollArea, right: QWidget) -> None:
+        """Unify sub-panels inside the scalable horizontal splitter framework.
 
-        # Enforce reasonable default sizing splits (e.g. Center area takes priority)
-        self.main_splitter.setStretchFactor(0, 1)  # Left Column
-        self.main_splitter.setStretchFactor(1, 3)  # Center Column (grows wider)
-        self.main_splitter.setStretchFactor(2, 1)  # Right Column
+        :param left: Parameter selection pane widget.
+        :param center: Scroll pane holding vector outputs.
+        :param right: Management column listing generated arrays.
+        """
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        """Scalable divider framework managing responsive interface margins."""
 
-        # Set the root layout of this MoleculeGeneration custom widget
+        self.main_splitter.addWidget(left)
+        self.main_splitter.addWidget(center)
+        self.main_splitter.addWidget(right)
+
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 3)
+        self.main_splitter.setStretchFactor(2, 1)
+
         root_layout = QVBoxLayout(self)
         root_layout.addWidget(self.main_splitter)
-
-        # Build initial parameter UI
-        self.build_param_inputs(self.func_dropdown.currentText())
-
-        # Internal molecule storage
-        self.molecule_names: list[str] = []
-        self.molecule_dicts: dict[str, dict[str, str | float | int | list[str] | None]] = {}
-        self.mol_list_counter: count[int] = count()
 
     def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
         """Fetch settings by checking if they exist followed by their value.
@@ -581,18 +695,20 @@ class MoleculeGeneration(QWidget):
 
         clear_layout(self.param_layout)
 
-    def build_param_inputs(self, func_name: str) -> None:  # noqa: PLR0912, PLR0915
-        """Build the parameter inputs.
+    def build_param_inputs(self, func_name: str) -> None:
+        """Inspect a generator function signature to build a parameter layout frame.
 
-        :param func_name: Name of the function
-        """  # noqa: PLR0912  # noqa: PLR0912
+        Clears existing child controls, parses required types from function type annotations,
+        configures dynamic tooltip data, and maps live text update signalling pipelines.
+
+        :param func_name: Target library function name registry string.
+        """
         self._delete_previous_layout()
         self._settings.setValue("current_molecule", self.func_dropdown.currentIndex())
 
         func = self.generators[func_name]
         sig = inspect.signature(func)
         param_docs = extract_param_docs(func)
-        default_max: int = 999
 
         if func_name == "first_time_loader":
             launch_loader_button = QPushButton("Launch first time loader")
@@ -600,8 +716,8 @@ class MoleculeGeneration(QWidget):
             launch_loader_button.clicked.connect(self.launch_first_time_loader)
             self.param_layout.addWidget(launch_loader_button)
 
-        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog] = {}
-        self.opt_checkboxes: dict[str, QCheckBox] = {}
+        self.param_widgets = {}
+        self.opt_checkboxes = {}
 
         param_grid = QGridLayout()
         for idx, (name, param) in enumerate(sig.parameters.items()):
@@ -610,45 +726,15 @@ class MoleculeGeneration(QWidget):
             is_required: bool = param.default is inspect.Parameter.empty
             row = QHBoxLayout()
 
-            name_label = QLabel(name)
+            name_label = QLabel(name.replace("_", " "))
             if name in param_docs:
                 name_label.setToolTip(param_docs[name])
-            # row.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignVCenter)
             param_grid.addWidget(name_label, idx, 0)
 
-            # strip_params = param.annotation.split("|")
-            # print(strip_params)
+            # Route type dispatching to dedicated factory helper method
+            widget = self._create_param_widget(param.annotation, default)
 
-            match param.annotation:
-                case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
-                    widget = QDoubleSpinBox()
-                    min_float_val: float = -999.0
-                    if param.annotation == "PositiveFloat":
-                        min_float_val = 0.0001
-                        if not isinstance(default, inspect.Parameter.empty):
-                            widget.setValue(1.0)
-                    elif param.annotation == "NonNegativeFloat":
-                        min_float_val = 0.0
-                    widget.setRange(min_float_val, default_max)
-                    widget.setDecimals(4)
-                    widget.setSingleStep(0.1)
-
-                case "int" | "PositiveInt":
-                    min_int_val: int = 1 if param.annotation == "PositiveInt" else -999
-                    widget = QSpinBox()
-                    widget.setRange(min_int_val, default_max)
-
-                case "FilePath":
-                    widget = FilePickerWidget()
-
-                case "str | list[str] | None":
-                    widget = QLineEdit()
-
-                case _:
-                    errmsg: str = f"Unsupported parameter annotation: '{param.annotation}' for param '{name}'."
-                    raise TypeError(errmsg)
-
-            if not is_required and default is not None:
+            if not (is_required or is_optional):
                 match widget:
                     case QSpinBox() | QDoubleSpinBox():
                         widget.setValue(default)
@@ -656,25 +742,74 @@ class MoleculeGeneration(QWidget):
                         widget.setText(str(default))
 
             if is_optional:
-                # Checkbox for optional parameters
-                self.opt_checkboxes[name] = QCheckBox()
-                self.opt_checkboxes[name].setChecked(False)
-                self.opt_checkboxes[name].setToolTip("If unchecked, the value is None")
-                row.addWidget(self.opt_checkboxes[name], alignment=Qt.AlignmentFlag.AlignVCenter)
-                # param_grid.addWidget(self.opt_checkboxes[name], idx, 1)
+                checkbox = QCheckBox()
+                checkbox.setChecked(False)
+                checkbox.setToolTip("If unchecked, the value is None")
+                self.opt_checkboxes[name] = checkbox
+                row.addWidget(checkbox, alignment=Qt.AlignmentFlag.AlignVCenter)
+
                 widget.setEnabled(False)
-                self.opt_checkboxes[name].toggled.connect(widget.setEnabled)
+                checkbox.toggled.connect(widget.setEnabled)
 
             if name in param_docs:
                 widget.setToolTip(param_docs[name])
+
             row.addWidget(widget, alignment=Qt.AlignmentFlag.AlignVCenter)
-            # param_grid.addWidget(widget, idx, 2)
             self.param_widgets[name] = widget
             param_grid.addLayout(row, idx, 1)
 
         self.param_layout.addLayout(param_grid)
         self.param_layout.addWidget(_make_horizontal_line())
 
+        # Delegate secondary form components to helpers
+        self._build_symmetry_controls()
+        self.param_layout.addWidget(_make_horizontal_line())
+        self._build_action_buttons()
+
+    @staticmethod
+    def _create_param_widget(annotation: str, default: Any) -> QWidget:
+        """Create param widget using factory strategy translating library type hints to matching user input views.
+
+        :param annotation: The raw string signature representation of the type hint.
+        :param default: The underlying fallback data default value assigned to the flag.
+        :return: A customised interactive input container widget subclass.
+        :raises TypeError: If an unmapped or exotic data structure type is processed.
+        """
+        default_max: int = 999
+
+        match annotation:
+            case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
+                widget = QDoubleSpinBox()
+                min_float_val: float = -999.0
+                if annotation == "PositiveFloat":
+                    min_float_val = 0.0001
+                    if not isinstance(default, inspect.Parameter.empty):
+                        widget.setValue(1.0)
+                elif annotation == "NonNegativeFloat":
+                    min_float_val = 0.0
+                widget.setRange(min_float_val, default_max)
+                widget.setDecimals(4)
+                widget.setSingleStep(0.1)
+                return widget
+
+            case "int" | "PositiveInt":
+                min_int_val: int = 1 if annotation == "PositiveInt" else -999
+                widget = QSpinBox()
+                widget.setRange(min_int_val, default_max)
+                return widget
+
+            case "FilePath":
+                return FilePickerWidget()
+
+            case "str | list[str] | None":
+                return QLineEdit()
+
+            case _:
+                errmsg = f"Unsupported parameter annotation: '{annotation}'."
+                raise TypeError(errmsg)
+
+    def _build_symmetry_controls(self) -> None:
+        """Assemble the geometric shape matrix transformation property grid layouts."""
         self.refl_sym: bool = False
         self.rot_sym: int = 1
         self.rot_cnt: int = 360
@@ -683,41 +818,49 @@ class MoleculeGeneration(QWidget):
         refl_sym_label = QLabel("Reflection symmetry")
         refl_sym_tooltip_text = "Set checked if the molecule has reflection symmetry (symmetric group Cn → Dn)."
         refl_sym_label.setToolTip(refl_sym_tooltip_text)
+
         refl_sym_checkbox = QCheckBox()
         refl_sym_checkbox.setChecked(self.refl_sym)
         refl_sym_checkbox.setToolTip(refl_sym_tooltip_text)
+
         rot_sym_label = QLabel("Rotation symmetry")
         self._update_symmetry_tooltip(self.refl_sym, rot_sym_label)
         refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_label))
+
         rot_sym_spinbox = QSpinBox()
         rot_sym_spinbox.setMinimum(0)
         rot_sym_spinbox.setValue(self.rot_sym)
         self._update_symmetry_tooltip(self.refl_sym, rot_sym_spinbox)
         refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_spinbox))
+
         rot_cnt_label = QLabel("Rotation count")
         rot_cnt_tooltip_text = "Number of rotations to be used for the molecule. The step size is 360/n°."
         rot_cnt_label.setToolTip(rot_cnt_tooltip_text)
+
         rot_cnt_spinbox = QSpinBox()
         rot_cnt_spinbox.setMinimum(1)
         rot_cnt_spinbox.setMaximum(99999)
         rot_cnt_spinbox.setValue(self.rot_cnt)
         rot_cnt_spinbox.setToolTip(rot_cnt_tooltip_text)
+
         symmetry_options_layout.addWidget(refl_sym_label, 0, 0)
         symmetry_options_layout.addWidget(refl_sym_checkbox, 0, 1)
         symmetry_options_layout.addWidget(rot_sym_label, 1, 0)
         symmetry_options_layout.addWidget(rot_sym_spinbox, 1, 1)
         symmetry_options_layout.addWidget(rot_cnt_label, 2, 0)
         symmetry_options_layout.addWidget(rot_cnt_spinbox, 2, 1)
+
         self.param_layout.addLayout(symmetry_options_layout)
 
-        self.param_layout.addWidget(_make_horizontal_line())
-
+    def _build_action_buttons(self) -> None:
+        """Map active interactive preview checkboxes and form processing buttons."""
         molecule_buttons = QHBoxLayout()
         self.show_molecule_checkbox = QCheckBox("Plot Molecule")
         self.show_molecule_checkbox.setToolTip("Plot the molecule")
         self.show_molecule_checkbox.setChecked(False)
         self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
         molecule_buttons.addWidget(self.show_molecule_checkbox)
+
         for widget_object in self.param_widgets.values():
             if not isinstance(widget_object, QLineEdit | QDoubleSpinBox | QSpinBox):
                 continue
@@ -725,12 +868,15 @@ class MoleculeGeneration(QWidget):
                 widget_object.textChanged.connect(self.plot_molecule)
             else:
                 widget_object.valueChanged.connect(self.plot_molecule)
+
         for optional_checkbox in self.opt_checkboxes.values():
             optional_checkbox.toggled.connect(self.plot_molecule)
+
         add_molecule_button = QPushButton("Add Molecule")
         add_molecule_button.clicked.connect(self.add_molecule)
         add_molecule_button.setToolTip("Add molecule to list of molecules in simulation")
         molecule_buttons.addWidget(add_molecule_button)
+
         self.param_layout.addLayout(molecule_buttons)
 
     def _update_symmetry_tooltip(self, is_checked: bool, widget: QWidget) -> None:
@@ -763,7 +909,8 @@ class MoleculeGeneration(QWidget):
         for first_time_key, first_time_value in output.items():
             if first_time_value is not None:
                 if isinstance(self.param_widgets[first_time_key], QLineEdit | FilePickerWidget):
-                    self.param_widgets[first_time_key].setText(first_time_value)
+                    fill_str: str = ",".join(first_time_value) if isinstance(first_time_value, list) else first_time_value
+                    self.param_widgets[first_time_key].setText(fill_str)
                 else:
                     self.param_widgets[first_time_key].setValue(first_time_value)
                 if first_time_key in self.opt_checkboxes:
@@ -920,93 +1067,118 @@ class FilePickerWidget(QWidget):
         """
         return self.line_edit.text()
 
-
 class SurfaceGeneration(QWidget):
-    """Surface generation widget."""
+    """Surface generation dashboard tab view.
+
+    Provides control inputs for generating geometric lattice surfaces and
+    displays the resulting vector map within an interactive, centered viewer.
+    """
 
     def __init__(self, state: AppState) -> None:
-        """Initialise surface generation widget.
-
-        :param state: AppState shared state between tabs.
-        """
+        """Initialise user widgets and assemble geometric layout wrappers."""
         super().__init__()
         self.state = state
-        # self.setWindowTitle("Surface Generation")
-
-        main_layout = QHBoxLayout()
-        controls_layout = QVBoxLayout()
-        gt_one_validator = QIntValidator(bottom=1)
-        pos_float_validator = QDoubleValidator(bottom=0)
-
-        # Surface dropdown
-        controls_layout.addWidget(QLabel("Surface Type:"))
-        self.surface_dropdown = QComboBox()
-        self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))
-        controls_layout.addWidget(self.surface_dropdown)
-
-        # Surface site count
-        controls_layout.addWidget(QLabel("Optional surface site count (positive int):"))
-        self.site_count_input = QLineEdit()
-        self.site_count_input.setValidator(gt_one_validator)
-        self.site_count_input.setPlaceholderText("e.g. 42")  # Answer to Ultimate Question of Life, Universe, Everything
-        controls_layout.addWidget(self.site_count_input)
-
-        # Real surface site count output
-        controls_layout.addWidget(QLabel("Real surface site count:"))
-        self.real_site_count = QLabel()
-        self.real_site_count.setText("50")
-        self.site_count_input.textChanged.connect(self._get_real_surface_site_count)
-        self.surface_dropdown.currentIndexChanged.connect(self._get_real_surface_site_count)
-        controls_layout.addWidget(self.real_site_count)
-
-        # Lattice spacing input box
-        controls_layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"))
-        self.lattice_input = QLineEdit()
-        self.lattice_input.setValidator(pos_float_validator)
-        self.lattice_input.setPlaceholderText("e.g. 1.0")
-        controls_layout.addWidget(self.lattice_input)
-
-        # Generate surface button
-        self.generate_surface_button = QPushButton("Generate Surface")
-        self.generate_surface_button.clicked.connect(self.generate_surface)
-        controls_layout.addWidget(self.generate_surface_button)
-
-        controls_layout.addStretch()
-        main_layout.addLayout(controls_layout)
-
-        # Run button
-        self.run_button = QPushButton("Run Simulation")
-        self.run_button.clicked.connect(self.run_simulation)
-        controls_layout.addWidget(self.run_button)
-
-        controls_layout.addStretch()
-        main_layout.addLayout(controls_layout)
-
-        # Plot canvas
-        self.canvas = MplCanvas()
-        svg_buffer = io.BytesIO()
-        self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
-        svg_data = svg_buffer.getvalue()
-        self.svg_widget = ZoomableSvgWidget()
-        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        self.svg_widget.load(svg_data)
-        self.scroll_area = QScrollArea()
-
-        # CRITICAL: This must be False so the inner widget can expand past the window size
-        self.scroll_area.setWidgetResizable(False)
-
-        # CRITICAL: Directly set the widget. Do NOT wrap it in an extra QWidget layout
-        self.scroll_area.setWidget(self.svg_widget)
-
-        # Add the SVG widget to layout
-        # layout.addWidget(svg_widget)
-        # main_layout.addWidget(self.canvas, stretch=1)
-        main_layout.addWidget(self.scroll_area, stretch=1)
-
-        self.setLayout(main_layout)
+        """Shared application state cache container."""
 
         self.surface_count: int = 50
+        """Target baseline node count requested by user."""
+
         self.real_surface_count: int = 50
+        """Actual generated node count corrected for geometry alignment."""
+
+        self._init_validators()
+
+        main_layout = QHBoxLayout()
+        controls_layout = self._init_controls()
+        scroll_area = self._init_svg_view()
+
+        main_layout.addLayout(controls_layout)
+        main_layout.addWidget(scroll_area, stretch=1)
+        self.setLayout(main_layout)
+
+    def _init_validators(self) -> None:
+        """Instantiate validation models for text constraint processing."""
+        self._gt_one_validator = QIntValidator(bottom=1)
+        """Enforces that input strings convert to integers greater than or equal to 1."""
+
+        self._pos_float_validator = QDoubleValidator(bottom=0.0)
+        """Enforces that input strings convert to positive floating-point scales."""
+
+    def _init_controls(self) -> QVBoxLayout:
+        """Assemble target settings selectors, forms, and system buttons.
+
+        :return: A populated vertical layout holding runtime widgets.
+        """
+        layout = QVBoxLayout()
+
+        # Surface configuration selector
+        layout.addWidget(QLabel("Surface Type:"))
+        self.surface_dropdown = QComboBox()
+        """Selection box for geometry presets."""
+        self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))  # TODO: no hardcode, load module
+        layout.addWidget(self.surface_dropdown)
+
+        # Theoretical count constraints input
+        layout.addWidget(QLabel("Optional surface site count (positive int):"))
+        self.site_count_input = QLineEdit()
+        """Numeric entry field for requested surface site count."""
+        self.site_count_input.setValidator(self._gt_one_validator)
+        self.site_count_input.setPlaceholderText("e.g. 42")
+        layout.addWidget(self.site_count_input)
+
+        # Evaluated real layout node calculation trackers
+        layout.addWidget(QLabel("Real surface site count:"))
+        self.real_site_count = QLabel()
+        """Text label reflecting processed actual surface site count."""
+        self.real_site_count.setText("50")
+        layout.addWidget(self.real_site_count)
+
+        # Physical spacing distance parameters
+        layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"))
+        self.lattice_input = QLineEdit()
+        """Numeric entry field for lattice spacing."""
+        self.lattice_input.setValidator(self._pos_float_validator)
+        self.lattice_input.setPlaceholderText("e.g. 1.0")
+        layout.addWidget(self.lattice_input)
+
+        # Control trigger processing elements
+        self.generate_surface_button = QPushButton("Generate Surface")
+        """Trigger execution pipeline for layout generation code."""
+        layout.addWidget(self.generate_surface_button)
+
+        self.run_button = QPushButton("Run Simulation")
+        """Trigger execution wrapper for adsorpy run."""
+        layout.addWidget(self.run_button)
+
+        # Establish signalling loops
+        self.site_count_input.textChanged.connect(self._get_real_surface_site_count)
+        self.surface_dropdown.currentIndexChanged.connect(self._get_real_surface_site_count)
+        self.generate_surface_button.clicked.connect(self.generate_surface)
+        self.run_button.clicked.connect(self.run_simulation)
+
+        layout.addStretch()
+        return layout
+
+    def _init_svg_view(self) -> QScrollArea:
+        """Construct the graphics frame and isolate structural canvas centering.
+
+        :return: A scroll container managing the viewport window frame.
+        """
+        self.svg_widget = ZoomableSvgWidget()
+        """Custom render context displaying loaded vector data."""
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        # Create a container widget with a Grid Layout to centre the SVG
+        container = QWidget()
+        container_layout = QGridLayout(container)
+        container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self.scroll_area = QScrollArea()
+        """Interactive bounding box containing the centered layout viewport."""
+        self.scroll_area.setWidgetResizable(False)
+        self.scroll_area.setWidget(container)
+
+        return self.scroll_area
 
     def _get_real_surface_site_count(self) -> None:
         """Get the real surface site count."""
@@ -1043,10 +1215,6 @@ class SurfaceGeneration(QWidget):
 
         lattice_type = self.surface_dropdown.currentText()
 
-        # ------------------------------------------------------
-        # Plot result
-        # ------------------------------------------------------
-        # self.canvas.ax.set_title("Adsorbed molecules")
         svg_buffer = io.BytesIO()
         self.canvas = show_surface(
             lattice_a=lattice,
@@ -1060,8 +1228,6 @@ class SurfaceGeneration(QWidget):
 
         self.svg_widget.load(svg_data)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        # Add the SVG widget to layout
-        # self.canvas.addWidget(svg_widget)
 
     def run_simulation(self) -> None:
         """Run the simulation."""
@@ -1116,20 +1282,6 @@ class SurfaceGeneration(QWidget):
             site_count=self.surface_count,
             timestep_limit=step_limit,
         )[-1]
-
-        # ------------------------------------------------------
-        # Plot result
-        # ------------------------------------------------------
-        # self.canvas.ax.clear()
-        # plot_polygon(MultiPolygon(output.mol_data.stored_mirr_data["polygon"]), ax=self.canvas.ax, add_points=False)
-        # self.canvas.ax.set_title("Adsorbed molecules")
-        # self.canvas.ax.set_xlabel("x")
-        # self.canvas.ax.set_ylabel("y")
-        # self.canvas.ax.set_aspect("equal", "box")
-        # self.canvas.ax.set_xlim(0, output.surf.x_max)
-        # self.canvas.ax.set_ylim(0, output.surf.y_max)
-        # self.canvas.fig.savefig(svg_buffer, format="svg", bbox_inches="tight")
-        # self.canvas.draw()
 
         svg_buffer = io.BytesIO()
         output.svgplot_covered_grid(filename=svg_buffer)

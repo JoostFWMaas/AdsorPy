@@ -44,12 +44,13 @@ from PySide6.QtWidgets import (
     QSlider,
     QVBoxLayout,
     QWidget,
+    QDialog,
 )
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 if TYPE_CHECKING:
-    from PySide6.QtGui import QFontMetrics
+    from PySide6.QtGui import QFontMetrics, QCloseEvent
 
     from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, RotMatrix, StrArray
 
@@ -91,7 +92,13 @@ def _load_radii_from_json() -> dict[str, float]:
 
 
 RADII: Final[dict[str, float]] = _load_radii_from_json()
-"""Key-value pairs of chemical symbols and van der Waals radii. Reference: https://doi.org/10.1039/C3DT50599E"""
+"""Key-value pairs of chemical symbols and van der Waals radii.
+
+Reference:
+    S. Alvarez, "A cartography of the van der Waals territories,"
+    *Dalton Trans.*, vol. 42, no. 24, pp. 8617-8636, Jun. 2013,
+    doi: `10.1039/C3DT50599E <https://doi.org/10.1039/C3DT50599E>`_.
+"""
 
 
 @validate_call
@@ -282,8 +289,12 @@ def _rotation_matrix(roll: float | np.float64, pitch: float | np.float64, yaw: f
     return rot_z @ rot_y @ rot_x
 
 
-class MoleculeViewer(QWidget):
-    """Molecule orientation widget."""
+class MoleculeViewer(QDialog):
+    """Molecule spatial orientation and structural viewport configuration dashboard.
+
+    Manages dynamic 3D rotational coordinate matrices (roll, pitch, yaw) for complex
+    molecular clusters and applies linear structural spatial clipping filters.
+    """
 
     def __init__(
         self,
@@ -297,31 +308,13 @@ class MoleculeViewer(QWidget):
         init_y_offset: float | None = None,
         lattice: float | None = None,
     ) -> None:
-        """Initialise the molecule orientation widget.
-
-        :param atomkeys: Atoms keys.
-        :param atompos: Atoms positions.
-        :param colours: Atoms colours.
-        :param init_roll: Initial roll in degrees.
-        :param init_pitch: Initial pitch in degrees.
-        :param init_yaw: Initial yaw in degrees.
-        :param init_x_offset: Initial x offset in angstrom.
-        :param init_y_offset: Initial y offset in angstrom.
-        :param lattice: Lattice constant for reference.
-        """
+        """Initialize matrix array buffers, orientation sliders, and plotting canvas frames."""
         super().__init__()
 
         self._settings = QSettings("adsorpy", type(self).__name__)
-        """Load the settings between sessions."""
+        """Persistent configuration handle cached across software operational cycles."""
 
-        self.atomkeys: StrArray
-        """Atom keys as an array of chemical symbol strings."""
-        self.atmpos: CoordsArray3D
-        "Atom positions as a 3D array of coordinates."
-        self.colours: StrArray
-        """Atom colours as an array of hexadecimal colour strings."""
-
-        # Step 1: Initialise raw variables and data placeholders
+        # Step 1: Initialise raw variables and data placeholders via structural helper
         self.atomkeys, self.atompos, self.colours = self._init_data(
             atomkeys,
             atompos,
@@ -332,49 +325,54 @@ class MoleculeViewer(QWidget):
             init_x_offset,
             init_y_offset,
         )
+        """Active slice mappings capturing parameters matching current view states."""
 
         self.lattice: float = lattice if lattice is not None else 1.0
-        """Lattice spacing. Defaults to 1.0."""
+        """Lattice physical constant constraint baseline scaling factor. Defaults to 1.0."""
+
         self.show_bonds: bool = False
-        """Bool flag: True if bonds are shown, else False."""
+        """State indicator controlling rendering toggles for chemical covalent bounds."""
+
         self.atom_toggles: dict[str, QCheckBox] = {}
-        """Dynamic dictionary of atom toggle checkboxes. Sorted by atomic number."""
+        """Active reference mapping linking atomic symbol labels to operational checkboxes."""
 
         # Step 2: Build the structural layout tree
-        main_vert_layout: QVBoxLayout = QVBoxLayout()
-        top_horizontal_layout: QHBoxLayout = QHBoxLayout()
+        main_vert_layout = QVBoxLayout()
+        top_horizontal_layout = QHBoxLayout()
 
-        # Generate structural UI modules (A, B, and C)
-        filter_panel: QVBoxLayout = self._create_filter_panel()
-        plot_workspace: QVBoxLayout = self._create_plot_panel()
+        # Generate isolated modular workspace layout panel trees
+        filter_panel = self._create_filter_panel()
+        plot_workspace = self._create_plot_panel()
 
-        # Assemble Top Row (A | B)
+        # Inject functional widget sub-controls directly into the module frames
         self.setup_bond_controls(filter_panel)
-        top_horizontal_layout.addLayout(filter_panel, stretch=1)
         self.setup_lattice_controls(filter_panel)
+
+        # Assemble unified parent layout structural paths
+        top_horizontal_layout.addLayout(filter_panel, stretch=1)
         top_horizontal_layout.addLayout(plot_workspace, stretch=5)
         main_vert_layout.addLayout(top_horizontal_layout, stretch=1)
 
-        # Assemble Bottom Row (-C-) directly into the layout tree
+        # Append trailing timeline/slider control panel arrays to base row
         self._add_slider_panel(main_vert_layout)
 
-        # Finalise and trigger the initial filter pipeline pass
         self.setLayout(main_vert_layout)
-        self.apply_filters()
+        self.apply_atom_filters()
 
     @property
     def disabled_molecules(self) -> list[str] | None:
-        """Get a sorted list of disabled molecule names, or None if empty/disabled.
+        """Get a sorted list of disabled atom name keys or None if empty.
 
-        :returns: None if disabled, else a list of chemical symbols (sorted by atomic number).
+        Identifies inactive elements via unchecked toggles and sorts them
+        by ascending atomic weight indices using the master database registry.
+
+        :return: Chronologically sorted elements or None if all toggles are active.
         """
-        # Gather keys where the visual checkbox is unchecked
-        disabled: list[str] = [atom for atom, checkbox in self.atom_toggles.items() if not checkbox.isChecked()]
-        """The list of disabled atoms (as chemical symbol strings). Disabled atoms are added to the list."""
-
-        if not disabled:  # If the list of disabled molecules is empty, i.e., [], this evaluates to True.
+        disabled = [atom for atom, checkbox in self.atom_toggles.items() if not checkbox.isChecked()]
+        if not disabled:
             return None
 
+        # Sorted by periodic table keys
         return sorted(disabled, key=list(RADII.keys()).index)
 
     def _init_data(
@@ -388,58 +386,55 @@ class MoleculeViewer(QWidget):
         init_x_offset: float | None = None,
         init_y_offset: float | None = None,
     ) -> tuple[StrArray, CoordsArray3D, StrArray]:
-        """Initialise internal tracking parameters, limits, and array structures.
+        """Convert list inputs into persistent raw NumPy matrices and configure boundaries.
 
-        :param atomkeys: Atoms keys.
-        :param atompos: Atoms positions.
-        :param colours: Atoms colours.
-        :param init_roll: Initial roll value in degrees.
-        :param init_pitch: Initial pitch value in degrees.
-        :param init_yaw: Initial yaw value in degrees.
-        :param init_x_offset: Initial x offset value in angstrom.
-        :param init_y_offset: Initial y offset value in angstrom.
-        :returns:
-            1) Atom keys
-            2) Atom positions
-            3) Atom colours
+        :param atomkeys: list of strings of chemical symbols.
+        :param atompos: Intercept array tracking three-dimensional coordinates of atoms.
+        :param colours: Vector mapping hexadecimal colour tracking pointers.
+        :param init_roll: Baseline matrix orientation transformation offset.
+        :param init_pitch: Baseline matrix elevation transformation offset.
+        :param init_yaw: Baseline matrix horizontal rotation transformation offset.
+        :param init_x_offset: Baseline translation margin parallel to the abscissa.
+        :param init_y_offset: Baseline translation margin parallel to the ordinate.
+        :return: Tuple containing configured baseline instance data arrays.
         """
-        self.orig_atomkeys: StrArray = np.array(atomkeys, dtype=np.str_)
-        self.orig_atompos: CoordsArray3D = np.array(atompos, dtype=np.float64)
-        self.orig_colours: StrArray = np.array(colours, dtype=np.str_)
+        self.orig_atomkeys = np.array(atomkeys, dtype=np.str_)
+        """Immutable baseline array tracking atomic keys loaded from source files."""
 
+        self.orig_atompos = np.array(atompos, dtype=np.float64)
+        """Immutable matrix holding coordinates across 3D vector parameters."""
+
+        self.orig_colours = np.array(colours, dtype=np.str_)
+        """Immutable map listing style color tokens for individual elements."""
+
+        # Establish working instance clones to avoid operational mutations
         temp_atomkeys = self.orig_atomkeys.copy()
         temp_atompos = self.orig_atompos.copy()
         temp_colours = self.orig_colours.copy()
 
-        def default_zero(value: float | None = None) -> float:
-            """Return 0.0 if None, else value.
+        # Unpack structural properties; fall back to 0.0 seamlessly if empty
+        self.roll = init_roll or 0.0
+        self.pitch = init_pitch or 0.0
+        self.yaw = init_yaw or 0.0
+        self.x_offset = init_x_offset or 0.0
+        self.y_offset = init_y_offset or 0.0
 
-            :param value: The value to return if it is not None.
-            :returns: value or 0.0
-            """
-            return 0.0 if value is None else value
-
-        self.roll: float = default_zero(init_roll)
-        self.pitch: float = default_zero(init_pitch)
-        self.yaw: float = default_zero(init_yaw)
-        self.x_offset: float = default_zero(init_x_offset)
-        self.y_offset: float = default_zero(init_y_offset)
-
-        self.min_z: float = float(np.min(self.orig_atompos[:, 2])) if self.orig_atompos.size else -10.0
-        self.max_z: float = float(np.max(self.orig_atompos[:, 2])) if self.orig_atompos.size else 10.0
-        self.z_cutoff: float = self.min_z - 0.1
+        # Calculate bounding height cutoffs based on structural values
+        self.min_z = float(np.min(self.orig_atompos[:, 2])) if self.orig_atompos.size else -10.0
+        self.max_z = float(np.max(self.orig_atompos[:, 2])) if self.orig_atompos.size else 10.0
+        self.z_cutoff = self.min_z - 0.1
 
         return temp_atomkeys, temp_atompos, temp_colours
 
     def _fetch_setting(self, name: str, default: T, return_type: type[T] | None = None) -> T:
-        """Fetch settings by checking if they exist followed by their value.
+        """Query registry fields from the application storage dictionary profile.
 
-        :param name: The name of the setting to fetch.
-        :param default: The default value to return if the setting does not exist.
-        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
-        :returns: The setting value if it exists, or else the default.
+        :param name: Unique configuration mapping key string tracker.
+        :param default: Fallback property return object assigned if name is missing.
+        :param return_type: Target data object type enforcement mapping template.
+        :return: Configured properties mapped to native execution type constraints.
         """
-        check_type = type(default) if return_type is None else return_type
+        check_type = return_type if return_type is not None else type(default)
         return cast("T", self._settings.value(name, defaultValue=default, type=check_type))
 
     def _create_filter_panel(self) -> QVBoxLayout:
@@ -477,7 +472,7 @@ class MoleculeViewer(QWidget):
         self.z_spinbox.setValue(self.z_cutoff)
         self.z_spinbox.setEnabled(False)
         self.z_filter_enable.toggled.connect(self.z_spinbox.setEnabled)
-        self.z_filter_enable.toggled.connect(self.apply_filters)
+        self.z_filter_enable.toggled.connect(self.apply_atom_filters)
         self.z_spinbox.valueChanged.connect(self.update_z_cutoff)
 
         z_layout.addWidget(self.z_filter_enable)
@@ -502,7 +497,7 @@ class MoleculeViewer(QWidget):
             atom_checkbox: QCheckBox = QCheckBox(f"Show {atom}")
             atom_checkbox.setChecked(True)
             self.atom_toggles[atom] = atom_checkbox
-            atom_checkbox.stateChanged.connect(self.apply_filters)
+            atom_checkbox.stateChanged.connect(self.apply_atom_filters)
 
             color_swatch: QLabel = QLabel()
             color_swatch.setFixedSize(QSize(14, 14))
@@ -539,12 +534,12 @@ class MoleculeViewer(QWidget):
 
         :param target_layout: Top-level root layout accepting row insertions.
         """
-        slider_params: dict[str, tuple[int, int]] = {
-            "roll": (-180, 180),
-            "pitch": (-180, 180),
-            "yaw": (-180, 180),
-            "x_offset": (-5, 5),
-            "y_offset": (-5, 5),
+        slider_params: dict[str, tuple[int, int, bool, float]] = {
+            "roll": (-180, 180, True, 1),
+            "pitch": (-180, 180, True, 1),
+            "yaw": (-180, 180, True, 1),
+            "x_offset": (-5, 5, False, 0.1),
+            "y_offset": (-5, 5, False, 0.1),
         }
 
         max_width: int = 0
@@ -568,8 +563,9 @@ class MoleculeViewer(QWidget):
 
             box: QDoubleSpinBox = QDoubleSpinBox()
             box.setRange(float(val_range[0]), float(val_range[1]))
+            box.setWrapping(val_range[2])
             box.setDecimals(2)
-            box.setSingleStep(0.1)
+            box.setSingleStep(val_range[3])
             box.setValue(0.0)
             box.setFixedWidth(120)
 
@@ -577,8 +573,8 @@ class MoleculeViewer(QWidget):
                 lambda val, n=name, b=box: self.update_values(val, n, b),
             )
 
-            box.editingFinished.connect(
-                lambda s=slider, b=box, n=name: self.submit_values(s, b, n),
+            box.valueChanged.connect(
+                lambda _, s=slider, b=box, n=name: self.submit_values(s, b, n),
             )
 
             row.addWidget(label)
@@ -600,9 +596,9 @@ class MoleculeViewer(QWidget):
         :param value: z-cutoff value to update.
         """
         self.z_cutoff = value
-        self.apply_filters()
+        self.apply_atom_filters()
 
-    def apply_filters(self) -> None:
+    def apply_atom_filters(self) -> None:
         """Calculate boolean masks against root datasets and handle redraw requests."""
         mask: BoolArray
         if self.z_filter_enable.isChecked():
@@ -1092,16 +1088,19 @@ class MoleculeViewer(QWidget):
 
         self.svg_widget.load(str(svg_out).encode("utf-8"))
 
+    # def closeEvent(self, event: QCloseEvent):
+    #     event.accept()
+
 
 @validate_call
 def first_time_loader(
     file_name: FilePath,
+    roll: float = 0.0,
+    pitch: float = 0.0,
+    yaw: float = 0.0,
+    x_offset: float = 0.0,
+    y_offset: float = 0.0,
     ignore_atoms: str | list[str] | None = None,
-    roll: float | None = None,
-    pitch: float | None = None,
-    yaw: float | None = None,
-    x_offset: float | None = None,
-    y_offset: float | None = None,
     z_trim: float | None = None,
     reference_lattice_spacing: float = 4.74,
 ) -> dict[str, str | float | list[str] | None]:
@@ -1145,8 +1144,6 @@ def first_time_loader(
 
     colours = np.array([colour_dict.get(k, "#FFFFFF") for k in atomkeys])
 
-    app = QApplication.instance() or QApplication([])
-
     viewer = MoleculeViewer(
         atomkeys,
         atompos,
@@ -1162,7 +1159,7 @@ def first_time_loader(
     viewer.showMaximized()
     viewer.show()
 
-    app.exec()
+    viewer.exec()
 
     result: dict[str, str | float | list[str] | None] = {
         "file_name": str(file_name),
@@ -1175,7 +1172,7 @@ def first_time_loader(
         "z_trim": viewer.z_cutoff if viewer.z_filter_enable.isChecked() else None,
     }
 
-    print(f"kwargs = {result}")
+    # print(f"kwargs = {result}")
     return result
 
 
