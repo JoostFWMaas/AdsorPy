@@ -559,6 +559,7 @@ def show_surface(
     svg_flag: bool = False,
     filepath: str | Path | io.BytesIO = "",
     ax: Tax = None,
+    dark_mode_bool: bool = False,
 ) -> Tax:
     """Show the simulation surface.
 
@@ -570,6 +571,7 @@ def show_surface(
     :param svg_flag: If True, show the simulation surface in SVG format.
     :param filepath: Where to save the file to.
     :param ax: Plot Axes. Ignored if svg_flag is True.
+    :param dark_mode_bool: True if dark mode, False if light mode.
     :return: Updated plot Axes.
     """
     rsa_config = RsaConfig(Path(__file__).parent / "config.json") if rsa_config is None else rsa_config
@@ -587,7 +589,7 @@ def show_surface(
     surf.generate_grid(rng)
 
     if svg_flag:
-        surf.svgplot_surface_sites(filename=filepath)
+        surf.svgplot_surface_sites(filename=filepath, dark_mode_bool=dark_mode_bool)
     else:
         if isinstance(filepath, io.BytesIO):
             errmsg: str = "Plotter does not accept 'io.BytesIO' as directory."

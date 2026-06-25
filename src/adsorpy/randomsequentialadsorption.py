@@ -1012,6 +1012,7 @@ class Simulator:
         amgs: list[MoleculeGroup] | None = None,
         filename: str | Path | io.BytesIO = "",
         rounding: int = 4,
+        dark_mode_bool: bool = False,
     ) -> None:
         """Plot the covered grid as an SVG.
 
@@ -1019,6 +1020,7 @@ class Simulator:
         :param amgs: A list of the molecule groups.
         :param filename: The file name as string or path.
         :param rounding: How many digits to round all values to.
+        :param dark_mode_bool: Boolean denoting dark mode. If False, assume light mode.
         """
         if surf is None:
             surf = self.surf
@@ -1165,10 +1167,11 @@ class Simulator:
 
         site_template, site_group, width, height = surf.make_surface_svg_elements(rounding=rounding)
         definitions = svg.Defs(elements=[*defs_elements, site_template])
+        style = surf.create_dark_css_style(dark_mode_bool)
 
         root_group_elements.extend(site_group)
 
-        surf.create_and_write_svg(filename, root_group_elements, width, height, definitions)
+        surf.create_and_write_svg(filename, root_group_elements, width, height, definitions, style)
 
     def attempt_cascading_placement(
         self,
@@ -1528,10 +1531,11 @@ class Surface:
 
         return ax
 
-    def svgplot_surface_sites(self, filename: str | Path | io.BytesIO = "") -> None:
+    def svgplot_surface_sites(self, filename: str | Path | io.BytesIO = "", dark_mode_bool: bool = False) -> None:
         """Plot the surface sites as an SVG file.
 
         :param filename: The filepath of the SVG file. If io.BytesIO is provided, the file will be written to bytes.
+        :param dark_mode_bool: True if dark mode, False if light mode.
         """
         filename: Path | io.BytesIO = (
             Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
@@ -1539,8 +1543,9 @@ class Surface:
 
         site_template, site_group, width, height = self.make_surface_svg_elements()
         definitions = svg.Defs(elements=[site_template])
+        style = self.create_dark_css_style(dark_mode_bool)
 
-        self.create_and_write_svg(filename, site_group, width, height, definitions)
+        self.create_and_write_svg(filename, site_group, width, height, definitions, style)
 
     def make_surface_svg_elements(self, rounding: int = 4) -> tuple[svg.Circle, list[svg.G | svg.Rect], float, float]:
         """Make the SVG elements of the surface.
@@ -1564,7 +1569,8 @@ class Surface:
         point_radius = self.lattice_a * 0.1
 
         grid_point_id = "site"
-        site_template = svg.Circle(id=grid_point_id, r=point_radius, fill="black", stroke="none")
+        # site_template = svg.Circle(id=grid_point_id, r=point_radius, fill="black", stroke="none")
+        site_template = svg.Circle(id=grid_point_id, r=point_radius)
 
         rounded_coords: CoordsArray = np.round(self.grid_coordinates, rounding)
 
@@ -1582,7 +1588,7 @@ class Surface:
                     y=0.0,
                     width=width,
                     height=height,
-                    stroke="black",
+                    # stroke="black",
                     fill="none",
                     stroke_width=2,
                 ),
@@ -1591,12 +1597,33 @@ class Surface:
         return site_template, root_group_elements, width, height
 
     @staticmethod
+    def create_dark_css_style(dark_mode_bool: bool = False) -> svg.Style:
+        """Create an option to use dark colours for the SVG.
+
+        :param dark_mode_bool: True if dark mode, False otherwise.
+        :returns: The Style element containing the dark mode CSS toggle.
+        """
+        if dark_mode_bool:
+            css_styles = """
+                use { fill: white; }
+                rect { stroke: white; }
+            """
+
+        else:
+            css_styles = """
+                use { fill: black; }
+                rect { stroke: black; }
+            """
+        return svg.Style(text=css_styles)
+
+    @staticmethod
     def create_and_write_svg(
         filename: Path | io.BytesIO,
-        root_group_elements: list[svg.Rect | svg.G | svg.Polygon],
+        root_group_elements: list[svg.Rect | svg.G | svg.Point],
         width: float,
         height: float,
         definitions: svg.Defs,
+        style: svg.Style,
     ) -> None:
         """Create the SVG.
 
@@ -1606,7 +1633,7 @@ class Surface:
         :param height: The height of the SVG.
         :param definitions: The definitions (templates) to add to the SVG.
         """
-        root_elements: list[svg.Defs | svg.G] = [definitions]
+        root_elements: list[svg.Defs | svg.G | svg.Style] = [definitions, style]
         root_group = svg.G(
             transform=[
                 svg.Scale(x=1, y=-1),

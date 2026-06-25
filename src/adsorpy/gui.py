@@ -25,7 +25,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QRegularExpressionValidator,
     QResizeEvent,
-    QWheelEvent,
+    QWheelEvent, QGuiApplication,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -1214,15 +1214,17 @@ class SurfaceGeneration(QWidget):
                 return
 
         lattice_type = self.surface_dropdown.currentText()
+        dark_mode_bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
 
         svg_buffer = io.BytesIO()
-        self.canvas = show_surface(
+        show_surface(
             lattice_a=lattice,
             lattice_type=lattice_type,
             seed=seed,
             site_count=self.surface_count,
             filepath=svg_buffer,
             svg_flag=True,
+            dark_mode_bool=dark_mode_bool,
         )
         svg_data = svg_buffer.getvalue()
 
@@ -1284,7 +1286,9 @@ class SurfaceGeneration(QWidget):
         )[-1]
 
         svg_buffer = io.BytesIO()
-        output.svgplot_covered_grid(filename=svg_buffer)
+
+        dark_mode_bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
+        output.svgplot_covered_grid(filename=svg_buffer, dark_mode_bool=dark_mode_bool)
         svg_data = svg_buffer.getvalue()
 
         self.svg_widget.load(svg_data)
@@ -1318,5 +1322,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     gui = AdsorpyGUI()
     gui.resize(1600, 900)
+    app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
     gui.show()
     sys.exit(app.exec())
