@@ -1088,67 +1088,74 @@ class SurfaceGeneration(QWidget):
 
         self._init_validators()
 
-        main_layout = QHBoxLayout()
-        controls_layout = self._init_controls()
+        # Initialise panels
+        left_container = self._build_left_panel()
         scroll_area = self._init_svg_view()
 
-        main_layout.addLayout(controls_layout)
-        main_layout.addWidget(scroll_area, stretch=1)
-        self.setLayout(main_layout)
+        # Assemble components directly inside the splitter framework
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.addWidget(left_container)
+        self.main_splitter.addWidget(scroll_area)
+
+        # Configure layout stretching rules (1 unit left panel, 3 units centre viewport)
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 3)
+
+        # Clean up root assignment
+        root_layout = QHBoxLayout(self)
+        root_layout.addWidget(self.main_splitter)
 
     def _init_validators(self) -> None:
         """Instantiate validation models for text constraint processing."""
         self._gt_one_validator = QIntValidator(bottom=1)
-        """Enforces that input strings convert to integers greater than or equal to 1."""
-
         self._pos_float_validator = QDoubleValidator(bottom=0.0)
-        """Enforces that input strings convert to positive floating-point scales."""
 
-    def _init_controls(self) -> QVBoxLayout:
-        """Assemble target settings selectors, forms, and system buttons.
+    def _build_left_panel(self) -> QWidget:
+        """Construct the left controls container pane layout.
 
-        :return: A populated vertical layout holding runtime widgets.
+        :return: A populated structural layout container frame.
         """
-        layout = QVBoxLayout()
+        container = QWidget()
+        layout = QVBoxLayout(container)
 
         # Surface configuration selector
-        layout.addWidget(QLabel("Surface Type:"))
+        layout.addWidget(QLabel("Surface Type:"), alignment=Qt.AlignmentFlag.AlignTop)
         self.surface_dropdown = QComboBox()
         """Selection box for geometry presets."""
-        self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))  # TODO: no hardcode, load module
-        layout.addWidget(self.surface_dropdown)
+        self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))
+        layout.addWidget(self.surface_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Theoretical count constraints input
-        layout.addWidget(QLabel("Optional surface site count (positive int):"))
+        layout.addWidget(QLabel("Optional surface site count (positive int):"), alignment=Qt.AlignmentFlag.AlignTop)
         self.site_count_input = QLineEdit()
         """Numeric entry field for requested surface site count."""
         self.site_count_input.setValidator(self._gt_one_validator)
         self.site_count_input.setPlaceholderText("e.g. 42")
-        layout.addWidget(self.site_count_input)
+        layout.addWidget(self.site_count_input, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Evaluated real layout node calculation trackers
-        layout.addWidget(QLabel("Real surface site count:"))
+        layout.addWidget(QLabel("Real surface site count:"), alignment=Qt.AlignmentFlag.AlignTop)
         self.real_site_count = QLabel()
         """Text label reflecting processed actual surface site count."""
         self.real_site_count.setText("50")
-        layout.addWidget(self.real_site_count)
+        layout.addWidget(self.real_site_count, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Physical spacing distance parameters
-        layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"))
+        layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"), alignment=Qt.AlignmentFlag.AlignTop)
         self.lattice_input = QLineEdit()
         """Numeric entry field for lattice spacing."""
         self.lattice_input.setValidator(self._pos_float_validator)
         self.lattice_input.setPlaceholderText("e.g. 1.0")
-        layout.addWidget(self.lattice_input)
+        layout.addWidget(self.lattice_input, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Control trigger processing elements
         self.generate_surface_button = QPushButton("Generate Surface")
         """Trigger execution pipeline for layout generation code."""
-        layout.addWidget(self.generate_surface_button)
+        layout.addWidget(self.generate_surface_button, alignment=Qt.AlignmentFlag.AlignTop)
 
         self.run_button = QPushButton("Run Simulation")
         """Trigger execution wrapper for adsorpy run."""
-        layout.addWidget(self.run_button)
+        layout.addWidget(self.run_button, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Establish signalling loops
         self.site_count_input.textChanged.connect(self._get_real_surface_site_count)
@@ -1156,8 +1163,9 @@ class SurfaceGeneration(QWidget):
         self.generate_surface_button.clicked.connect(self.generate_surface)
         self.run_button.clicked.connect(self.run_simulation)
 
+        # Force components to stick tight to the top boundary layout
         layout.addStretch()
-        return layout
+        return container
 
     def _init_svg_view(self) -> QScrollArea:
         """Construct the graphics frame and isolate structural canvas centering.
@@ -1175,7 +1183,7 @@ class SurfaceGeneration(QWidget):
 
         self.scroll_area = QScrollArea()
         """Interactive bounding box containing the centered layout viewport."""
-        self.scroll_area.setWidgetResizable(False)
+        self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setWidget(container)
 
         return self.scroll_area
@@ -1322,6 +1330,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     gui = AdsorpyGUI()
     gui.resize(1600, 900)
-    app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
+    # app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
     gui.show()
     sys.exit(app.exec())
