@@ -81,7 +81,7 @@ requires-dist = [
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2025.12.19" },
     { name = "hypothesis", marker = "extra == 'test'", specifier = ">=6.152.4" },
     { name = "matplotlib", specifier = ">=3.10.9" },
-    { name = "mypy", marker = "extra == 'lint'", specifier = ">=2.0.0" },
+    { name = "mypy", marker = "extra == 'lint'", specifier = ">=2.1.0" },
     { name = "numba", specifier = ">=0.65.1" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pre-commit", marker = "extra == 'dev-misc'", specifier = ">=4.6.0" },

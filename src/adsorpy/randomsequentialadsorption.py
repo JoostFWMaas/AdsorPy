@@ -487,7 +487,7 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     "Molecule group index value. Defaults to -1, an invalid value."
     grid_index: int = -1
     "Grid index value. Defaults to -1, an invalid value."
-    coordinates: CoordPair = cast("CoordPair", field(default_factory=lambda: np.empty((2, 1), dtype=np.float64)))  # noqa: RUF009
+    coordinates: CoordPair = field(default_factory=lambda: np.empty((2, 1), dtype=np.float64))  # pyright: ignore[reportAssignmentType]
     "Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.float64)."
     molecule: Polygon = field(default_factory=Polygon)
     "Candidate molecule. Initially empty."
@@ -662,7 +662,7 @@ class Simulator:
             )
 
         if self.flux_flag:  # Allows for retrying of occupied sites.
-            cand.grid_index = self.rng.choice(surf.grid_index) if grid_idx is None else int(grid_idx)  # Pick a site.
+            cand.grid_index = int(self.rng.choice(surf.grid_index)) if grid_idx is None else int(grid_idx)  # Pick site.
             if not pmg.vacant[cand.grid_index]:  # If occupied, reject the attempt.
                 return (
                     placed_flag,
@@ -683,7 +683,7 @@ class Simulator:
                     cand.rot_idx,
                     [mol.vacancy_count for mol in self.molgroups],
                 )
-            cand.grid_index = self.rng.choice(free_indices)
+            cand.grid_index = int(self.rng.choice(free_indices))
         else:
             cand.grid_index = int(grid_idx)
 
@@ -754,9 +754,11 @@ class Simulator:
         # If the outer radius is empty, skip all other checks and just place.
         if outer_radius_empty and hard_boundary_clearance:
             if first_rot_idx is None:
-                cand.rot_idx = self.rng.choice(
+                cand.rot_idx = int(
+                    self.rng.choice(
                     np.arange(pmg.rot_refl_count)[pmg.bp.allowed_bools],
-                )  # Set random angle.
+                ),  # Set random angle.
+                )
             else:
                 cand.rot_idx = int(first_rot_idx)
             rnd_mol: Polygon = pmg.rotated_molecules[cand.rot_idx]
