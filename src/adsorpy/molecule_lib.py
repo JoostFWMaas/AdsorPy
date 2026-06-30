@@ -35,6 +35,7 @@ from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
     QDoubleSpinBox,
     QGroupBox,
     QHBoxLayout,
@@ -44,13 +45,12 @@ from PySide6.QtWidgets import (
     QSlider,
     QVBoxLayout,
     QWidget,
-    QDialog,
 )
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 if TYPE_CHECKING:
-    from PySide6.QtGui import QFontMetrics, QCloseEvent
+    from PySide6.QtGui import QCloseEvent, QFontMetrics
 
     from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, RotMatrix, StrArray
 
@@ -76,7 +76,7 @@ plt.rcParams.update(
 )
 
 AtomKey = Annotated[str, StringConstraints(min_length=1, max_length=2)]
-"""Atom key validator. String of length 1 or 2."""
+"""Atom key validator. String of length 1 or 2 denoting chemical symbols."""
 
 
 def _load_radii_from_json() -> dict[str, float]:
@@ -223,7 +223,7 @@ def xyz_reader(
     :param file_name: The name of the file, including the .xyz extension. Include the path.
     :param ignore_atoms: Atoms to ignore when making the molecule. Useful to filter out a slab.
     :param x_offset: The offset in the x direction.
-    :param y_offset: The offset in the x direction.
+    :param y_offset: The offset in the y direction.
     :param yaw: Rotation along the x-axis.
     :param pitch: Rotation along the y-axis.
     :param roll: Rotation along the z-axis.
@@ -298,9 +298,9 @@ class MoleculeViewer(QDialog):
 
     def __init__(
         self,
-        atomkeys: list[str] | np.ndarray,
+        atomkeys: list[str] | StrArray,
         atompos: CoordsArray3D,
-        colours: list[str] | np.ndarray,
+        colours: list[str] | StrArray,
         init_roll: float | None = None,
         init_pitch: float | None = None,
         init_yaw: float | None = None,
@@ -308,7 +308,7 @@ class MoleculeViewer(QDialog):
         init_y_offset: float | None = None,
         lattice: float | None = None,
     ) -> None:
-        """Initialize matrix array buffers, orientation sliders, and plotting canvas frames."""
+        """Initialise matrix array buffers, orientation sliders, and plotting canvas frames."""
         super().__init__()
 
         self._settings = QSettings("adsorpy", type(self).__name__)
@@ -471,6 +471,7 @@ class MoleculeViewer(QDialog):
         self.z_spinbox.setSingleStep(0.1)
         self.z_spinbox.setValue(self.z_cutoff)
         self.z_spinbox.setEnabled(False)
+        self.z_spinbox.setSuffix("Å")
         self.z_filter_enable.toggled.connect(self.z_spinbox.setEnabled)
         self.z_filter_enable.toggled.connect(self.apply_atom_filters)
         self.z_spinbox.valueChanged.connect(self.update_z_cutoff)
@@ -534,15 +535,16 @@ class MoleculeViewer(QDialog):
 
         :param target_layout: Top-level root layout accepting row insertions.
         """
-        slider_params: dict[str, tuple[int, int, bool, float]] = {
-            "roll": (-180, 180, True, 1),
-            "pitch": (-180, 180, True, 1),
-            "yaw": (-180, 180, True, 1),
-            "x_offset": (-5, 5, False, 0.1),
-            "y_offset": (-5, 5, False, 0.1),
+        slider_params: dict[str, tuple[int, int, bool, str]] = {
+            "roll": (-180, 180, True, "°"),
+            "pitch": (-180, 180, True, "°"),
+            "yaw": (-180, 180, True, "°"),
+            "x_offset": (-5, 5, False, " Å"),
+            "y_offset": (-5, 5, False, " Å"),
         }
 
         max_width: int = 0
+        step_size: float = 0.1
         font_metrics: QFontMetrics = self.fontMetrics()
 
         for param in slider_params:
@@ -565,7 +567,9 @@ class MoleculeViewer(QDialog):
             box.setRange(float(val_range[0]), float(val_range[1]))
             box.setWrapping(val_range[2])
             box.setDecimals(2)
-            box.setSingleStep(val_range[3])
+            box.setSingleStep(step_size)
+            box.setAccelerated(True)
+            box.setSuffix(val_range[3])
             box.setValue(0.0)
             box.setFixedWidth(120)
 
@@ -760,7 +764,7 @@ class MoleculeViewer(QDialog):
         xs, ys, zs = pts.T
 
         # --- SVG full size ---
-        width, height = 1000, 800
+        width, height = 800, 800
 
         # Force square drawing region
         side = min(width, height)
@@ -774,13 +778,18 @@ class MoleculeViewer(QDialog):
         scale = panel * 0.45
 
         # --- UNIFIED BOUNDARY & BUFFER CALCULATIONS ---
-        lattice_x = self.lattice * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5])
-        lattice_y = self.lattice * np.array(
+        lattice_x: DistArray = self.lattice * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5])
+        lattice_y: DistArray = self.lattice * np.array(
             [0, 0, 0, np.sqrt(3) / 2, np.sqrt(3) / 2, -np.sqrt(3) / 2, -np.sqrt(3) / 2],
         )
 
-        all_x = np.concatenate([xs, zs, lattice_x])
-        all_y = np.concatenate([ys, zs, lattice_y])
+        all_x: DistArray = np.concatenate([xs, zs, lattice_x])
+        all_y: DistArray = np.concatenate([ys, zs, lattice_y])
+
+        xmin_v: float
+        xmax_v: float
+        ymin_v: float
+        ymax_v: float
 
         xmin_v, xmax_v = np.min(all_x), np.max(all_x)
         ymin_v, ymax_v = np.min(all_y), np.max(all_y)
@@ -801,7 +810,7 @@ class MoleculeViewer(QDialog):
         bond_pairs: list[tuple[int, int]] = []
         if getattr(self, "show_bonds", False):
             num_atoms = len(pts)
-            # Threshold parameters: modify these numbers to fit your dataset's units
+            # Threshold parameters
             min_dist: float = 0.4
             max_dist: float = 1.9
 
@@ -832,8 +841,6 @@ class MoleculeViewer(QDialog):
 
             elements: list[svg.Line | svg.Polygon | svg.Text] = [
                 svg.Line(x1=base_x, y1=base_y, x2=base_x + arrow_len, y2=base_y, stroke="black", stroke_width=1.5),
-            ]
-            elements.append(
                 svg.Polygon(
                     points=[
                         svg.Point(base_x + arrow_len, base_y),
@@ -842,8 +849,6 @@ class MoleculeViewer(QDialog):
                     ],
                     fill="black",
                 ),
-            )
-            elements.append(
                 svg.Text(
                     text=label_h,
                     x=base_x + arrow_len + 5,
@@ -852,12 +857,7 @@ class MoleculeViewer(QDialog):
                     font_family="sans-serif",
                     fill="black",
                 ),
-            )
-
-            elements.append(
                 svg.Line(x1=base_x, y1=base_y, x2=base_x, y2=base_y - arrow_len, stroke="black", stroke_width=1.5),
-            )
-            elements.append(
                 svg.Polygon(
                     points=[
                         svg.Point(base_x, base_y - arrow_len),
@@ -866,8 +866,6 @@ class MoleculeViewer(QDialog):
                     ],
                     fill="black",
                 ),
-            )
-            elements.append(
                 svg.Text(
                     text=label_v,
                     x=base_x - 4,
@@ -877,7 +875,7 @@ class MoleculeViewer(QDialog):
                     font_family="sans-serif",
                     fill="black",
                 ),
-            )
+            ]
 
             return elements
 
@@ -891,7 +889,11 @@ class MoleculeViewer(QDialog):
             return (val - center) / span
 
         def scatter_proj(
-            xdata: DistArray, ydata: DistArray, depth: DistArray, col: int, row: int,
+            xdata: DistArray,
+            ydata: DistArray,
+            depth: DistArray,
+            col: int,
+            row: int,
         ) -> list[svg.Line | svg.Circle]:
             """Give the 2D projection scatter plot of the molecule.
 
@@ -911,8 +913,9 @@ class MoleculeViewer(QDialog):
                 nx1, ny1 = norm(xdata[idx1], cx_data), norm(ydata[idx1], cy_data)
                 nx2, ny2 = norm(xdata[idx2], cx_data), norm(ydata[idx2], cy_data)
 
-                px1, py1 = cx + nx1 * scale * 2, cy - ny1 * scale * 2
-                px2, py2 = cx + nx2 * scale * 2, cy - ny2 * scale * 2
+                # --- CRITICAL FIX: Inverted Y axis (changed '-' to '+') ---
+                px1, py1 = cx + nx1 * scale * 2, cy + ny1 * scale * 2
+                px2, py2 = cx + nx2 * scale * 2, cy + ny2 * scale * 2
 
                 elements.append(
                     svg.Line(x1=px1, y1=py1, x2=px2, y2=py2, stroke="#aaaaaa", stroke_width=2, stroke_dasharray=[4, 4]),
@@ -921,19 +924,20 @@ class MoleculeViewer(QDialog):
             # 2. Render depth-sorted atoms
             min_comparison: float = 1e-9
             order = np.argsort(depth)
+            dmin: float
+            dmax: float
             dmin, dmax = np.min(depth), np.max(depth)
             depth_range = dmax - dmin if (dmax - dmin) > min_comparison else 1.0
             size = 30 + (depth - dmin) / depth_range * 30
-            # --- Inside scatter_proj definition ---
-            # Vectorise coordinate math using the sorted order array directly
+
             nx_array = norm(xdata[order], cx_data)
             ny_array = norm(ydata[order], cy_data)
 
             px_array = cx + nx_array * scale * 2
-            py_array = cy - ny_array * scale * 2
+            # --- CRITICAL FIX: Inverted Y axis (changed '-' to '+') ---
+            py_array = cy + ny_array * scale * 2
             r_array = size[order] * 0.2
 
-            # High-speed list comprehension replacing the loop
             elements.extend(
                 [
                     svg.Circle(
@@ -948,62 +952,78 @@ class MoleculeViewer(QDialog):
             )
             return elements
 
+        def vdw_lattice_proj(
+            xdata: DistArray,
+            ydata: DistArray,
+            depth: DistArray,
+            col: int,
+            row: int,
+        ) -> list[svg.Circle]:
+            """Give the van der Waals molecular projection and lattice points.
+
+            :param xdata: The x coordinates of the molecule.
+            :param ydata: The y coordinates of the molecule.
+            :param depth: The depth (z coordinates) of the molecule.
+            :param col: The column number of the panel.
+            :param row: The row number of the panel.
+            :returns: The vdW and lattice SVG elements.
+            """
+            cx = offset_x + panel * (col + 0.5)
+            cy = offset_y + panel * (row + 0.5)
+            elements: list[svg.Circle] = []
+
+            order = np.argsort(depth)
+
+            nx_vdw = norm(xdata[order], cx_data)
+            ny_vdw = norm(ydata[order], cy_data)
+
+            px_vdw = cx + nx_vdw * scale * 2
+            py_vdw = cy + ny_vdw * scale * 2
+
+            r_vdw = np.array([RADII[self.atomkeys[jj]] * unit_to_pixel_ratio for jj in order])
+
+            # Generate vdW elements
+            for jj, px, py, r in zip(order, px_vdw, py_vdw, r_vdw, strict=True):
+                colour = self.colours[jj]
+                elements.append(
+                    svg.Circle(
+                        cx=px,
+                        cy=py,
+                        r=r,
+                        fill=cast("str", colour),
+                        fill_opacity=0.25,
+                        stroke=cast("str", colour),
+                    ),
+                )
+                elements.append(
+                    svg.Circle(
+                        cx=px,
+                        cy=py,
+                        r=r * 0.1,
+                        fill=cast("str", colour),
+                        stroke="black",
+                    ),
+                )
+
+            # --- lattice points ---
+            for lx, ly in zip(lattice_x, lattice_y, strict=True):
+                nx = norm(lx, cx_data)
+                ny = norm(ly, cy_data)
+
+                px = cx + nx * scale * 2
+                py = cy + ny * scale * 2
+
+                elements.append(svg.Circle(cx=px, cy=py, r=6, fill="black"))
+
+            return elements
+
         # Render the 3 traditional scatter projections
         elements.extend(scatter_proj(xs, ys, zs, 0, 0))
         elements.extend(scatter_proj(zs, ys, xs, 1, 0))
         elements.extend(scatter_proj(xs, zs, ys, 0, 1))
 
-        # --- vdW (Panel 4) ---
-        cx = offset_x + panel * 1.5
-        cy = offset_y + panel * 1.5
-
-        order = np.argsort(zs)
-
-        # Vectorize vdW coordinate math using the sorted order array
-        nx_vdw = norm(xs[order], cx_data)
-        ny_vdw = norm(ys[order], cy_data)
-
-        px_vdw = cx + nx_vdw * scale * 2
-        py_vdw = cy - ny_vdw * scale * 2
-
-        # Map radii using key slices across the sorted order
-        r_vdw = np.array([RADII[self.atomkeys[jj]] * unit_to_pixel_ratio for jj in order])
-
-        # Generate elements in a single zip pass
-        for jj, px, py, r in zip(order, px_vdw, py_vdw, r_vdw, strict=True):
-            colour = self.colours[jj]
-
-            # Merged outer circle (fill and stroke combined)
-            elements.append(
-                svg.Circle(
-                    cx=px,
-                    cy=py,
-                    r=r,
-                    fill=cast("str", colour),
-                    fill_opacity=0.25,
-                    stroke=cast("str", colour),
-                ),
-            )
-            # Core centre dot
-            elements.append(
-                svg.Circle(
-                    cx=px,
-                    cy=py,
-                    r=r * 0.1,
-                    fill=cast("str", colour),
-                    stroke="black",
-                ),
-            )
-
-        # --- lattice points ---
-        for lx, ly in zip(lattice_x, lattice_y, strict=True):
-            nx = norm(lx, cx_data)
-            ny = norm(ly, cy_data)
-
-            px = cx + nx * scale * 2
-            py = cy - ny * scale * 2
-
-            elements.append(svg.Circle(cx=px, cy=py, r=6, fill="black"))
+        # Render the 4th panel using the new helper
+        elements.extend(vdw_lattice_proj(xs, ys, zs, 1, 1))
 
         # --- Add Axis Arrows into the Corners ---
         elements.extend(add_axis_arrows(offset_x + panel * 0.5, offset_y + panel * 0.5, "x", "y"))
@@ -1021,21 +1041,22 @@ class MoleculeViewer(QDialog):
         rotated_axes = axes_3d @ rotations
 
         # Anchor point in the bottom-left quadrant area of Panel 4
-        rot_base_x = cx + panel * 0.35
-        rot_base_y = cy - panel * 0.35
+        rot_base_x = (offset_x + panel * 1.5) + panel * 0.35
+        rot_base_y = (offset_y + panel * 1.5) - panel * 0.35
         axis_pixel_len = 35  # Visual size of the vectors
 
         # Axis properties for mapping loops: colours, labels, and drawing order (by depth/Z)
-        axis_meta: list[dict[str, str | np.float64]] = [
+        axis_meta: list[dict[str, str | np.ndarray]] = [
             {"vec": rotated_axes[0], "color": "#d32f2f", "label": "x"},  # Red X
             {"vec": rotated_axes[1], "color": "#388e3c", "label": "y"},  # Green Y
             {"vec": rotated_axes[2], "color": "#1976d2", "label": "z"},  # Blue Z
         ]
         # Sort by depth (Z-value) so background vectors don't overlap foreground elements uglily
-        axis_meta.sort(key=lambda item: item["vec"][2])
+        axis_meta.sort(key=lambda item: cast(np.ndarray, item["vec"])[2])
 
         for axis in axis_meta:
-            vx, vy, _ = axis["vec"]
+            vec_arr = cast(np.ndarray, axis["vec"])
+            vx, vy = vec_arr[0], vec_arr[1]
 
             # Map components to 2D view screen (X maps right, Y maps inverted up)
             end_x = rot_base_x + vx * axis_pixel_len
@@ -1043,22 +1064,22 @@ class MoleculeViewer(QDialog):
 
             # Draw the rotated vector line segment
             elements.append(
-                svg.Line(x1=rot_base_x, y1=rot_base_y, x2=end_x, y2=end_y, stroke=axis["color"], stroke_width=2.5),
+                svg.Line(x1=rot_base_x, y1=rot_base_y, x2=end_x, y2=end_y, stroke=str(axis["color"]), stroke_width=2.5),
             )
 
             # Add tip circles to make the 3D projection readable
-            elements.append(svg.Circle(cx=end_x, cy=end_y, r=3, fill=axis["color"]))
+            elements.append(svg.Circle(cx=end_x, cy=end_y, r=3, fill=str(axis["color"])))
 
             # Label string offset
             elements.append(
                 svg.Text(
-                    text=axis["label"],
+                    text=str(axis["label"]),
                     x=end_x + (5 if vx >= 0 else -12),
                     y=end_y + (4 if vy <= 0 else -6),
                     font_size=svg.Length(13, "px"),
                     font_weight="bold",
                     font_family="sans-serif",
-                    fill=axis["color"],
+                    fill=str(axis["color"]),
                 ),
             )
 
@@ -1087,9 +1108,6 @@ class MoleculeViewer(QDialog):
         )
 
         self.svg_widget.load(str(svg_out).encode("utf-8"))
-
-    # def closeEvent(self, event: QCloseEvent):
-    #     event.accept()
 
 
 @validate_call
@@ -1177,8 +1195,8 @@ def first_time_loader(
 
 
 def _xyz_verifier(
-    atomkeys: np.ndarray[tuple[int], np.dtype[np.str_]],
-    atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]],
+    atomkeys: StrArray,
+    atompos: CoordsArray3D,
     listed_molecule_count: np.int_,
 ) -> None:
     """Check if the .xyz file is of the correct format.
@@ -1247,10 +1265,11 @@ def _initialise_reader(
 
     _xyz_verifier(atomkeys, atompos, listed_molecule_count)
 
+
     mask: BoolArray | None = None
     if isinstance(ignore_atoms, str):
-        mask = atomkeys != ignore_atoms
-    elif ignore_atoms is None:
+        ignore_atoms = ignore_atoms.split(",")
+    if ignore_atoms is None:
         pass
     elif isinstance(ignore_atoms[0], str):
         mask = np.ones(atomkeys.size, dtype=np.bool_)

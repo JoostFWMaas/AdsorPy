@@ -767,7 +767,7 @@ class MoleculeGeneration(QWidget):
         self._build_action_buttons()
 
     @staticmethod
-    def _create_param_widget(annotation: str, default: Any) -> QWidget:
+    def _create_param_widget(annotation: str, default: str | float | inspect.Parameter.empty) -> QWidget:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
         :param annotation: The raw string signature representation of the type hint.
@@ -1142,10 +1142,14 @@ class SurfaceGeneration(QWidget):
 
         # Physical spacing distance parameters
         layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"), alignment=Qt.AlignmentFlag.AlignTop)
-        self.lattice_input = QLineEdit()
+        self.lattice_input = QDoubleSpinBox()
         """Numeric entry field for lattice spacing."""
-        self.lattice_input.setValidator(self._pos_float_validator)
-        self.lattice_input.setPlaceholderText("e.g. 1.0")
+        self.lattice_input.setMinimum(0.0)
+        self.lattice_input.setValue(1.0)
+        self.lattice_input.setDecimals(2)
+        self.lattice_input.setSingleStep(0.01)
+        self.lattice_input.setAccelerated(True)
+        self.lattice_input.setSuffix(" Å")
         layout.addWidget(self.lattice_input, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Control trigger processing elements
@@ -1212,7 +1216,7 @@ class SurfaceGeneration(QWidget):
             seed = int(seed_text)
 
         # Validate lattice spacing
-        lattice_text = self.lattice_input.text().strip()
+        lattice_text = self.lattice_input.value()
         lattice: float | None = None
         if lattice_text:
             try:
@@ -1250,15 +1254,6 @@ class SurfaceGeneration(QWidget):
                 return
             seed = int(seed_text)
 
-        # Validate lattice spacing
-        lattice_text = self.lattice_input.text().strip()
-        lattice: float | None = None
-        if lattice_text:
-            try:
-                lattice = float(lattice_text)
-            except ValueError as e:
-                self.error(str(e))
-                return
 
         def get_run_sim_default(name: str) -> str | int | float | None:
             """Get the default value of a function.
@@ -1288,7 +1283,7 @@ class SurfaceGeneration(QWidget):
         output = run_simulation(
             seed=seed,
             lattice_type=lattice_type,
-            lattice_a=lattice,
+            lattice_a=self.lattice_input.value(),
             site_count=self.surface_count,
             timestep_limit=step_limit,
         )[-1]
