@@ -63,6 +63,19 @@ dependencies = [
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
     "rtree>=1.4.1",
+    "html5lib>=1.1",
+    "wcwidth>=0.7.0",
+    "webencodings>=0.5.1",
+    "pyproject-hooks>=1.0.0",
+    "beautifulsoup4>=4.10.0",
+    "entrypoints>=0.2.3",
+    "future>=1.0.0",
+    "secretstorage>=3.5.0",
+    "pywin32-ctypes>=0.2.3",
+    "pycparser>=3.0.0",
+    "enum34>=1.1.10",
+    "ipaddress>=1.0.23",
+    "ply>=3.11",
 ]
 
 [project.optional-dependencies]
@@ -95,7 +108,7 @@ dev-misc = [
     "build>=1.5.0",
     "twine>=6.0",
     "check-wheel-contents>=0.6.3",
-    "pre-commit>=4.6.0"
+    "pre-commit>=4.6.0",
 ]
 
 [project.urls]
