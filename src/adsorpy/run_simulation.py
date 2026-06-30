@@ -293,7 +293,7 @@ def _run_flux(
             flag, *_, phis = sim.attempt_cascading_placement(surf, *molecules[mdx:])
             if flag:
                 mol_flux.append(step)
-                all_phis.append(np.max(phis))
+                all_phis.append(int(np.max(phis)))
 
         all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.int_),))
 
@@ -330,7 +330,7 @@ def _run_flux_fixedrotation(
         flag, *_, phi = sim.attempt_place_molecule(surf, randmol)
         if flag:
             np.append(all_flux[randmol.group_id], step)
-            all_phis.append(np.max(phi))
+            all_phis.append(int(np.max(phi)))
 
     return all_flux, np.array(all_phis, dtype=np.int_)
 

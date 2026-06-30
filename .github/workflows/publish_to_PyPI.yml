@@ -71,19 +71,19 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.14"
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
         with:
-          version: "0.11.16"
+          version: "0.11.26"
 
       - name: Cache uv
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/uv
           key: uv-${{ hashFiles('uv.lock') }}
@@ -261,7 +261,7 @@ jobs:
           find . -maxdepth 2 -type f
 
       - name: Sign SBOM (Sigstore)
-        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        uses: sigstore/gh-action-sigstore-python@5b79a39c381910c090341a2c9b0bf022c8b387e1
         with:
           inputs: sbom.cdx.json
           staging: false
@@ -272,7 +272,7 @@ jobs:
           release-signing-artifacts: false
 
       - name: Sign artifacts (Sigstore)
-        uses: sigstore/gh-action-sigstore-python@04cffa1d795717b140764e8b640de88853c92acc
+        uses: sigstore/gh-action-sigstore-python@5b79a39c381910c090341a2c9b0bf022c8b387e1
         with:
           inputs: dist/*.whl dist/*.tar.gz hashes.txt
           staging: false
@@ -348,9 +348,9 @@ jobs:
           egress-policy: audit
 
       - name: Setup uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39
         with:
-          version: "0.11.16"
+          version: "0.11.26"
 
       - name: Normalize version
         id: normalize_version
@@ -449,7 +449,7 @@ jobs:
           cp signed/* release-assets/ || true
 
       - name: Create GitHub Release (immutable)
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         with:
           files: release-assets/*
           generate_release_notes: true
