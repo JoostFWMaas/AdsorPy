@@ -162,24 +162,24 @@ class BoundaryParameters:
         # Hard boundary parameters:
         self.hard_inner: BoolArray = np.empty(0, dtype=np.bool_)
         "All sites close to the edge of the hard boundary. These sites are True, others False."
-        self.molecules_bounding_coords: np.ndarray[tuple[int, Literal[4]], np.dtype[np.float64]] = cast(
-            "np.ndarray[tuple[int, Literal[4]], np.dtype[np.float64]]",
-            np.empty((rot_cnt, 4), dtype=np.float64),
+        self.molecules_bounding_coords: np.ndarray[tuple[int, Literal[4]], np.dtype[np.double]] = cast(
+            "np.ndarray[tuple[int, Literal[4]], np.dtype[np.double]]",
+            np.empty((rot_cnt, 4), dtype=np.double),
         )
         "Molecule bounding box coordinates: min/max x/y values."
         # Index of allowed rotations.
-        self.allowed_idx: IdxArray = np.arange(rot_cnt, dtype=np.int_)
+        self.allowed_idx: IdxArray = np.arange(rot_cnt, dtype=np.long)
         "Index of allowed rotations. When close to a hard boundary, some rotations are no longer possible."
         # Boolean array of allowed rotations.
         self.allowed_bools: BoolArray = np.ones(rot_cnt, dtype=np.bool_)
         "Booleans belonging to the allowed rotations. When near the hard boundary, some rotations are impossible."
 
         # Periodic boundary parameters:
-        self.extended_grid: CoordsArray = cast("CoordPair", np.empty((2, 0), dtype=np.float64))
+        self.extended_grid: CoordsArray = cast("CoordPair", np.empty((2, 0), dtype=np.double))
         "The surface site coordinates of the extended (periodic) grid."
-        self.extended_occupied_by: IdxArray = np.empty(0, dtype=np.int_)
+        self.extended_occupied_by: IdxArray = np.empty(0, dtype=np.long)
         "The occupancy of the extended (periodic) grid. Filled with the indices of the molecules on the grid."
-        self.extended_idx: IdxArray = np.empty(0, dtype=np.int_)
+        self.extended_idx: IdxArray = np.empty(0, dtype=np.long)
         "Index of the extended (periodic) grid."
         self.close_to_edge: BoolArray = np.empty(0, dtype=np.bool_)
         "Boolean array denoting closeness to the edge. If close to the edge, periodicity must be taken into account."
@@ -189,7 +189,7 @@ class BoundaryParameters:
         "Flag indicating closeness to the edge. Reset this for every placement attempt."
         self.mirror_counter: int = 0  # Count of total amount of molecules + mirrors.
         "A counter for the molecules + mirror molecules."
-        self.mirrors: IdxArray = np.empty(0, dtype=np.int_)
+        self.mirrors: IdxArray = np.empty(0, dtype=np.long)
         "Mirror indices."
         self.biggest_radius: float = dbl_max_radius
         "The biggest radius between the two largest molecules in the simulation."
@@ -237,9 +237,9 @@ class BoundaryParameters:
         :param molgr: The molecule group for which the boundary conditions are defined. Optional.
         """
         # This is the centre of the grid.
-        centre: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]] = cast(
-            "np.ndarray[tuple[Literal[2]], np.dtype[np.float64]]",
-            np.array([0.5 * surf.x_max, 0.5 * surf.y_max], dtype=np.float64),
+        centre: np.ndarray[tuple[Literal[2]], np.dtype[np.double]] = cast(
+            "np.ndarray[tuple[Literal[2]], np.dtype[np.double]]",
+            np.array([0.5 * surf.x_max, 0.5 * surf.y_max], dtype=np.double),
         )
 
         if self.hard_flag and molgr is not None:
@@ -283,7 +283,7 @@ class BoundaryParameters:
             # Images have the same index number as the original site, which makes mirror lookup easy.
             temp_idx: IdxArray = extended_idx[extended_grid_boolsout].ravel()
             self.extended_idx = temp_idx
-            self.extended_occupied_by = np.zeros_like(self.extended_idx, dtype=np.int_).ravel()
+            self.extended_occupied_by = np.zeros_like(self.extended_idx, dtype=np.long).ravel()
             # This grid has duplicate indices at mirrors.
             self.extended_grid = extended_grid[:, extended_grid_boolsout]
             self.tree = STRtree([Point(coord) for coord in self.extended_grid.T])
@@ -384,7 +384,7 @@ class MoleculeGroup:
         self.allowed_rotations: FloatArray = np.linspace(
             start=0,
             stop=self.__max_rotation,
-            dtype=np.float64,
+            dtype=np.double,
             num=self.rotation_count,
             endpoint=False,
         )
@@ -401,7 +401,7 @@ class MoleculeGroup:
         "Molecule counter for this molecule type."
 
         # Which molecule hinders what. -1 means unoccupied, -2 means unavailable.
-        self.occupied_by: IdxArray = np.full(site_count, -1, dtype=np.int_)
+        self.occupied_by: IdxArray = np.full(site_count, -1, dtype=np.long)
         """Which molecule hinders what? This shows whic molecule occupies which site.
         Defaults to -1, an invalid molecule index.
         Special value -2: unoccupied by a particular molecule but still unreachable.
@@ -423,10 +423,10 @@ class MoleculeGroup:
         )
         "Boundary parameter class."
         # The list of compound max radii.
-        self.gap_dists: FloatArray = np.empty(0, dtype=np.float64)
+        self.gap_dists: FloatArray = np.empty(0, dtype=np.double)
         "Distances for the molecules, measured as the sum of the circumradii.."
         # List of compound max + min radii.
-        self.minmax_gaps: FloatArray = np.empty(0, dtype=np.float64)
+        self.minmax_gaps: FloatArray = np.empty(0, dtype=np.double)
         "Distance as the sum between the circumradius and inradius of two molecules."
 
     def generate_rotated_molecules(
@@ -451,7 +451,7 @@ class MoleculeGroup:
         mirror_repeat: int = (not self.reflection_symmetry) + 1
         for reflected in range(mirror_repeat):  # Loop twice if not symmetric, else loop once.
             for idx in np.arange(reflected, self.rot_refl_count, step=mirror_repeat):
-                temp_rotation: np.float64 = self.allowed_rotations[idx]
+                temp_rotation: np.double = self.allowed_rotations[idx]
                 # Define the rotated molecules. Faster than rotating them every time they are called.
                 if not reflected:  # On first pass, rotate the molecule.
                     self.rotated_molecules[idx] = aff.rotate(self.molecule, angle=temp_rotation, origin=(0, 0))  # pyright: ignore[reportArgumentType]
@@ -487,8 +487,8 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     "Molecule group index value. Defaults to -1, an invalid value."
     grid_index: int = -1
     "Grid index value. Defaults to -1, an invalid value."
-    coordinates: CoordPair = field(default_factory=lambda: np.empty((2, 1), dtype=np.float64))  # pyright: ignore[reportAssignmentType]
-    "Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.float64)."
+    coordinates: CoordPair = field(default_factory=lambda: np.empty((2, 1), dtype=np.double))  # pyright: ignore[reportAssignmentType]
+    "Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.double)."
     molecule: Polygon = field(default_factory=Polygon)
     "Candidate molecule. Initially empty."
     rot_idx: int = -1
@@ -585,19 +585,19 @@ class Simulator:
 
         self.flux_flag: bool = include_rejected_flux
         "Flag denoting whether occupied sites can be re-attempted for placement. False fails, but adds a stepcount."
-        self.total_molecule_counter: np.int_ = np.int_(0)
+        self.total_molecule_counter: np.long = np.long(0)
         "Counter for all of the molecules on the surface."
 
         # Outer is the value of two max RADII added together. This can be of the same molecule or between molecules.
         # Minmax is the value of one max and one min radius added together, for all molecule group combinations.
         self.outer_rads: FloatArray = np.zeros(
             (self.molgrcount, self.molgrcount),
-            dtype=np.float64,
+            dtype=np.double,
         )
         "Circumradii of all of the molecules."
         self.minmax_rads: FloatArray = np.zeros(
             (self.molgrcount, self.molgrcount),
-            dtype=np.float64,
+            dtype=np.double,
         )
         "Sums of inradii and circumradii of all of the molecules."
 
@@ -629,8 +629,8 @@ class Simulator:
         self: Simulator,
         surf: Surface,
         pmg: MoleculeGroup,
-        grid_idx: int | np.int_ | None = None,
-        first_rot_idx: int | np.int_ | None = None,
+        grid_idx: int | np.long | None = None,
+        first_rot_idx: int | np.long | None = None,
     ) -> tuple[bool, int, int, int, int, list[int]]:
         """Try to place a molecule.
 
@@ -800,7 +800,7 @@ class Simulator:
         surf: Surface,
         pmg: MoleculeGroup,
         amgs: list[MoleculeGroup],
-    ) -> np.int_:
+    ) -> np.long:
         """Update the stored molecules, coordinates, and index arrays.
 
         Add a new molecule.
@@ -816,7 +816,7 @@ class Simulator:
         basic_data = cand.get_canddata()
         self.mol_data.add_entry(*basic_data)  # TODO: Make this a lot less ugly.
         cand.molecule_number = self.mol_data.last_accessed_idx
-        new_data: tuple[int, int, bool, int, int, int, np.float64, np.float64, Polygon]
+        new_data: tuple[int, int, bool, int, int, int, np.double, np.double, Polygon]
 
         for grp in amgs:
             grp.vacant[cand.grid_index] = False  # The chosen site is occupied.
@@ -829,7 +829,7 @@ class Simulator:
             "IdxArray",
             np.flatnonzero(cand.grid_index == pmg.bp.extended_idx)
             if pmg.bp.edge_flag
-            else np.array([cand.grid_index], dtype=np.int_),
+            else np.array([cand.grid_index], dtype=np.long),
         )
 
         if pmg.bp.periodic_flag:
@@ -849,7 +849,7 @@ class Simulator:
                     *cast("tuple[int, bool, int]", basic_data[:3]),  # type: ignore[redundant-cast]
                     mirror,
                     basic_data[4],
-                    *cast("tuple[np.float64, np.float64]", mirr_coords.ravel()),
+                    *cast("tuple[np.double, np.double]", mirr_coords.ravel()),
                     mirror_molecule,
                 )
                 self.mol_data.add_mirror(*new_data)
@@ -1252,7 +1252,7 @@ class Simulator:
 
         mol_tree = STRtree(temp_molecules)
 
-        distance_to_grid: DistArray = np.empty(surf.grid_coordinates.shape[1], dtype=np.float64)
+        distance_to_grid: DistArray = np.empty(surf.grid_coordinates.shape[1], dtype=np.double)
         grid_points = MultiPoint(surf.grid_coordinates.T)
 
         for grd_idx, grd_pnt in enumerate(grid_points.geoms):  # Queries tree. [1] is the distance.
@@ -1346,11 +1346,11 @@ class Surface:
         self.area = 0.0  # Idem ditto.
         "Area of the surface. Adjusted properly for periodic surfaces."
 
-        self.grid_index: IdxArray = np.arange(self.all_site_count, dtype=np.int_)
+        self.grid_index: IdxArray = np.arange(self.all_site_count, dtype=np.long)
         "Grid index array."
 
         # Instantiated with the right size/shape:
-        self.grid_coordinates: CoordsArray = cast("CoordsArray", np.empty((2, self.all_site_count), dtype=np.float64))
+        self.grid_coordinates: CoordsArray = cast("CoordsArray", np.empty((2, self.all_site_count), dtype=np.double))
         "Array of the grid coordinates."
 
         # Class for the boundary conditions:
@@ -1381,7 +1381,7 @@ class Surface:
         """
         sqrt3: float = np.sqrt(3.0)
 
-        x1: DistArray = np.arange(self.sites, dtype=np.float64)
+        x1: DistArray = np.arange(self.sites, dtype=np.double)
         x1 *= self.lattice_a  # Scale the range by the lattice constant.
         y1: DistArray = x1 * sqrt3  # Scale the y grid.
 
@@ -1422,7 +1422,7 @@ class Surface:
 
         self.grid_index = np.arange(
             self.all_site_count,
-            dtype=np.int_,
+            dtype=np.long,
         )  # Index for gridpoints.
         self.tree = STRtree(
             [Point(coord) for coord in self.grid_coordinates.T],
@@ -1486,7 +1486,7 @@ class Surface:
 
         self.grid_index = np.arange(
             self.all_site_count,
-            dtype=np.int_,
+            dtype=np.long,
         )  # Index for gridpoints.
         self.tree = STRtree(
             [Point(coord) for coord in self.grid_coordinates.T],
@@ -1568,16 +1568,16 @@ class Surface:
         # -----------------------------------
         # GRID POINT TEMPLATE
         # -----------------------------------
-        point_radius = self.lattice_a * 0.1
+        polongradius = self.lattice_a * 0.1
 
-        grid_point_id = "site"
-        # site_template = svg.Circle(id=grid_point_id, r=point_radius, fill="black", stroke="none")
-        site_template = svg.Circle(id=grid_point_id, r=point_radius)
+        grid_polongid = "site"
+        # site_template = svg.Circle(id=grid_polongid, r=polongradius, fill="black", stroke="none")
+        site_template = svg.Circle(id=grid_polongid, r=polongradius)
 
         rounded_coords: CoordsArray = np.round(self.grid_coordinates, rounding)
 
         root_group_elements.append(
-            svg.G(elements=[svg.Use(href=f"#{grid_point_id}", x=x, y=y) for x, y in rounded_coords.T]),
+            svg.G(elements=[svg.Use(href=f"#{grid_polongid}", x=x, y=y) for x, y in rounded_coords.T]),
         )
 
         # -----------------------------------
@@ -1771,8 +1771,8 @@ class MoleculeData:
             self._otomir_fill_vals,
         )
 
-        self.coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
-        self.mirror_coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
+        self.coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.double))
+        self.mirror_coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.double))
 
     @staticmethod
     def make_struct_array(

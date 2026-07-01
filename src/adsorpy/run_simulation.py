@@ -57,7 +57,7 @@ def run_simulation(  # noqa: PLR0913
     dosing_distribution: list[float] | DistArray | None = None,
     include_rejected_flux: bool = False,
     calculate_gap_size: bool = False,
-    print_output_flag: bool = False,
+    prlongoutput_flag: bool = False,
     plot_output_flag: bool = False,
     seed: int | Generator | None = None,
     timestep_limit: int = 1000000,
@@ -86,7 +86,7 @@ def run_simulation(  # noqa: PLR0913
     :param dosing_distribution: The distribution of the adsorption attempts in case of "codosing". Uniform if None.
     :param include_rejected_flux: Whether to include rejected flux in the simulation. If True, sites can be reattempted.
     :param calculate_gap_size: Whether to calculate the gap size of the simulation.
-    :param print_output_flag: Toggle printing output of simulation.
+    :param prlongoutput_flag: Toggle printing output of simulation.
     :param plot_output_flag: Toggle plotting output of simulation.
     :param seed: The seed for the simulation. If None, takes the datetime in microseconds: YYYMMDDhhmmssuuuuuu.
     :param timestep_limit: The maximum number of timesteps to simulate for when the flux is taken into account.
@@ -222,7 +222,7 @@ def run_simulation(  # noqa: PLR0913
         sim,
         surf,
         molecules,
-        print_output_flag,
+        prlongoutput_flag,
         plot_output_flag,
         calculate_gap_size,
         results_folder,
@@ -295,9 +295,9 @@ def _run_flux(
                 mol_flux.append(step)
                 all_phis.append(int(np.max(phis)))
 
-        all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.int_),))
+        all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.long),))
 
-    return all_flux, np.array(all_phis, dtype=np.int_)
+    return all_flux, np.array(all_phis, dtype=np.long)
 
 
 def _run_flux_fixedrotation(
@@ -316,7 +316,7 @@ def _run_flux_fixedrotation(
     :param distribution: list of floats indicating the distribution of the molecules. Empty for uniform distribution.
     :return: list of indices during which adsorption takes place.
     """
-    all_flux: tuple[IdxArray, ...] = cast("tuple[IdxArray, ...]", tuple(np.empty(0, dtype=np.int_)))
+    all_flux: tuple[IdxArray, ...] = cast("tuple[IdxArray, ...]", tuple(np.empty(0, dtype=np.long)))
     all_phis: list[int] = []
     mol_array: GeoArray = np.array(molecules)
     all_phis = all_phis * mol_array.size
@@ -332,14 +332,14 @@ def _run_flux_fixedrotation(
             np.append(all_flux[randmol.group_id], step)
             all_phis.append(int(np.max(phi)))
 
-    return all_flux, np.array(all_phis, dtype=np.int_)
+    return all_flux, np.array(all_phis, dtype=np.long)
 
 
 def _initialise_run_parameters(
     molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,  # pyright: ignore[reportInvalidTypeArguments]
-    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
+    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
-    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
+    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]] | None = None,
     simulation_type: str = "sequential",
 ) -> tuple[GeoArray, IdxArray, BoolArray, IdxArray]:
     """Initialise run parameters.
@@ -465,7 +465,7 @@ def _postprocessing(
     sim: Simulator,
     surf: Surface,
     molecules: list[MoleculeGroup],
-    print_output_flag: bool,
+    prlongoutput_flag: bool,
     plot_output_flag: bool,
     calculate_gap_size: bool,
     results_folder: str | Path,
@@ -476,14 +476,14 @@ def _postprocessing(
     :param sim: simulator.
     :param surf: surface.
     :param molecules: list of molecules.
-    :param print_output_flag: True if output such as coverages and fraction of covered area should be printed.
+    :param prlongoutput_flag: True if output such as coverages and fraction of covered area should be printed.
     :param plot_output_flag: True if plots are to be shown.
     :param calculate_gap_size: True if gap size should be calculated. Can be computationally intensive.
     :param results_folder: results folder.
     :param timestr: timestr to use.
     :return: the gap size distribution. Empty array if calculate_gap_size is False.
     """
-    if print_output_flag:
+    if prlongoutput_flag:
         for mdx, molecul in enumerate(sim.molgroups):
             print(f"Mol {mdx}, {molecul.molecule_counter}")
             print(f"Mol dens {mdx}, {100 * molecul.molecule_counter / surf.area}")
@@ -526,7 +526,7 @@ def _select_and_run(
     :raises ValueError: if the `simulation_type` (dosing scheme) and flux flag combination are not supported.
     """
     all_flux: tuple[IdxArray, ...] = ()
-    phis: IdxArray = np.empty(0, dtype=np.int_)
+    phis: IdxArray = np.empty(0, dtype=np.long)
 
     match (simulation_type, include_rejected_flux):
         case ("sequential", False):

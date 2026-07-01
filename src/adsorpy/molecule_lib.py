@@ -33,7 +33,6 @@ from pydantic_extra_types import Color
 from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
-    QApplication,
     QCheckBox,
     QDialog,
     QDoubleSpinBox,
@@ -44,18 +43,17 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QVBoxLayout,
-    QWidget,
 )
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
 if TYPE_CHECKING:
-    from PySide6.QtGui import QCloseEvent, QFontMetrics
+    from PySide6.QtGui import QFontMetrics
 
     from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, RotMatrix, StrArray
 
     T = TypeVar("T", bound=bool | int | str | float)
-    Tfloat = TypeVar("Tfloat", bound=float | np.float64)
+    Tfloat = TypeVar("Tfloat", bound=float | np.double)
     # P = ParamSpec("P")  # Helps with static type checkers.
 
 plt.rcParams.update(
@@ -188,7 +186,7 @@ def polygonium(
     :param roundedness: The roundedness, removes sharp corners. Theoretical limit at infinity is a disk.
     :return: The regular (rounded) polygon.
     """
-    points = np.arange(verts, dtype=np.float64)
+    points = np.arange(verts, dtype=np.double)
     points *= 2 * np.pi
     points /= verts
     points = np.column_stack((np.sin(points), np.cos(points)))
@@ -253,7 +251,7 @@ def xyz_reader(
     return cast("Polygon", aff.translate(molecule, *centre))
 
 
-def _rotation_matrix(roll: float | np.float64, pitch: float | np.float64, yaw: float | np.float64) -> RotMatrix:
+def _rotation_matrix(roll: float | np.double, pitch: float | np.double, yaw: float | np.double) -> RotMatrix:
     """Compute the 3D rotation matrix using roll, pitch, and yaw.
 
     :param roll: Rotation along the x-axis.
@@ -401,7 +399,7 @@ class MoleculeViewer(QDialog):
         self.orig_atomkeys = np.array(atomkeys, dtype=np.str_)
         """Immutable baseline array tracking atomic keys loaded from source files."""
 
-        self.orig_atompos = np.array(atompos, dtype=np.float64)
+        self.orig_atompos = np.array(atompos, dtype=np.double)
         """Immutable matrix holding coordinates across 3D vector parameters."""
 
         self.orig_colours = np.array(colours, dtype=np.str_)
@@ -1052,10 +1050,10 @@ class MoleculeViewer(QDialog):
             {"vec": rotated_axes[2], "color": "#1976d2", "label": "z"},  # Blue Z
         ]
         # Sort by depth (Z-value) so background vectors don't overlap foreground elements uglily
-        axis_meta.sort(key=lambda item: cast(np.ndarray, item["vec"])[2])
+        axis_meta.sort(key=lambda item: cast("np.ndarray", item["vec"])[2])
 
         for axis in axis_meta:
-            vec_arr = cast(np.ndarray, axis["vec"])
+            vec_arr = cast("np.ndarray", axis["vec"])
             vx, vy = vec_arr[0], vec_arr[1]
 
             # Map components to 2D view screen (X maps right, Y maps inverted up)
@@ -1197,7 +1195,7 @@ def first_time_loader(
 def _xyz_verifier(
     atomkeys: StrArray,
     atompos: CoordsArray3D,
-    listed_molecule_count: np.int_,
+    listed_molecule_count: np.long,
 ) -> None:
     """Check if the .xyz file is of the correct format.
 
@@ -1259,9 +1257,9 @@ def _initialise_reader(
         errmsg = f"The file type is not .xyz but {badtype}"
         raise ValueError(errmsg)
     data = np.loadtxt(file_path, dtype=str, skiprows=2)
-    listed_molecule_count: np.int_ = cast("np.int_", np.loadtxt(file_path, dtype=np.int_, max_rows=1))
+    listed_molecule_count: np.long = cast("np.long", np.loadtxt(file_path, dtype=np.long, max_rows=1))
     atomkeys: StrArray = data[:, 0]
-    atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.float64))
+    atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.double))
 
     _xyz_verifier(atomkeys, atompos, listed_molecule_count)
 

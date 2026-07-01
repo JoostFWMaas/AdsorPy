@@ -356,8 +356,8 @@ class TestCustomGrid:
         *_, sim = run_simulation(
             rsa_config=rsa_config,
             seed=SEED,
-            site_x_coords=0.9 * np.repeat(np.arange(10, dtype=np.float64), 10),
-            site_y_coords=0.9 * np.tile(np.arange(10, dtype=np.float64), 10),
+            site_x_coords=0.9 * np.repeat(np.arange(10, dtype=np.double), 10),
+            site_y_coords=0.9 * np.tile(np.arange(10, dtype=np.double), 10),
             bounding_x_coord=10,
             bounding_y_coord=10,
         )

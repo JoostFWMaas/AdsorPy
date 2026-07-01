@@ -536,12 +536,12 @@ class TestMiscSettings:
 @settings(deadline=None)
 @given(
     arr1=arrays(
-        dtype=np.float64,
+        dtype=np.double,
         shape=st.tuples(st.just(2), st.integers(min_value=1, max_value=2000)),
         elements=st.floats(allow_infinity=False, allow_nan=False),
     ),
     arr2=arrays(
-        dtype=np.float64,
+        dtype=np.double,
         shape=st.tuples(st.just(2), st.integers(min_value=1, max_value=2000)),
         elements=st.floats(allow_infinity=False, allow_nan=False),
     ),

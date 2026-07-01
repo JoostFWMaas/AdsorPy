@@ -14,18 +14,16 @@ from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, ParamSpec, Self, TypeVar, cast, override
 
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from PySide6.QtCore import QObject, QRegularExpression, QSettings, Qt, Signal
 from PySide6.QtGui import (
     QAction,
     QDoubleValidator,
+    QGuiApplication,
     QIcon,
     QIntValidator,
-    QMouseEvent,
     QRegularExpressionValidator,
     QResizeEvent,
-    QWheelEvent, QGuiApplication,
+    QWheelEvent,
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
@@ -35,7 +33,6 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFileDialog,
     QFrame,
-    QGraphicsView,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
