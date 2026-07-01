@@ -10,6 +10,7 @@ import re
 import sys
 import textwrap
 import webbrowser
+from dataclasses import dataclass, field
 from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, ParamSpec, Self, TypeVar, cast, override
@@ -47,6 +48,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QListWidget,
 )
 
 from src.adsorpy import molecule_lib
@@ -61,7 +63,6 @@ if TYPE_CHECKING:
     from shapely import Polygon
 
     P = ParamSpec("P", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
-
 
 def extract_param_docs(func: Callable) -> dict[str, str]:
     """Extract parameters and their types from the docstring of a function.
@@ -100,6 +101,18 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
         param_docs[current_param] = " ".join(buffer).strip()
 
     return param_docs
+
+
+@dataclass(slots=True)
+class MoleculeParameters:
+    """Molecule parameters dataclass."""
+
+    index: int
+    label: str
+    function_name: str
+    polygon: Polygon
+    settings: dict[str, float | int | str | list[str] | None] = field(default_factory=dict)
+    active: bool = field(default=True)
 
 
 class ZoomableSvgWidget(QSvgWidget):
@@ -381,7 +394,7 @@ class AdsorpyGUI(QMainWindow):
 
         self.setCentralWidget(self.tabs)
 
-    @override
+    @override  # This decorator is used to indicate a method overrides a method of the base class.
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Trigger automatically whenever the window size changes.
 
@@ -508,15 +521,21 @@ class MoleculeGeneration(QWidget):
         self._assemble_layout(left_container, scroll_area, right_container)
 
     def _init_data_storage(self) -> None:
-        """Initialize internal state tracking arrays and counting iterations."""
+        """Initialise internal state tracking arrays and counting iterations."""
         self.molecule_names: list[str] = []
         """Index tracking labels assigned to generated active molecule instances."""
 
-        self.molecule_dicts: dict[str, dict[str, str | float | int | list[str] | None]] = {}
-        """Nested map storing properties, arguments, and metadata for every generated node."""
-
         self.mol_list_counter: count[int] = count()
-        """Thread-safe sequential index iterator generating unique instance identifier tags."""
+        """Thread-safe sequential index iterator generating unique molecule instance identifier tags."""
+
+        self.stored_molecules: dict[str, Polygon] = {}
+        """Dict of stored molecule Polygons."""
+
+        self.molecule_settings: dict[str, dict[str, float | int | str | list[str] | None]] = {}
+        """Dict of stored molecule settings."""
+
+        self.mol_params_list: list[MoleculeParameters] = []
+        """List of MoleculeParameters dataclasses."""
 
     def _build_left_panel(self) -> QWidget:
         """Construct the left parameters control dashboard and link active list triggers.
@@ -528,13 +547,13 @@ class MoleculeGeneration(QWidget):
         """Layout frame coordinating selection toggles and configuration property fields."""
 
         self.add_molecule_button = QPushButton("Add new molecule")
-        self.controls_layout.addWidget(self.add_molecule_button)
         """Action button triggering instance generation from the current profile layout."""
+        self.controls_layout.addWidget(self.add_molecule_button)
 
         self.func_dropdown = QComboBox()
+        """Selection field populated with valid introspected molecule generator workflows."""
         self.controls_layout.addWidget(QLabel("Select molecule"), alignment=Qt.AlignmentFlag.AlignTop)
         self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
-        """Selection field populated with valid introspected molecule generator workflows."""
 
         # Discover generators using introspective library lookups
         self.generators = self._discover_molecule_generators()
@@ -542,27 +561,29 @@ class MoleculeGeneration(QWidget):
 
         self.func_dropdown.addItems(self.generators.keys())
         self.func_dropdown.currentTextChanged.connect(self.build_param_inputs)
+        self.func_dropdown.currentTextChanged.connect(self.plot_molecule)
 
         # Parameter group layout setup
         mol_param_group = QGroupBox("Parameters")
         mol_param_layout = QVBoxLayout(mol_param_group)
         mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
 
-        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog] = {}
+        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog]
         """Active reference tracking field maps mapping variable names to their raw UI input views."""
 
-        self.opt_checkboxes: dict[str, QCheckBox] = {}
+        self.opt_checkboxes: dict[str, QCheckBox]
         """Active state checkboxes controlling presence flags for optional properties or switches."""
 
         self.param_layout = QVBoxLayout()
+        """Parameter layout."""
         mol_param_layout.addLayout(self.param_layout)
 
         self.controls_layout.addWidget(mol_param_group, alignment=Qt.AlignmentFlag.AlignTop)
         self.func_dropdown.setCurrentIndex(self._fetch_setting("current_molecule", 0))
 
         self.output_label = QLabel("")
-        self.controls_layout.addWidget(self.output_label)
         """Status indicator updating real-time compilation info or syntax exceptions."""
+        self.controls_layout.addWidget(self.output_label)
 
         return container
 
@@ -594,9 +615,10 @@ class MoleculeGeneration(QWidget):
         container_layout.setContentsMargins(0, 0, 0, 0)
 
         self.svg_widget = ZoomableSvgWidget()
+        """Custom structural viewport rendering vector polygon outlines."""
         self.svg_widget.setMinimumSize(600, 600)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        """Custom structural viewport rendering vector polygon outlines."""
+        self.plot_molecule()
 
         container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
         scroll_area.setWidget(scroll_container)
@@ -614,14 +636,15 @@ class MoleculeGeneration(QWidget):
         group = QGroupBox("Molecules")
         group_layout = QVBoxLayout(group)
 
-        self.molecule_dropdown = QComboBox()
-        group_layout.addWidget(self.molecule_dropdown)
-        """Drop-down selection tool indicating current active configuration items."""
+        self.molecule_list_widget = QListWidget()
+        """List widget selection tool indicating current active configuration items."""
+        group_layout.addWidget(self.molecule_list_widget)
+        self.molecule_list_widget.currentItemChanged.connect(self.show_molecule_settings)
 
         self.delete_btn = QPushButton("Delete Selected Molecule")
+        """Action button triggering array removal operations from local caches."""
         self.delete_btn.clicked.connect(self.delete_molecule)
         group_layout.addWidget(self.delete_btn)
-        """Action button triggering array removal operations from local caches."""
 
         right_col.addWidget(group)
 
@@ -854,7 +877,7 @@ class MoleculeGeneration(QWidget):
         molecule_buttons = QHBoxLayout()
         self.show_molecule_checkbox = QCheckBox("Plot Molecule")
         self.show_molecule_checkbox.setToolTip("Plot the molecule")
-        self.show_molecule_checkbox.setChecked(False)
+        self.show_molecule_checkbox.setChecked(self.func_dropdown.currentText != "first_time_loader")
         self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
         molecule_buttons.addWidget(self.show_molecule_checkbox)
 
@@ -912,6 +935,7 @@ class MoleculeGeneration(QWidget):
                     self.param_widgets[first_time_key].setValue(first_time_value)
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
+        self.show_molecule_checkbox.setChecked(True)
 
     def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
         """Extract current user inputs from widgets back into a data dictionary."""
@@ -965,21 +989,36 @@ class MoleculeGeneration(QWidget):
 
     def add_molecule(self) -> None:
         """Add a molecule to the list of molecules to use."""
-        molecule_func = self.generators[self.func_dropdown.currentText()]
+        current_func_name =  self.func_dropdown.currentText()
+        current_func_name = current_func_name if current_func_name != "first_time_loader" else "xyz_reader"
+        molecule_func = self.generators[current_func_name]
         molecule_dict = self.get_param_values()
-        if molecule_func.__name__ == "first_time_loader":
-            molecule_func = molecule_lib.xyz_reader
+        # if molecule_func.__name__ == "first_time_loader":
+        #     molecule_func = molecule_lib.xyz_reader
 
         result = molecule_func(**molecule_dict)
 
         name = self.func_dropdown.currentText() if "file_name" not in molecule_dict else Path(molecule_dict["file_name"]).name
 
         # Store molecule
-        self.molecule_names.append(name)
+        self.molecule_names.append(current_func_name)
 
         # Update dropdown
-        label = f"{name} #{next(self.mol_list_counter)}"
-        self.molecule_dropdown.addItem(label)
+        index = next(self.mol_list_counter)
+        label = f"{name} #{index}"
+        self.molecule_list_widget.addItem(label)
+        self.stored_molecules[label] = result
+        self.molecule_settings[label] = molecule_dict
+
+        mol_params = MoleculeParameters(
+            index=index,
+            function_name=current_func_name,
+            label=label,
+            polygon=result,
+            settings=molecule_dict,
+        )
+
+        self.mol_params_list.append(mol_params)
 
         self.output_label.setText(f"Added: {name}")
 
@@ -988,17 +1027,37 @@ class MoleculeGeneration(QWidget):
     # ---------------------------------------------------------
     def delete_molecule(self) -> None:
         """Delete the current selected molecule."""
-        idx = self.molecule_dropdown.currentIndex()
+        idx = self.molecule_list_widget.currentRow()
         if idx < 0:
             return
 
-        # Remove from internal list
-        del self.molecule_names[idx]
+        self.mol_params_list[idx].active = False
 
         # Remove from dropdown
-        self.molecule_dropdown.removeItem(idx)
+        self.molecule_list_widget.takeItem(idx)
 
         self.output_label.setText("Molecule deleted")
+        self.molecule_list_widget.clearSelection()
+        self.molecule_list_widget.setCurrentItem(None)
+
+    def show_molecule_settings(self) -> None:
+        """Show the settings of this molecule."""
+        current_idx: int = self.molecule_list_widget.currentRow()
+        if current_idx < 0:
+            return
+        current_name: str = self.mol_params_list[current_idx].function_name
+        match_idx: int = self.func_dropdown.findText(current_name, Qt.MatchFlag.MatchExactly)
+        self.func_dropdown.setCurrentIndex(match_idx)
+        for key, val in self.mol_params_list[current_idx].settings.items():
+            if val is None:
+                continue
+            if isinstance(current_param := self.param_widgets[key], QSpinBox | QDoubleSpinBox):
+                current_param.setValue(val)
+            else:
+                current_param.setText(val)
+
+            if key in self.opt_checkboxes:
+                self.opt_checkboxes[key].setChecked(True)
 
 
 class FilePickerWidget(QWidget):
@@ -1273,7 +1332,7 @@ class SurfaceGeneration(QWidget):
 
         step_limit: int = int(step_limit_val) if good_limit else cast("int", get_run_sim_default("timestep_limit"))
 
-        # molecule = self.molecule_dropdown.currentText()
+        # molecule = self.molecule_list_widget.currentText()
         lattice_type = self.surface_dropdown.currentText()
 
         # Run simulation
