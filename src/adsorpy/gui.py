@@ -15,7 +15,8 @@ from itertools import count
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, ParamSpec, Self, TypeVar, cast, override
 
-from PySide6.QtCore import QObject, QRegularExpression, QSettings, Qt, Signal
+from pydantic import ValidationError
+from PySide6.QtCore import Property, QObject, QRegularExpression, QSettings, Qt, Signal, Slot
 from PySide6.QtGui import (
     QAction,
     QDoubleValidator,
@@ -39,6 +40,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -48,7 +51,6 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
-    QListWidget,
 )
 
 from src.adsorpy import molecule_lib
@@ -111,8 +113,10 @@ class MoleculeParameters:
     label: str
     function_name: str
     polygon: Polygon
+    refl_sym: bool
+    rot_sym: int
+    rot_cnt: int
     settings: dict[str, float | int | str | list[str] | None] = field(default_factory=dict)
-    active: bool = field(default=True)
 
 
 class ZoomableSvgWidget(QSvgWidget):
@@ -284,24 +288,15 @@ class AppState(QObject, metaclass=AutoStateMeta):
     seed_input: QLineEdit
     count: int
     step_limit: int
+    molecule_param_list: list[MoleculeParameters]
 
     fields: ClassVar[dict[str, type]] = {
         "filepath": str,
         "seed_input": QLineEdit,
         "count": int,
         "step_limit": int,
+        "molecule_param_list": list[MoleculeParameters],
     }
-
-
-# class MplCanvas(FigureCanvasQTAgg):
-#     """Plot canvas class."""
-#
-#     def __init__(self) -> None:
-#         """Initialise plot canvas class."""
-#         self.fig = Figure(figsize=(16, 9))
-#         self.ax = self.fig.add_subplot(111)
-#         # self.plot_widget = pg.PlotWidget()
-#         super().__init__(self.fig)
 
 
 class AdsorpyGUI(QMainWindow):
@@ -522,17 +517,8 @@ class MoleculeGeneration(QWidget):
 
     def _init_data_storage(self) -> None:
         """Initialise internal state tracking arrays and counting iterations."""
-        self.molecule_names: list[str] = []
-        """Index tracking labels assigned to generated active molecule instances."""
-
         self.mol_list_counter: count[int] = count()
         """Thread-safe sequential index iterator generating unique molecule instance identifier tags."""
-
-        self.stored_molecules: dict[str, Polygon] = {}
-        """Dict of stored molecule Polygons."""
-
-        self.molecule_settings: dict[str, dict[str, float | int | str | list[str] | None]] = {}
-        """Dict of stored molecule settings."""
 
         self.mol_params_list: list[MoleculeParameters] = []
         """List of MoleculeParameters dataclasses."""
@@ -618,7 +604,7 @@ class MoleculeGeneration(QWidget):
         """Custom structural viewport rendering vector polygon outlines."""
         self.svg_widget.setMinimumSize(600, 600)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        self.plot_molecule()
+        # self.plot_molecule()
 
         container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
         scroll_area.setWidget(scroll_container)
@@ -787,7 +773,7 @@ class MoleculeGeneration(QWidget):
         self._build_action_buttons()
 
     @staticmethod
-    def _create_param_widget(annotation: str, default: str | float | inspect.Parameter.empty) -> QWidget:
+    def _create_param_widget(annotation: str, default: str | float | inspect.Parameter.empty) -> QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
         :param annotation: The raw string signature representation of the type hint.
@@ -796,7 +782,7 @@ class MoleculeGeneration(QWidget):
         :raises TypeError: If an unmapped or exotic data structure type is processed.
         """
         default_max: int = 999
-
+        widget:  QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit
         match annotation:
             case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
                 widget = QDoubleSpinBox()
@@ -831,44 +817,50 @@ class MoleculeGeneration(QWidget):
     def _build_symmetry_controls(self) -> None:
         """Assemble the geometric shape matrix transformation property grid layouts."""
         self.refl_sym: bool = False
+        """Default value of reflection symmetry."""
         self.rot_sym: int = 1
+        """Default value of rotation symmetry."""
         self.rot_cnt: int = 360
+        """Default value of rotation count."""
 
         symmetry_options_layout = QGridLayout()
         refl_sym_label = QLabel("Reflection symmetry")
         refl_sym_tooltip_text = "Set checked if the molecule has reflection symmetry (symmetric group Cn → Dn)."
         refl_sym_label.setToolTip(refl_sym_tooltip_text)
 
-        refl_sym_checkbox = QCheckBox()
-        refl_sym_checkbox.setChecked(self.refl_sym)
-        refl_sym_checkbox.setToolTip(refl_sym_tooltip_text)
+        self.refl_sym_checkbox = QCheckBox()
+        """Reflection symmetry checkbox, corresponding to True (checked) or False (unchecked)."""
+        self.refl_sym_checkbox.setChecked(self.refl_sym)
+        self.refl_sym_checkbox.setToolTip(refl_sym_tooltip_text)
 
         rot_sym_label = QLabel("Rotation symmetry")
         self._update_symmetry_tooltip(self.refl_sym, rot_sym_label)
-        refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_label))
+        self.refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_label))
 
-        rot_sym_spinbox = QSpinBox()
-        rot_sym_spinbox.setMinimum(0)
-        rot_sym_spinbox.setValue(self.rot_sym)
-        self._update_symmetry_tooltip(self.refl_sym, rot_sym_spinbox)
-        refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_spinbox))
+        self.rot_sym_spinbox = QSpinBox()
+        """Rotation symmetry spinbox, for non-negative integers."""
+        self.rot_sym_spinbox.setMinimum(0)
+        self.rot_sym_spinbox.setValue(self.rot_sym)
+        self._update_symmetry_tooltip(self.refl_sym, self.rot_sym_spinbox)
+        self.refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, self.rot_sym_spinbox))
 
         rot_cnt_label = QLabel("Rotation count")
         rot_cnt_tooltip_text = "Number of rotations to be used for the molecule. The step size is 360/n°."
         rot_cnt_label.setToolTip(rot_cnt_tooltip_text)
 
-        rot_cnt_spinbox = QSpinBox()
-        rot_cnt_spinbox.setMinimum(1)
-        rot_cnt_spinbox.setMaximum(99999)
-        rot_cnt_spinbox.setValue(self.rot_cnt)
-        rot_cnt_spinbox.setToolTip(rot_cnt_tooltip_text)
+        self.rot_cnt_spinbox = QSpinBox()
+        """Rotation count spinbox, for positive (non-zero) integers."""
+        self.rot_cnt_spinbox.setMinimum(1)
+        self.rot_cnt_spinbox.setMaximum(99999)
+        self.rot_cnt_spinbox.setValue(self.rot_cnt)
+        self.rot_cnt_spinbox.setToolTip(rot_cnt_tooltip_text)
 
         symmetry_options_layout.addWidget(refl_sym_label, 0, 0)
-        symmetry_options_layout.addWidget(refl_sym_checkbox, 0, 1)
+        symmetry_options_layout.addWidget(self.refl_sym_checkbox, 0, 1)
         symmetry_options_layout.addWidget(rot_sym_label, 1, 0)
-        symmetry_options_layout.addWidget(rot_sym_spinbox, 1, 1)
+        symmetry_options_layout.addWidget(self.rot_sym_spinbox, 1, 1)
         symmetry_options_layout.addWidget(rot_cnt_label, 2, 0)
-        symmetry_options_layout.addWidget(rot_cnt_spinbox, 2, 1)
+        symmetry_options_layout.addWidget(self.rot_cnt_spinbox, 2, 1)
 
         self.param_layout.addLayout(symmetry_options_layout)
 
@@ -876,11 +868,13 @@ class MoleculeGeneration(QWidget):
         """Map active interactive preview checkboxes and form processing buttons."""
         molecule_buttons = QHBoxLayout()
         self.show_molecule_checkbox = QCheckBox("Plot Molecule")
+        """Checkbox whether to show the molecule."""
         self.show_molecule_checkbox.setToolTip("Plot the molecule")
-        self.show_molecule_checkbox.setChecked(self.func_dropdown.currentText != "first_time_loader")
+        # self.show_molecule_checkbox.setChecked(self.func_dropdown.currentText != "first_time_loader")
         self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
         molecule_buttons.addWidget(self.show_molecule_checkbox)
 
+        widget_object: QLineEdit | QDoubleSpinBox | QSpinBox | FilePickerWidget
         for widget_object in self.param_widgets.values():
             if not isinstance(widget_object, QLineEdit | QDoubleSpinBox | QSpinBox):
                 continue
@@ -935,7 +929,6 @@ class MoleculeGeneration(QWidget):
                     self.param_widgets[first_time_key].setValue(first_time_value)
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
-        self.show_molecule_checkbox.setChecked(True)
 
     def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
         """Extract current user inputs from widgets back into a data dictionary."""
@@ -996,19 +989,18 @@ class MoleculeGeneration(QWidget):
         # if molecule_func.__name__ == "first_time_loader":
         #     molecule_func = molecule_lib.xyz_reader
 
-        result = molecule_func(**molecule_dict)
+        try:
+            result = molecule_func(**molecule_dict)
+        except ValidationError as e:
+            self.error(str(e))
+            return
 
         name = self.func_dropdown.currentText() if "file_name" not in molecule_dict else Path(molecule_dict["file_name"]).name
-
-        # Store molecule
-        self.molecule_names.append(current_func_name)
 
         # Update dropdown
         index = next(self.mol_list_counter)
         label = f"{name} #{index}"
         self.molecule_list_widget.addItem(label)
-        self.stored_molecules[label] = result
-        self.molecule_settings[label] = molecule_dict
 
         mol_params = MoleculeParameters(
             index=index,
@@ -1016,34 +1008,33 @@ class MoleculeGeneration(QWidget):
             label=label,
             polygon=result,
             settings=molecule_dict,
+            refl_sym=self.refl_sym_checkbox.isChecked(),
+            rot_sym=self.rot_sym_spinbox.value(),
+            rot_cnt=self.rot_cnt_spinbox.value(),
         )
 
         self.mol_params_list.append(mol_params)
 
         self.output_label.setText(f"Added: {name}")
 
-    # ---------------------------------------------------------
-    # Delete selected molecule
-    # ---------------------------------------------------------
     def delete_molecule(self) -> None:
         """Delete the current selected molecule."""
+        # Hitting the delete button without a selection results in -1.
         idx = self.molecule_list_widget.currentRow()
         if idx < 0:
             return
 
-        self.mol_params_list[idx].active = False
-
-        # Remove from dropdown
+        del self.mol_params_list[idx]
         self.molecule_list_widget.takeItem(idx)
 
         self.output_label.setText("Molecule deleted")
         self.molecule_list_widget.clearSelection()
-        self.molecule_list_widget.setCurrentItem(None)
+        self.molecule_list_widget.setCurrentItem(QListWidgetItem(None))
 
     def show_molecule_settings(self) -> None:
         """Show the settings of this molecule."""
         current_idx: int = self.molecule_list_widget.currentRow()
-        if current_idx < 0:
+        if current_idx < 0 or current_idx >= len(self.mol_params_list):
             return
         current_name: str = self.mol_params_list[current_idx].function_name
         match_idx: int = self.func_dropdown.findText(current_name, Qt.MatchFlag.MatchExactly)
@@ -1051,13 +1042,18 @@ class MoleculeGeneration(QWidget):
         for key, val in self.mol_params_list[current_idx].settings.items():
             if val is None:
                 continue
-            if isinstance(current_param := self.param_widgets[key], QSpinBox | QDoubleSpinBox):
+            current_param: QSpinBox | QDoubleSpinBox | QLineEdit | FilePickerWidget = self.param_widgets[key]
+            if isinstance(current_param, QSpinBox | QDoubleSpinBox) and isinstance(val, int | float):
                 current_param.setValue(val)
-            else:
+            elif isinstance(current_param, QLineEdit | FilePickerWidget) and isinstance(val, str):
                 current_param.setText(val)
+            else:
+                errmsg: str = f"Type mismatch: Param type {type(current_param)} is not compatible with val {type(val)}"
+                raise TypeError(errmsg)
 
             if key in self.opt_checkboxes:
                 self.opt_checkboxes[key].setChecked(True)
+        self.show_molecule_checkbox.setChecked(True)
 
 
 class FilePickerWidget(QWidget):
@@ -1078,19 +1074,37 @@ class FilePickerWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
 
-        # Line edit to show the path and hold the actual value
         self.line_edit = QLineEdit()
+        """Line edit to show the path and hold the actual value."""
         self.line_edit.setPlaceholderText(placeholder)
-        self.setText = self.line_edit.setText
 
         # Browse button
         self.browse_button = QPushButton("")
+        """Button to browse files."""
         self.browse_button.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderOpen))
         self.browse_button.clicked.connect(self.open_file_dialog)
 
         # Add to layout
         layout.addWidget(self.line_edit)
         layout.addWidget(self.browse_button)
+
+    def _get_text(self) -> str:
+        """Get the current file path text.
+
+        :returns: The current file path text string.
+        """
+        return self.line_edit.text()
+
+    @Slot(str)
+    def setText(self, value: str) -> None:  # noqa: N802
+        """Set the file path text.
+
+        :param value: The new file path text string.
+        """
+        self.line_edit.setText(value)
+
+    text = Property(str, fget=_get_text, fset=setText, user=True)
+    """Property parameter 'text', with getter and setter functions."""
 
     def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
         """Fetch settings by checking if they exist followed by their value.

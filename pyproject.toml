@@ -66,6 +66,8 @@ dependencies = [
     "rtree>=1.4.1",
     "svg-py>=1.10.0",
     "defusedxml>=0.7.1",
+    "PySide6>=6.11.1",
+    # Everything after this line is included so uv also runs with the lowest dependency resolution.
     "html5lib>=1.1",
     "wcwidth>=0.7.0",
     "webencodings>=0.5.1",
