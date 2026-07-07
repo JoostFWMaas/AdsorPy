@@ -10,16 +10,20 @@ import re
 import sys
 import textwrap
 import webbrowser
-from dataclasses import dataclass, field
+from collections import defaultdict
+from dataclasses import dataclass, field, asdict
+from shapely import Polygon
 from itertools import count
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, ParamSpec, Self, TypeVar, cast, override
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, ParamSpec, Self, TypeVar, cast, override
 
-from pydantic import ValidationError
+import pydantic
+from pydantic import ConfigDict, NonNegativeInt, PositiveFloat, PositiveInt, ValidationError, TypeAdapter
 from PySide6.QtCore import Property, QObject, QRegularExpression, QSettings, Qt, Signal, Slot
 from PySide6.QtGui import (
     QAction,
     QDoubleValidator,
+    QDropEvent,
     QGuiApplication,
     QIcon,
     QIntValidator,
@@ -29,6 +33,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -56,7 +61,7 @@ from PySide6.QtWidgets import (
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
-Tqob = TypeVar("Tqob", bound=QObject)
+T_qobj = TypeVar("T_qobj", bound=QObject)
 T_co = TypeVar("T_co", bound=bool | int | str | float, covariant=True)
 
 if TYPE_CHECKING:
@@ -105,18 +110,45 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
     return param_docs
 
 
-@dataclass(slots=True)
+@pydantic.dataclasses.dataclass(slots=True, frozen=True, config=ConfigDict(arbitrary_types_allowed=True))
 class MoleculeParameters:
-    """Molecule parameters dataclass."""
+    """Molecule parameters dataclass.
 
-    index: int
+    :ivar index: Index of the molecule parameters configuration.
+    :ivar label: Label of the molecule parameters configuration, guaranteed to be unique.
+    :ivar function_name: Function name of the molecule.
+    :ivar polygon: 2D polygon representation of the molecule.
+    :ivar refl_sym: Reflection symmetry.
+    :ivar rot_sym: Rotation symmetry.
+    :ivar rot_cnt: Rotation count (before accounting for reflection/rotation symmetry).
+    :ivar settings: Function input of the molecule. Defaults to an empty dictionary.
+    """
+
+    index: NonNegativeInt
     label: str
     function_name: str
     polygon: Polygon
     refl_sym: bool
-    rot_sym: int
-    rot_cnt: int
+    rot_sym: NonNegativeInt
+    rot_cnt: PositiveInt
     settings: dict[str, float | int | str | list[str] | None] = field(default_factory=dict)
+
+pydantic.dataclasses.rebuild_dataclass(MoleculeParameters)
+
+@pydantic.dataclasses.dataclass(slots=True, frozen=True)
+class SurfaceParameters:
+    """Surface parameters dataclass.
+
+    :ivar lattice_type: Surface lattice type.
+    :ivar site_count: Site count of the surface.
+    :ivar lattice_a: Lattice spacing of the surface.
+    :ivar seed: Seed int (or None) of the surface.
+    """
+
+    lattice_type: Literal["hexagonal", "triangular", "honeycomb", "square"]
+    site_count: PositiveInt
+    lattice_a: PositiveFloat
+    seed: NonNegativeInt | None
 
 
 class ZoomableSvgWidget(QSvgWidget):
@@ -142,7 +174,7 @@ class ZoomableSvgWidget(QSvgWidget):
         """
         modifiers = event.modifiers()
 
-        # 1. FIX: Walk up the layout tree to reliably find the QScrollArea
+        # Walk up the layout tree to reliably find the QScrollArea
         # (Necessary since the widget is now inside a centered layout container)
         scroll_area = self.parent()
         while scroll_area and not isinstance(scroll_area, QScrollArea):
@@ -177,7 +209,7 @@ class ZoomableSvgWidget(QSvgWidget):
             event.accept()
 
         # -------------------------------------------------------------
-        # CASE 2: SHIFT + SCROLL = HORIZONTAL PANNING (FIXED)
+        # CASE 2: SHIFT + SCROLL = HORIZONTAL PANNING
         # -------------------------------------------------------------
         elif modifiers == Qt.KeyboardModifier.ShiftModifier:
             if scroll_area:
@@ -198,7 +230,7 @@ class ZoomableSvgWidget(QSvgWidget):
             event.ignore()
 
 
-class AutoStateMeta(type(QObject), Generic[Tqob]):
+class AutoStateMeta(type(QObject), Generic[T_qobj]):
     """Metaclass for AppState to automatically communicate between tabs.
 
     This metaclass scans the ``fields`` class variable and dynamically
@@ -254,14 +286,14 @@ class AutoStateMeta(type(QObject), Generic[Tqob]):
 
         return super().__new__(cls, name, bases, attrs)
 
-    def __call__(cls: type[Self], *args: P.args, **kwargs: P.kwargs) -> Tqob:
+    def __call__(cls: type[Self], *args: P.args, **kwargs: P.kwargs) -> T_qobj:
         """Instantiate the class and auto-initialise its fields.
 
         :param args: Positional arguments.
         :param kwargs: Keyword arguments.
         :returns: The initialised class instance.
         """
-        obj = super().__call__(*args, **kwargs)
+        obj: T_qobj = super().__call__(*args, **kwargs)
 
         # Auto-initialise private fields
         for field_name in cls.fields:
@@ -282,6 +314,9 @@ class AppState(QObject, metaclass=AutoStateMeta):
     :ivar seed_input: The Qt input widget holding the seed value.
     :ivar count: The current iteration or item count.
     :ivar step_limit: The maximum allowable processing steps.
+    :ivar molecule_param_list: Settings of the molecule(s).
+    :ivar surface_params: Settings of the surface.
+    :cvar fields: Dictionary mapping state field names to their expected types.
     """
 
     filepath: str
@@ -289,6 +324,7 @@ class AppState(QObject, metaclass=AutoStateMeta):
     count: int
     step_limit: int
     molecule_param_list: list[MoleculeParameters]
+    surface_params: SurfaceParameters
 
     fields: ClassVar[dict[str, type]] = {
         "filepath": str,
@@ -296,6 +332,7 @@ class AppState(QObject, metaclass=AutoStateMeta):
         "count": int,
         "step_limit": int,
         "molecule_param_list": list[MoleculeParameters],
+        "surface_params": SurfaceParameters,
     }
 
 
@@ -304,10 +341,11 @@ class AdsorpyGUI(QMainWindow):
 
     Coordinates the primary window frame, top level configuration menu bars,
     and hooks up the shared global data state across tab layout frames.
+
+    :cvar window_resized:  Signal of (width, height) emitted when the main application window dimensions are modified.
     """
 
-    window_resized = Signal(int, int)
-    """Signal emitted when the main application window dimensions are modified."""
+    window_resized: Signal = Signal(int, int)
 
     def __init__(self) -> None:
         """Initialise frame parameters, global context caches, and child windows."""
@@ -316,7 +354,7 @@ class AdsorpyGUI(QMainWindow):
         self.setWindowTitle("AdsorPy Simulation GUI")
 
         self.state = AppState()
-        """Shared application runtime cache synchronized across all view frames."""
+        """Shared application runtime cache synchronised across all view frames."""
 
         # Delegate initialisation to helper workflows
         self._init_menu_bar()
@@ -413,7 +451,10 @@ class GeneralSettings(QWidget):
     """
 
     def __init__(self, state: AppState) -> None:
-        """Initialise validation engines and build structural control modules."""
+        """Initialise validation engines and build structural control modules.
+
+        :param state: AppState object for communication between tab widgets.
+        """
         super().__init__()
         self.state = state
         """Shared application state cache container."""
@@ -463,10 +504,16 @@ class GeneralSettings(QWidget):
         self.step_limit.setValidator(self._gt_one_validator)
         layout.addWidget(self.step_limit)
 
+        self.run_button = QPushButton("Run Simulation")
+        """Trigger execution wrapper for adsorpy run."""
+        layout.addWidget(self.run_button, alignment=Qt.AlignmentFlag.AlignTop)
+        self.run_button.clicked.connect(self.run_simulation)
+
         # Establish signalling loops
         self.step_limit.textChanged.connect(self.on_step_limit_changed)
 
         layout.addStretch()
+
         return layout
 
     def _init_svg_view(self) -> QSvgWidget:
@@ -486,6 +533,111 @@ class GeneralSettings(QWidget):
         :param value: The raw alpha-numeric input string from the user.
         """
         self.state.step_limit = int(value) if value else -1
+
+    def run_simulation(self) -> None:
+        """Run the simulation."""
+        # Validate seed
+        seed_text = self.state.seed_input.text().strip()
+        seed: int | None = None
+        if seed_text:
+            if not seed_text.isnumeric() or int(seed_text) < 0:
+                self.error("Seed must be a positive integer")
+                return
+            seed = int(seed_text)
+
+
+        def get_run_sim_default(name: str) -> str | int | float | None:
+            """Get the default value of a function.
+
+            :param name: Name of the parameter.
+            :returns: Default value of the parameter.
+            :raises ValueError: If the parameter has no default value.
+            :raises KeyError: If the parameter does not exist.
+            """
+            sig: inspect.Signature = inspect.signature(run_simulation)
+            param: inspect.Parameter = sig.parameters[name]
+            if param.default is inspect.Parameter.empty:
+                errmsg: str = f"{name} has no default"
+                raise ValueError(errmsg)
+            return param.default
+
+        surf_settings: SurfaceParameters = self.state.surface_params
+        surf_adapter = TypeAdapter(SurfaceParameters)
+
+        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
+        mol_adapter = TypeAdapter(MoleculeParameters)
+
+        dict_of_lists = defaultdict(list)
+
+        # Pivot the data
+        for dict_in_list in molecule_settings:
+            checked_dict = mol_adapter.dump_python(dict_in_list)
+            for key, value in checked_dict.items():
+                dict_of_lists[key].append(value)
+
+        def filter_dict_for_func(data_dict):
+            # 1. Get the names of the function's parameters
+            sig = inspect.signature(run_simulation)
+            valid_keys = sig.parameters.keys()
+            print(valid_keys)
+
+
+
+
+
+            # 2. Filter the dictionary using a comprehension
+            return {k: v for k, v in data_dict.items() if k in valid_keys}
+
+        old_keys: list[str] = ["polygon", "refl_sym", "rot_sym", "rot_cnt"]
+        new_keys: list[str] = ["molecules_list", "reflection_symmetries", "rotation_symmetries", "rotation_counts"]
+
+        mapping = dict(zip(old_keys, new_keys, strict=True))
+
+
+        for old, new in mapping.items():
+            if old in dict_of_lists:
+                dict_of_lists[new] = dict_of_lists.pop(old)
+
+
+        dict_of_lists = filter_dict_for_func(dict_of_lists)
+        # Validate step limit
+        step_limit_val: int | None = self.state.step_limit
+
+        good_limit: bool = step_limit_val is not None and step_limit_val >= 0
+
+        step_limit: int = int(step_limit_val) if good_limit else cast("int", get_run_sim_default("timestep_limit"))
+
+        print(dict_of_lists.keys())
+
+        # Run simulation
+        output = run_simulation(
+            **surf_adapter.dump_python(surf_settings),
+            timestep_limit=step_limit,
+            **dict_of_lists,
+        )[-1]
+
+        svg_buffer = io.BytesIO()
+
+        dark_mode_bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
+        output.svgplot_covered_grid(filename=svg_buffer, dark_mode_bool=dark_mode_bool)
+        svg_data = svg_buffer.getvalue()
+
+        self.svg_widget.load(svg_data)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+    def _save_settings_json(self) -> None:
+        """Save settings to JSON file."""
+
+    def _load_settings_json(self) -> None:
+        """Load settings from JSON file."""
+
+    def error(self, msg: str) -> None:
+        """Handle the errors.
+
+        :param msg: Error message to display in a new window.
+        """
+        QMessageBox.critical(self, "Input Error", msg)
+
 
 class MoleculeGeneration(QWidget):
     """Molecule layout configuration dashboard tab view.
@@ -573,12 +725,12 @@ class MoleculeGeneration(QWidget):
 
         return container
 
-    def _discover_molecule_generators(self) -> dict[str, Callable[[Any], Polygon]]:
+    def _discover_molecule_generators(self) -> dict[str, Callable[[P.kwargs], Polygon]]:
         """Isolate reflection logic filtering usable library structural definitions.
 
         :return: A sorted lookup dict mapping valid function names to execution references.
         """
-        temp_generators = {
+        temp_generators: dict[str, Callable[[P.kwargs], Polygon]] = {
             name: func
             for name, func in molecule_lib.__dict__.items()
             if inspect.isfunction(func)
@@ -604,7 +756,6 @@ class MoleculeGeneration(QWidget):
         """Custom structural viewport rendering vector polygon outlines."""
         self.svg_widget.setMinimumSize(600, 600)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-        # self.plot_molecule()
 
         container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
         scroll_area.setWidget(scroll_container)
@@ -622,10 +773,11 @@ class MoleculeGeneration(QWidget):
         group = QGroupBox("Molecules")
         group_layout = QVBoxLayout(group)
 
-        self.molecule_list_widget = QListWidget()
-        """List widget selection tool indicating current active configuration items."""
-        group_layout.addWidget(self.molecule_list_widget)
+        self.molecule_list_widget = ReorderableListWidget()
+        """List widget selection tool indicating current added molecule configurations."""
         self.molecule_list_widget.currentItemChanged.connect(self.show_molecule_settings)
+        self.molecule_list_widget.itemsMoved.connect(self.sync_list_order)
+        group_layout.addWidget(self.molecule_list_widget)
 
         self.delete_btn = QPushButton("Delete Selected Molecule")
         """Action button triggering array removal operations from local caches."""
@@ -668,9 +820,6 @@ class MoleculeGeneration(QWidget):
         check_type: type[T_co] = type(default) if return_type is None else return_type
         return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
 
-    # ---------------------------------------------------------
-    # Build parameter widgets dynamically
-    # ---------------------------------------------------------
     def _delete_previous_layout(self) -> None:
         """Recursively delete the layout of the previous molecule parameters."""
         def clear_layout(layout: QVBoxLayout | QHBoxLayout | QGridLayout | None) -> None:
@@ -813,6 +962,22 @@ class MoleculeGeneration(QWidget):
             case _:
                 errmsg = f"Unsupported parameter annotation: '{annotation}'."
                 raise TypeError(errmsg)
+
+    def sync_list_order(self, old_index: int, new_index: int) -> None:
+        """Take the row transformation from list A and applies it programmatically to list B.
+
+        The ReorderableListWidget allows for items to be drag/dropped. This function links the reordering.
+
+        :param old_index: The original index of the item changing position.
+        :param new_index: The new index to which the item is moved.
+        """
+        # Pop the item out of its old position in List B
+        taken_item = self.mol_params_list.pop(old_index)
+
+        # Insert it into the exact same new position
+        if taken_item:
+            self.mol_params_list.insert(new_index, taken_item)
+            self.state.molecule_param_list = self.mol_params_list
 
     def _build_symmetry_controls(self) -> None:
         """Assemble the geometric shape matrix transformation property grid layouts."""
@@ -1014,6 +1179,7 @@ class MoleculeGeneration(QWidget):
         )
 
         self.mol_params_list.append(mol_params)
+        self.state.molecule_param_list = self.mol_params_list
 
         self.output_label.setText(f"Added: {name}")
 
@@ -1057,7 +1223,10 @@ class MoleculeGeneration(QWidget):
 
 
 class FilePickerWidget(QWidget):
-    """Widget to help pick a file."""
+    """Widget to help pick a file.
+
+    :cvar text: Property parameter 'text', with getter and setter functions.
+    """
 
     def __init__(self, parent: QWidget | None = None, placeholder: str = "Select a file...") -> None:
         """Initialise the file-picker widget.
@@ -1104,7 +1273,6 @@ class FilePickerWidget(QWidget):
         self.line_edit.setText(value)
 
     text = Property(str, fget=_get_text, fset=setText, user=True)
-    """Property parameter 'text', with getter and setter functions."""
 
     def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
         """Fetch settings by checking if they exist followed by their value.
@@ -1141,20 +1309,26 @@ class SurfaceGeneration(QWidget):
     """Surface generation dashboard tab view.
 
     Provides control inputs for generating geometric lattice surfaces and
-    displays the resulting vector map within an interactive, centered viewer.
+    displays the resulting surface within an interactive, centered viewer.
     """
 
     def __init__(self, state: AppState) -> None:
-        """Initialise user widgets and assemble geometric layout wrappers."""
+        """Initialise user widgets and assemble geometric layout wrappers.
+
+        :param state: AppState object to share information between tabs.
+        """
         super().__init__()
         self.state = state
         """Shared application state cache container."""
 
         self.surface_count: int = 50
-        """Target baseline node count requested by user."""
+        """Default surface site count."""
 
         self.real_surface_count: int = 50
-        """Actual generated node count corrected for geometry alignment."""
+        """Default computed surface site count."""
+
+        self.stored_params: SurfaceParameters
+        """Parameters of the surface, to be communicated between tabs."""
 
         self._init_validators()
 
@@ -1193,6 +1367,7 @@ class SurfaceGeneration(QWidget):
         self.surface_dropdown = QComboBox()
         """Selection box for geometry presets."""
         self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))
+        self.surface_dropdown.setToolTip("Select surface type.")
         layout.addWidget(self.surface_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Theoretical count constraints input
@@ -1208,6 +1383,7 @@ class SurfaceGeneration(QWidget):
         self.real_site_count = QLabel()
         """Text label reflecting processed actual surface site count."""
         self.real_site_count.setText("50")
+        self.real_site_count.setToolTip("The actual site count computed from the input count and the surface type.")
         layout.addWidget(self.real_site_count, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Physical spacing distance parameters
@@ -1220,11 +1396,13 @@ class SurfaceGeneration(QWidget):
         self.lattice_input.setSingleStep(0.01)
         self.lattice_input.setAccelerated(True)
         self.lattice_input.setSuffix(" Å")
+        self.lattice_input.setToolTip("Numeric entry field for lattice spacing.")
         layout.addWidget(self.lattice_input, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Control trigger processing elements
         self.generate_surface_button = QPushButton("Generate Surface")
         """Trigger execution pipeline for layout generation code."""
+        self.generate_surface_button.setToolTip("Plot and store the surface.")
         layout.addWidget(self.generate_surface_button, alignment=Qt.AlignmentFlag.AlignTop)
 
         self.run_button = QPushButton("Run Simulation")
@@ -1299,11 +1477,16 @@ class SurfaceGeneration(QWidget):
         dark_mode_bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
 
         svg_buffer = io.BytesIO()
+
+        surf_params:  dict[str, float | None | str | int] = {
+            "lattice_a": lattice,
+            "lattice_type": lattice_type,
+            "seed": seed,
+            "site_count": self.surface_count,
+        }
+
         show_surface(
-            lattice_a=lattice,
-            lattice_type=lattice_type,
-            seed=seed,
-            site_count=self.surface_count,
+            **surf_params,
             filepath=svg_buffer,
             svg_flag=True,
             dark_mode_bool=dark_mode_bool,
@@ -1312,6 +1495,9 @@ class SurfaceGeneration(QWidget):
 
         self.svg_widget.load(svg_data)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        self.stored_params = SurfaceParameters(**surf_params)
+        self.state.surface_params = self.stored_params
 
     def run_simulation(self) -> None:
         """Run the simulation."""
@@ -1380,6 +1566,49 @@ class SurfaceGeneration(QWidget):
         """
         QMessageBox.critical(self, "Input Error", msg)
 
+
+class ReorderableListWidget(QListWidget):
+    """Reorderable list widget.
+
+    :cvar itemsMoved: Custom signal that emits (old_row_idx, new_row_idx).
+    """
+
+    itemsMoved = Signal(int, int)  # noqa: N815
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        """Initialise the ReorderableListWidget.
+
+        :param parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+
+    @override
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Overridden drop event method.
+
+        Define a new drop event that emits the old and the new position.
+
+        :param event: Event object.
+        """
+        # Find the item currently selected (the one being dragged)
+        moving_item = self.currentItem()
+        if not moving_item:
+            super().dropEvent(event)
+            return
+
+        old_row = self.row(moving_item)
+        # item_text = moving_item.text()
+
+        # QListWidget handles visual reordering
+        super().dropEvent(event)
+
+        # Find the item's new position after the move completes
+        new_row = self.row(moving_item)
+
+        # If the position actually changed, emit the signal
+        if old_row != new_row:
+            self.itemsMoved.emit(old_row, new_row)
 
 def _make_horizontal_line() -> QFrame:
     """Create a horizontal line widget using a QFrame object.
