@@ -15,7 +15,7 @@ from dataclasses import dataclass, field, asdict
 from shapely import Polygon
 from itertools import count
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, ParamSpec, Self, TypeVar, cast, override
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, ParamSpec, Self, TypeVar, cast, override, get_origin
 
 import pydantic
 from pydantic import ConfigDict, NonNegativeInt, PositiveFloat, PositiveInt, ValidationError, TypeAdapter
@@ -80,19 +80,20 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
     :return: The dictionary of parameters and their types (as strings).
     :raises ValueError: If the function has no docstring.
     """
-    doc = inspect.getdoc(func)
-    if not doc:
+    doc: str | None = inspect.getdoc(func)
+    if doc is None:
         errmsg: str = f"Docstring of {func.__name__} is not defined."
         raise ValueError(errmsg)
 
     param_docs: dict[str, str] = {}
-    lines = doc.splitlines()
+    lines: list[str] = doc.splitlines()
 
     current_param: str | None = None
-    buffer = []
+    buffer: list[str] = []
 
     for line in lines:
-        param_match = re.match(r"\s*:param\s+(\w+)\s*:\s*(.*)", line)
+        param_match = re.match(r":param\s+(\w+)\s*:\s*(.*)", line)
+        end_match = re.match(r":returns?:*", line)
         if param_match:
             if current_param and buffer:
                 param_docs[current_param] = " ".join(buffer).strip()
@@ -100,7 +101,10 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
             current_param = param_match.group(1)
             buffer = [param_match.group(2).strip()]
 
-        elif current_param and line.startswith("    "):
+        elif end_match:
+            break
+
+        elif current_param:
             buffer.append(line.strip())
 
     # Save last param
@@ -256,7 +260,8 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
             signal_name = f"{field_name}Changed"
             private_name = f"_{field_name}"
 
-            attrs[signal_name] = Signal(field_type)
+            qt_compatible_type = get_origin(field_type) or field_type
+            attrs[signal_name] = Signal(qt_compatible_type)
 
             def getter(self: Self, private_name: str = private_name) -> object:
                 """Get the value.
@@ -647,24 +652,31 @@ class MoleculeGeneration(QWidget):
     """
 
     def __init__(self, state: AppState) -> None:
-        """Initialize settings storage engines and compile separate view columns."""
+        """Initialize settings storage engines and compile separate view columns.
+
+        :param state: AppState instance for communication between tabs.
+        """
         super().__init__()
 
+        self.param_widgets: dict[str, QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit]  = {}
+        """"Parameter widgets derived from molecule function signatures."""
+        self.opt_checkboxes: dict[str, QCheckBox] = {}
+        """"Optional checkbox widgets derived from molecule function signatures."""
         self._settings = QSettings("adsorpy", type(self).__name__)
         """Persistent platform configuration handle cached between user runtime sessions."""
 
         self.state = state
         """Shared application state cache container."""
 
-        # 1. Initialize data storage metrics
+        # Initialise data storage metrics
         self._init_data_storage()
 
-        # 2. Build the three core panel containers
+        # Build the three core panel containers
         left_container = self._build_left_panel()
         scroll_area = self._build_center_panel()
         right_container = self._build_right_panel()
 
-        # 3. Assemble components into the splitter layout interface
+        # Assemble components into the splitter layout interface
         self._assemble_layout(left_container, scroll_area, right_container)
 
     def _init_data_storage(self) -> None:
@@ -1096,7 +1108,10 @@ class MoleculeGeneration(QWidget):
                     self.opt_checkboxes[first_time_key].setChecked(True)
 
     def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
-        """Extract current user inputs from widgets back into a data dictionary."""
+        """Extract current user inputs from widgets back into a data dictionary.
+
+        :return: Dictionary containing the key-value pairs of the parameters.
+        """
         values: dict[str, float | int | str | list[str] | None] = {}
         name: str
         widget: QWidget
@@ -1126,6 +1141,8 @@ class MoleculeGeneration(QWidget):
         """Handle the errors.
 
         Please open a ticket if this happens when it should not.
+
+        :param msg: Error message.
         """
         QMessageBox.critical(self, "Input Error", msg)
 
@@ -1357,12 +1374,12 @@ class SurfaceGeneration(QWidget):
     def _build_left_panel(self) -> QWidget:
         """Construct the left controls container pane layout.
 
-        :return: A populated structural layout container frame.
+        :return: A populated structural layout container.
         """
         container = QWidget()
         layout = QVBoxLayout(container)
 
-        # Surface configuration selector
+        # Surface configuration selector.
         layout.addWidget(QLabel("Surface Type:"), alignment=Qt.AlignmentFlag.AlignTop)
         self.surface_dropdown = QComboBox()
         """Selection box for geometry presets."""
@@ -1370,7 +1387,7 @@ class SurfaceGeneration(QWidget):
         self.surface_dropdown.setToolTip("Select surface type.")
         layout.addWidget(self.surface_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
-        # Theoretical count constraints input
+        # Theoretical count constraints input.
         layout.addWidget(QLabel("Optional surface site count (positive int):"), alignment=Qt.AlignmentFlag.AlignTop)
         self.site_count_input = QLineEdit()
         """Numeric entry field for requested surface site count."""
@@ -1378,7 +1395,7 @@ class SurfaceGeneration(QWidget):
         self.site_count_input.setPlaceholderText("e.g. 42")
         layout.addWidget(self.site_count_input, alignment=Qt.AlignmentFlag.AlignTop)
 
-        # Evaluated real layout node calculation trackers
+        # Evaluated real layout node calculation trackers.
         layout.addWidget(QLabel("Real surface site count:"), alignment=Qt.AlignmentFlag.AlignTop)
         self.real_site_count = QLabel()
         """Text label reflecting processed actual surface site count."""
@@ -1386,7 +1403,7 @@ class SurfaceGeneration(QWidget):
         self.real_site_count.setToolTip("The actual site count computed from the input count and the surface type.")
         layout.addWidget(self.real_site_count, alignment=Qt.AlignmentFlag.AlignTop)
 
-        # Physical spacing distance parameters
+        # Physical spacing distance parameters.
         layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"), alignment=Qt.AlignmentFlag.AlignTop)
         self.lattice_input = QDoubleSpinBox()
         """Numeric entry field for lattice spacing."""
@@ -1399,7 +1416,7 @@ class SurfaceGeneration(QWidget):
         self.lattice_input.setToolTip("Numeric entry field for lattice spacing.")
         layout.addWidget(self.lattice_input, alignment=Qt.AlignmentFlag.AlignTop)
 
-        # Control trigger processing elements
+        # Control trigger processing elements.
         self.generate_surface_button = QPushButton("Generate Surface")
         """Trigger execution pipeline for layout generation code."""
         self.generate_surface_button.setToolTip("Plot and store the surface.")
@@ -1409,13 +1426,13 @@ class SurfaceGeneration(QWidget):
         """Trigger execution wrapper for adsorpy run."""
         layout.addWidget(self.run_button, alignment=Qt.AlignmentFlag.AlignTop)
 
-        # Establish signalling loops
+        # Establish signalling loops.
         self.site_count_input.textChanged.connect(self._get_real_surface_site_count)
         self.surface_dropdown.currentIndexChanged.connect(self._get_real_surface_site_count)
         self.generate_surface_button.clicked.connect(self.generate_surface)
         self.run_button.clicked.connect(self.run_simulation)
 
-        # Force components to stick tight to the top boundary layout
+        # Force components to stick tight to the top boundary layout.
         layout.addStretch()
         return container
 
