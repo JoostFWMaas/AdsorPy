@@ -573,7 +573,7 @@ class GeneralSettings(QWidget):
         mol_adapter = TypeAdapter(MoleculeParameters)
 
         dict_of_lists = defaultdict(list)
-
+        molecule_settings = {} if molecule_settings is None else molecule_settings
         # Pivot the data
         for dict_in_list in molecule_settings:
             checked_dict = mol_adapter.dump_python(dict_in_list)
@@ -581,16 +581,12 @@ class GeneralSettings(QWidget):
                 dict_of_lists[key].append(value)
 
         def filter_dict_for_func(data_dict):
-            # 1. Get the names of the function's parameters
+            # Get the names of the function's parameters
             sig = inspect.signature(run_simulation)
             valid_keys = sig.parameters.keys()
-            print(valid_keys)
 
 
-
-
-
-            # 2. Filter the dictionary using a comprehension
+            # Filter the dictionary using a comprehension
             return {k: v for k, v in data_dict.items() if k in valid_keys}
 
         old_keys: list[str] = ["polygon", "refl_sym", "rot_sym", "rot_cnt"]
@@ -612,11 +608,12 @@ class GeneralSettings(QWidget):
 
         step_limit: int = int(step_limit_val) if good_limit else cast("int", get_run_sim_default("timestep_limit"))
 
-        print(dict_of_lists.keys())
+        surface_settings: dict[str, int | float | str] = surf_adapter.dump_python(surf_settings)
+        surface_settings = {} if surface_settings is None else surface_settings
 
         # Run simulation
         output = run_simulation(
-            **surf_adapter.dump_python(surf_settings),
+            **surface_settings,
             timestep_limit=step_limit,
             **dict_of_lists,
         )[-1]
@@ -632,6 +629,11 @@ class GeneralSettings(QWidget):
 
     def _save_settings_json(self) -> None:
         """Save settings to JSON file."""
+        surf_settings: SurfaceParameters = self.state.surface_params
+        surf_adapter = TypeAdapter(SurfaceParameters)
+
+        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
+        mol_adapter = TypeAdapter(MoleculeParameters)
 
     def _load_settings_json(self) -> None:
         """Load settings from JSON file."""
@@ -1422,15 +1424,10 @@ class SurfaceGeneration(QWidget):
         self.generate_surface_button.setToolTip("Plot and store the surface.")
         layout.addWidget(self.generate_surface_button, alignment=Qt.AlignmentFlag.AlignTop)
 
-        self.run_button = QPushButton("Run Simulation")
-        """Trigger execution wrapper for adsorpy run."""
-        layout.addWidget(self.run_button, alignment=Qt.AlignmentFlag.AlignTop)
-
         # Establish signalling loops.
         self.site_count_input.textChanged.connect(self._get_real_surface_site_count)
         self.surface_dropdown.currentIndexChanged.connect(self._get_real_surface_site_count)
         self.generate_surface_button.clicked.connect(self.generate_surface)
-        self.run_button.clicked.connect(self.run_simulation)
 
         # Force components to stick tight to the top boundary layout.
         layout.addStretch()
@@ -1515,66 +1512,6 @@ class SurfaceGeneration(QWidget):
 
         self.stored_params = SurfaceParameters(**surf_params)
         self.state.surface_params = self.stored_params
-
-    def run_simulation(self) -> None:
-        """Run the simulation."""
-        # Validate seed
-        seed_text = self.state.seed_input.text().strip()
-        seed: int | None = None
-        if seed_text:
-            if not seed_text.isnumeric() or int(seed_text) < 0:
-                self.error("Seed must be a positive integer")
-                return
-            seed = int(seed_text)
-
-
-        def get_run_sim_default(name: str) -> str | int | float | None:
-            """Get the default value of a function.
-
-            :param name: Name of the parameter.
-            :returns: Default value of the parameter.
-            :raises ValueError: If the parameter has no default value.
-            :raises KeyError: If the parameter does not exist.
-            """
-            sig: inspect.Signature = inspect.signature(run_simulation)
-            param: inspect.Parameter = sig.parameters[name]
-            if param.default is inspect.Parameter.empty:
-                errmsg: str = f"{name} has no default"
-                raise ValueError(errmsg)
-            return param.default
-
-        # Validate step limit
-        step_limit_val: int | None = self.state.step_limit
-        good_limit: bool = step_limit_val is not None and step_limit_val >= 0
-
-        step_limit: int = int(step_limit_val) if good_limit else cast("int", get_run_sim_default("timestep_limit"))
-
-        # molecule = self.molecule_list_widget.currentText()
-        lattice_type = self.surface_dropdown.currentText()
-
-        # Run simulation
-        output = run_simulation(
-            seed=seed,
-            lattice_type=lattice_type,
-            lattice_a=self.lattice_input.value(),
-            site_count=self.surface_count,
-            timestep_limit=step_limit,
-        )[-1]
-
-        svg_buffer = io.BytesIO()
-
-        dark_mode_bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
-        output.svgplot_covered_grid(filename=svg_buffer, dark_mode_bool=dark_mode_bool)
-        svg_data = svg_buffer.getvalue()
-
-        self.svg_widget.load(svg_data)
-        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-
-    def _save_settings_json(self) -> None:
-        """Save settings to JSON file."""
-
-    def _load_settings_json(self) -> None:
-        """Load settings from JSON file."""
 
     def error(self, msg: str) -> None:
         """Handle the errors.

@@ -214,7 +214,7 @@ def xyz_reader(
     pitch: float = 0.0,
     yaw: float = 0.0,
     z_trim: float | None = None,
-    reference_lattice_spacing: float = 4.74,
+    reference_lattice_spacing: float = 1.0,
 ) -> Polygon:
     """Read files in the xyz format of VASP.
 
@@ -1118,7 +1118,7 @@ def first_time_loader(
     y_offset: float = 0.0,
     ignore_atoms: str | list[str] | None = None,
     z_trim: float | None = None,
-    reference_lattice_spacing: float = 4.74,
+    reference_lattice_spacing: float = 1.0,
 ) -> dict[str, str | float | list[str] | None]:
     """Load molecule for the first time to save settings. Uses PySide6.
 
@@ -1289,7 +1289,7 @@ def _initialise_reader(
     return atomkeys, atompos
 
 
-def save_molecule_svg(molecule: Polygon, lattice: float = 4.74, filename: str | Path | io.BytesIO = "") -> None:
+def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | Path | io.BytesIO = "") -> None:
     """Save the molecule shape as an SVG with a locked aspect ratio."""
     rounding: int = 4
 
