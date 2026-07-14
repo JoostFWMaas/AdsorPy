@@ -6,19 +6,30 @@ from __future__ import annotations
 
 import inspect
 import io
+import json
 import re
 import sys
 import textwrap
 import webbrowser
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
-from shapely import Polygon
+from shapely import Polygon, from_geojson, to_geojson
 from itertools import count
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, ParamSpec, Self, TypeVar, cast, override, get_origin
+from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, ParamSpec, Self, TypeVar, cast, override, get_origin, \
+    Annotated
 
 import pydantic
-from pydantic import ConfigDict, NonNegativeInt, PositiveFloat, PositiveInt, ValidationError, TypeAdapter
+from pydantic import (
+    ConfigDict,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    ValidationError,
+    TypeAdapter,
+    BeforeValidator,
+    PlainSerializer,
+)
 from PySide6.QtCore import Property, QObject, QRegularExpression, QSettings, Qt, Signal, Slot
 from PySide6.QtGui import (
     QAction,
@@ -57,7 +68,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shapely.geometry import mapping
 
+from adsorpy import __version__
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
@@ -69,7 +82,8 @@ if TYPE_CHECKING:
 
     from shapely import Polygon
 
-    P = ParamSpec("P", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
+    P = ParamSpec("P")
+    P_mol = ParamSpec("P_mol", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
 
 def extract_param_docs(func: Callable) -> dict[str, str]:
     """Extract parameters and their types from the docstring of a function.
@@ -113,6 +127,34 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
 
     return param_docs
 
+def validate_polygon(pol: Polygon | str | dict[str, str | list[tuple[float, float]]]) -> Polygon:
+    """Convert the GeoJSON dict data into a real Shapely Polygon or pass the data if it is already a Polygon.
+
+    :param pol: Polygon or GeoJSON format.
+    :returns: Polygon.
+    :raises TypeError: if the type cannot be converted to Polygon.
+    """
+    if isinstance(pol, Polygon):
+        return pol
+
+    if isinstance(pol, dict):
+        # Convert the python dictionary to a valid JSON string first
+        json_str = json.dumps(pol)
+        return cast(Polygon, from_geojson(json_str))
+
+    if isinstance(pol, str):
+        # Turns {"type": "Polygon", "coordinates": ...} into a Shapely object
+        return cast("Polygon", from_geojson(pol))
+
+    errmsg =  f"Cannot convert {type(pol)} to a Shapely Polygon"
+    raise TypeError(errmsg)
+
+# Define the custom Pydantic-safe type
+PydanticPolygon = Annotated[
+    Polygon,
+    BeforeValidator(validate_polygon),  # This runs before the Pydantic validation step.
+    PlainSerializer(mapping, return_type=dict),  # This runs when serialising: standard GeoJSON format
+]
 
 @pydantic.dataclasses.dataclass(slots=True, frozen=True, config=ConfigDict(arbitrary_types_allowed=True))
 class MoleculeParameters:
@@ -121,20 +163,20 @@ class MoleculeParameters:
     :ivar index: Index of the molecule parameters configuration.
     :ivar label: Label of the molecule parameters configuration, guaranteed to be unique.
     :ivar function_name: Function name of the molecule.
-    :ivar polygon: 2D polygon representation of the molecule.
     :ivar refl_sym: Reflection symmetry.
     :ivar rot_sym: Rotation symmetry.
     :ivar rot_cnt: Rotation count (before accounting for reflection/rotation symmetry).
+    :ivar polygon: 2D polygon representation of the molecule.
     :ivar settings: Function input of the molecule. Defaults to an empty dictionary.
     """
 
     index: NonNegativeInt
     label: str
     function_name: str
-    polygon: Polygon
     refl_sym: bool
     rot_sym: NonNegativeInt
     rot_cnt: PositiveInt
+    polygon: PydanticPolygon
     settings: dict[str, float | int | str | list[str] | None] = field(default_factory=dict)
 
 pydantic.dataclasses.rebuild_dataclass(MoleculeParameters)
@@ -146,13 +188,22 @@ class SurfaceParameters:
     :ivar lattice_type: Surface lattice type.
     :ivar site_count: Site count of the surface.
     :ivar lattice_a: Lattice spacing of the surface.
-    :ivar seed: Seed int (or None) of the surface.
     """
 
     lattice_type: Literal["hexagonal", "triangular", "honeycomb", "square"]
     site_count: PositiveInt
     lattice_a: PositiveFloat
-    seed: NonNegativeInt | None
+
+@pydantic.dataclasses.dataclass(slots=True, frozen=True)
+class MiscParameters:
+    """Miscellaneous parameters dataclass.
+
+    :ivar seed: RNG seed.
+    :ivar timestep_limit: Maximum allowed step count of the simulation.
+    """
+
+    seed: NonNegativeInt | None = None
+    timestep_limit: NonNegativeInt | None = None
 
 
 class ZoomableSvgWidget(QSvgWidget):
@@ -291,7 +342,7 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
 
         return super().__new__(cls, name, bases, attrs)
 
-    def __call__(cls: type[Self], *args: P.args, **kwargs: P.kwargs) -> T_qobj:
+    def __call__(cls: type[Self], *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
         """Instantiate the class and auto-initialise its fields.
 
         :param args: Positional arguments.
@@ -361,6 +412,9 @@ class AdsorpyGUI(QMainWindow):
         self.state = AppState()
         """Shared application runtime cache synchronised across all view frames."""
 
+        self._settings = QSettings("adsorpy", type(self).__name__)
+        """Persistent platform configuration handle cached between user runtime sessions."""
+
         # Delegate initialisation to helper workflows
         self._init_menu_bar()
         self._init_tabs()
@@ -379,9 +433,11 @@ class AdsorpyGUI(QMainWindow):
 
         self._open_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentOpen), "Open…", self)
         """Action trigger to parse a serialized system JSON file from disk."""
+        self._open_action.triggered.connect(self._load_settings_json)
 
         self._save_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave), "Save", self)
         """Action trigger to serialize current system conditions to disk."""
+        self._save_action.triggered.connect(self._save_settings_json)
 
         self._exit_action = QAction(QIcon("assets/door-open-out.png"), "Exit", self)
         """Action trigger to safely kill background workers and close window frames."""
@@ -432,6 +488,105 @@ class AdsorpyGUI(QMainWindow):
 
         self.setCentralWidget(self.tabs)
 
+    def _save_settings_json(self) -> None:
+        """Save settings to JSON file."""
+        # Validate seed
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Settings",
+            self._fetch_setting("last_visited_directory", default=""),
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        seed_text = self.state.seed_input.text().strip()
+        step_limit_text = self.state.step_limit  # Or wherever your limit is stored
+        # Convert empty fields to None, or parse them to integers
+        seed_val = int(seed_text) if seed_text else None
+        step_limit_val = int(step_limit_text) if step_limit_text else None
+        misc_settings = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
+        surf_settings: SurfaceParameters = self.state.surface_params
+        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
+
+        misc_adapter = TypeAdapter(MiscParameters)
+        surf_adapter = TypeAdapter(SurfaceParameters)
+        mol_adapter = TypeAdapter(list[MoleculeParameters])
+
+        misc_dump = misc_adapter.dump_python(misc_settings)
+        surf_dump = surf_adapter.dump_python(surf_settings)
+        mol_dump = mol_adapter.dump_python(molecule_settings)
+
+        combined_data = {
+            "adsorpy_version": __version__,
+            "miscellaneous_parameters": misc_dump,
+            "surface_parameters": surf_dump,
+            "molecule_parameters": mol_dump,
+        }
+
+        with Path(file_path).open("w", encoding="utf-8") as f:
+            json.dump(combined_data, f, indent=4)
+
+        QMessageBox.information(
+            self, "Save Successful", "Your simulation configuration settings have been successfully saved!",
+        )
+
+    def _load_settings_json(self) -> None:
+        """Load, validate, and version-check simulation settings profiles."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Settings",
+            self._fetch_setting("last_visited_directory", default=""),
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return  # User cancelled the file selection dialogue
+
+        with Path(file_path).open("rb") as f:
+            json_bytes = f.read()
+        try:
+            raw_structure = TypeAdapter(dict).validate_json(json_bytes)
+
+            misc_adapter = TypeAdapter(MiscParameters)
+            surf_adapter = TypeAdapter(SurfaceParameters)
+            mol_adapter = TypeAdapter(list[MoleculeParameters])
+
+            # Validate and re-hydrate fields directly into application state
+            self.state.misc_params = misc_adapter.validate_python(raw_structure["miscellaneous_parameters"])
+            self.state.surface_params = surf_adapter.validate_python(raw_structure["surface_parameters"])
+            self.state.molecule_param_list = mol_adapter.validate_python(raw_structure["molecule_parameters"])
+
+            # Synchronise GUI with the newly loaded state
+            self._update_gui_fields_from_state()
+
+            # self.log("Settings successfully loaded and validated.")
+
+        except (KeyError, ValidationError) as e:
+            QMessageBox.critical(
+                self,
+                "Error Loading File",
+                f"Failed to parse settings file. Structure or type constraints were broken:\n{e}",
+            )
+
+    def _update_gui_fields_from_state(self) -> None:
+        """Populate GUI input elements with current state values."""
+        # Update Miscellaneous Inputs
+        misc = self.state.misc_params
+        # Turn None into empty strings so fields look blank if unconfigured
+        self.state.seed_input.setText(str(misc.seed) if misc.seed is not None else "")
+        self.state.step_limit.setText(str(misc.timestep_limit) if misc.timestep_limit is not None else "")
+
+    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type = type(default) if return_type is None else return_type
+        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
+
     @override  # This decorator is used to indicate a method overrides a method of the base class.
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Trigger automatically whenever the window size changes.
@@ -462,18 +617,34 @@ class GeneralSettings(QWidget):
         """
         super().__init__()
         self.state = state
-        """Shared application state cache container."""
 
         # Run UI Initialization steps
         self._init_validators()
 
-        main_layout = QHBoxLayout()
+        # Extract widgets/layouts from your initialization helpers
+        # (Assuming _init_controls sets up fields like seed, step limits, etc.)
         controls_layout = self._init_controls()
         svg_widget = self._init_svg_view()
 
-        main_layout.addLayout(controls_layout)
-        main_layout.addWidget(svg_widget, stretch=1)
-        self.setLayout(main_layout)
+        # Create the Left Panel: Wrap your controls layout inside a clean container QWidget
+        left_panel = QWidget()
+        left_panel.setLayout(controls_layout)
+
+        # Create the Center Panel: Wrap your SVG view in a QScrollArea for responsiveness
+        center_scroll = QScrollArea()
+        center_scroll.setWidgetResizable(True)
+        center_scroll.setWidget(svg_widget)
+        # Clean up scroll area borders to integrate smoothly with the splitter look
+        # center_scroll.setFrameShape(QScrollArea.FrameShape.NoFrame)
+
+        # Create the Right Panel: Create a panel for listing generated arrays/molecules
+        # (If this tab doesn't have list elements yet, pass an empty spacer widget for now)
+        # right_panel = self._init_management_panel() # Or: right_panel = QWidget()
+        # right_panel = QWidget()
+
+        # Unify sub-panels using your exact splitter framework layout method
+        self._assemble_layout(left=left_panel, center=center_scroll)
+
 
     def _init_validators(self) -> None:
         """Instantiate validation models for text constraint processing."""
@@ -526,11 +697,25 @@ class GeneralSettings(QWidget):
 
         :return: An isolated vector viewport container canvas.
         """
-        self.svg_widget = QSvgWidget()
+        self.svg_widget = ZoomableSvgWidget()
         """Custom render context displaying loaded vector data files."""
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
         return self.svg_widget
+
+    def _assemble_layout(self, left: QWidget, center: QScrollArea) -> None:
+        """Unify sub-panels inside the scalable horizontal splitter framework."""
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        self.main_splitter.addWidget(left)
+        self.main_splitter.addWidget(center)
+
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 3)
+
+        root_layout = QVBoxLayout(self)
+        root_layout.addWidget(self.main_splitter)
+        self.setLayout(root_layout)  # Formally registers root_layout to this QWidget
 
     def on_step_limit_changed(self, value: str) -> None:
         """Update the step limit cache within the shared state instance.
@@ -543,13 +728,7 @@ class GeneralSettings(QWidget):
         """Run the simulation."""
         # Validate seed
         seed_text = self.state.seed_input.text().strip()
-        seed: int | None = None
-        if seed_text:
-            if not seed_text.isnumeric() or int(seed_text) < 0:
-                self.error("Seed must be a positive integer")
-                return
-            seed = int(seed_text)
-
+        step_limit_text = self.state.step_limit  # Or wherever your limit is stored
 
         def get_run_sim_default(name: str) -> str | int | float | None:
             """Get the default value of a function.
@@ -566,55 +745,85 @@ class GeneralSettings(QWidget):
                 raise ValueError(errmsg)
             return param.default
 
+        # Convert empty fields to None, or parse them to integers
+        seed_val = int(seed_text) if seed_text else None
+        step_limit_val = int(step_limit_text) if step_limit_text else get_run_sim_default("timestep_limit")
+
+        # Instantiate the Pydantic dataclass
+        # Pydantic will automatically run its NonNegativeInt checks
+        try:
+            misc_params = MiscParameters(seed=seed_val, timestep_limit=cast("int", step_limit_val))
+        except ValidationError as e:
+            # Pydantic captures negative numbers or bad types automatically
+            errmsg =  f"Invalid parameters provided:\n{e}"
+            self.error(errmsg)
+            return
+
+        misc_adapter = TypeAdapter(MiscParameters)
+        misc_params = misc_adapter.dump_python(misc_params)
+
+
+
+
         surf_settings: SurfaceParameters = self.state.surface_params
         surf_adapter = TypeAdapter(SurfaceParameters)
 
         molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
         mol_adapter = TypeAdapter(MoleculeParameters)
 
-        dict_of_lists = defaultdict(list)
-        molecule_settings = {} if molecule_settings is None else molecule_settings
+        defaultdict_of_lists = defaultdict(list)  # Automatically initialises missing keys to an empty list [].
+        molecule_settings = [] if molecule_settings is None else molecule_settings
         # Pivot the data
         for dict_in_list in molecule_settings:
             checked_dict = mol_adapter.dump_python(dict_in_list)
             for key, value in checked_dict.items():
-                dict_of_lists[key].append(value)
+                defaultdict_of_lists[key].append(value)
+        key_to_fix = "polygon"
+        if key_to_fix in defaultdict_of_lists:
+            defaultdict_of_lists[key_to_fix] = [validate_polygon(geo_item) for geo_item in defaultdict_of_lists[key_to_fix]]
 
-        def filter_dict_for_func(data_dict):
+        def replace_keys(dict_with_old_keys: defaultdict[str, list[Polygon] | list[int]]) -> dict[str, list[Polygon] | list[int]]:
+            """Replace the keys of parameters whose name differs between the GUI and the run_simulation() function.
+
+            :param dict_with_old_keys: Dictionary with old keys.
+            :returns: Dictionary with new keys.
+            """
+            old_keys: list[str] = ["polygon", "refl_sym", "rot_sym", "rot_cnt"]
+            new_keys: list[str] = ["molecules_list", "reflection_symmetries", "rotation_symmetries", "rotation_counts"]
+            mapping: dict[str, str] = dict(zip(old_keys, new_keys, strict=True))
+            dict_with_new_keys = dict_with_old_keys.copy()
+
+            for old, new in mapping.items():
+                if old in dict_with_new_keys:
+                    dict_with_new_keys[new] = dict_with_new_keys.pop(old)
+
+            return dict_with_new_keys
+
+        def filter_dict_for_func(data_dict: dict[str, Any], filter_func: Callable[..., Any] = run_simulation) -> dict[str, Any]:
+            """Filter the data_dict by the run_simulation function parameters.
+
+            :param data_dict: data_dict to filter.
+            :param filter_func: Function whose parameters are used as a filter.
+            :returns: Filtered data_dict.
+            """
             # Get the names of the function's parameters
-            sig = inspect.signature(run_simulation)
+            sig = inspect.signature(filter_func)
             valid_keys = sig.parameters.keys()
-
 
             # Filter the dictionary using a comprehension
             return {k: v for k, v in data_dict.items() if k in valid_keys}
 
-        old_keys: list[str] = ["polygon", "refl_sym", "rot_sym", "rot_cnt"]
-        new_keys: list[str] = ["molecules_list", "reflection_symmetries", "rotation_symmetries", "rotation_counts"]
 
-        mapping = dict(zip(old_keys, new_keys, strict=True))
-
-
-        for old, new in mapping.items():
-            if old in dict_of_lists:
-                dict_of_lists[new] = dict_of_lists.pop(old)
-
-
+        dict_of_lists = replace_keys(defaultdict_of_lists)
         dict_of_lists = filter_dict_for_func(dict_of_lists)
-        # Validate step limit
-        step_limit_val: int | None = self.state.step_limit
-
-        good_limit: bool = step_limit_val is not None and step_limit_val >= 0
-
-        step_limit: int = int(step_limit_val) if good_limit else cast("int", get_run_sim_default("timestep_limit"))
 
         surface_settings: dict[str, int | float | str] = surf_adapter.dump_python(surf_settings)
         surface_settings = {} if surface_settings is None else surface_settings
 
         # Run simulation
         output = run_simulation(
+            **misc_params,
             **surface_settings,
-            timestep_limit=step_limit,
             **dict_of_lists,
         )[-1]
 
@@ -626,17 +835,6 @@ class GeneralSettings(QWidget):
 
         self.svg_widget.load(svg_data)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-
-    def _save_settings_json(self) -> None:
-        """Save settings to JSON file."""
-        surf_settings: SurfaceParameters = self.state.surface_params
-        surf_adapter = TypeAdapter(SurfaceParameters)
-
-        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
-        mol_adapter = TypeAdapter(MoleculeParameters)
-
-    def _load_settings_json(self) -> None:
-        """Load settings from JSON file."""
 
     def error(self, msg: str) -> None:
         """Handle the errors.
@@ -654,7 +852,7 @@ class MoleculeGeneration(QWidget):
     """
 
     def __init__(self, state: AppState) -> None:
-        """Initialize settings storage engines and compile separate view columns.
+        """Initialise settings storage engines and compile separate view columns.
 
         :param state: AppState instance for communication between tabs.
         """
@@ -739,12 +937,12 @@ class MoleculeGeneration(QWidget):
 
         return container
 
-    def _discover_molecule_generators(self) -> dict[str, Callable[[P.kwargs], Polygon]]:
+    def _discover_molecule_generators(self) -> dict[str, Callable[[P_mol.kwargs], Polygon]]:
         """Isolate reflection logic filtering usable library structural definitions.
 
         :return: A sorted lookup dict mapping valid function names to execution references.
         """
-        temp_generators: dict[str, Callable[[P.kwargs], Polygon]] = {
+        temp_generators: dict[str, Callable[[P_mol.kwargs], Polygon]] = {
             name: func
             for name, func in molecule_lib.__dict__.items()
             if inspect.isfunction(func)
@@ -1357,6 +1555,7 @@ class SurfaceGeneration(QWidget):
 
         # Assemble components directly inside the splitter framework
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        """Main splitter of the window."""
         self.main_splitter.addWidget(left_container)
         self.main_splitter.addWidget(scroll_area)
 
