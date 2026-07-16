@@ -13,12 +13,17 @@ import textwrap
 import webbrowser
 from collections import defaultdict
 from dataclasses import dataclass, field, asdict
+if sys.version_info >= (3, 11):
+    from datetime import UTC, datetime  # For datetime stamping and seed generation.
+else:
+    from datetime import datetime
 
 import numpy as np
-from numpy.random import Generator
+from numpy.random import Generator, PCG64DXSM
 from shapely import Polygon, from_geojson, to_geojson
 from itertools import count
 from pathlib import Path
+import dask
 from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, ParamSpec, Self, TypeVar, cast, override, get_origin, \
     Annotated
 
@@ -76,7 +81,7 @@ from shapely.geometry import mapping
 
 from adsorpy import __version__
 from adsorpy.randomsequentialadsorption import Simulator
-from adsorpy.types import DistArray, IdxArray
+from adsorpy.types import DistArray, IdxArray, CoordPair
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
@@ -187,6 +192,7 @@ class MoleculeParameters:
 
 pydantic.dataclasses.rebuild_dataclass(MoleculeParameters)
 
+
 @pydantic.dataclasses.dataclass(slots=True, frozen=True)
 class SurfaceParameters:
     """Surface parameters dataclass.
@@ -199,6 +205,7 @@ class SurfaceParameters:
     lattice_type: Literal["hexagonal", "triangular", "honeycomb", "square"]
     site_count: PositiveInt
     lattice_a: PositiveFloat
+
 
 @pydantic.dataclasses.dataclass(slots=True, frozen=True)
 class MiscParameters:
@@ -311,7 +318,10 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
         :param attrs: The class attributes.
         :return: The AutoState class instance.
         """
-        fields = attrs.get("fields", {})
+        annotations = attrs.get("__annotations__", {})
+
+        # 2. Filter out 'fields' or any other ClassVar/private attributes
+        fields = {k: v for k, v in annotations.items() if k != "fields" and not k.startswith("_")}
 
         for field_name, field_type in fields.items():
             signal_name = f"{field_name}Changed"
@@ -348,7 +358,10 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
 
             attrs[field_name] = property(getter, setter)
 
-        return super().__new__(cls, name, bases, attrs)
+        new_class = super().__new__(cls, name, bases, attrs)
+        new_class.fields = fields
+
+        return new_class
 
     def __call__(cls: type[Self], *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
         """Instantiate the class and auto-initialise its fields.
@@ -379,7 +392,8 @@ class AppState(QObject, metaclass=AutoStateMeta):
     :ivar misc_params: Miscellaneous parameters.
     :ivar molecule_param_list: Settings of the molecule(s).
     :ivar surface_params: Settings of the surface.
-    :cvar fields: Dictionary mapping state field names to their expected types.
+    :ivar coverages: Coverage of simulation results.
+    :ivar fraction_of_covered_area: Fraction of covered area of simulation results.
     """
 
     seed_input: QLineEdit
@@ -387,14 +401,8 @@ class AppState(QObject, metaclass=AutoStateMeta):
     misc_params: MiscParameters
     molecule_param_list: list[MoleculeParameters]
     surface_params: SurfaceParameters
-
-    fields: ClassVar[dict[str, type]] = {
-        "seed_input": QLineEdit,
-        "step_limit": QSpinBox,
-        "misc_params": MiscParameters,
-        "molecule_param_list": list[MoleculeParameters],
-        "surface_params": SurfaceParameters,
-    }
+    coverages: tuple[DistArray]
+    fraction_of_covered_area: tuple[DistArray]
 
 
 class AdsorpyGUI(QMainWindow):
@@ -491,6 +499,7 @@ class AdsorpyGUI(QMainWindow):
         self.tabs.addTab(GeneralSettings(self.state), "General")
         self.tabs.addTab(SurfaceGeneration(self.state), "Surface")
         self.tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
+        self.tabs.addTab(ResultsWidget(self.state), "Results")
 
         self.setCentralWidget(self.tabs)
 
@@ -507,7 +516,7 @@ class AdsorpyGUI(QMainWindow):
             return
 
         seed_text = self.state.seed_input.text().strip()
-        step_limit_val = self.state.step_limit.value()  # Or wherever your limit is stored
+        step_limit_val = self.state.step_limit.value()
         # Convert empty fields to None, or parse them to integers
         seed_val = int(seed_text) if seed_text else None
         misc_settings = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
@@ -644,7 +653,7 @@ class GeneralSettings(QWidget):
         # Run UI Initialization steps
         self._init_validators()
 
-        # Extract widgets/layouts from your initialisation helpers
+        # Extract widgets/layouts from the initialisation helpers
         # (Assuming _init_controls sets up fields like seed, step limits, etc.)
         controls_layout = self._init_controls()
         svg_widget = self._init_svg_view()
@@ -668,7 +677,7 @@ class GeneralSettings(QWidget):
         # right_panel = self._init_management_panel() # Or: right_panel = QWidget()
         # right_panel = QWidget()
 
-        # Unify sub-panels using your exact splitter framework layout method
+        # Unify sub-panels using exact splitter framework layout method
         self._assemble_layout(left=left_panel, center=centre_scroll)
 
     def _init_validators(self) -> None:
@@ -738,15 +747,16 @@ class GeneralSettings(QWidget):
         return layout
 
     def _init_feedback_textboxes(self) -> QGridLayout:
-        """Provide checkboxes to show the user whether data has been loaded."""
+        """Provide text to show the user whether data has been loaded."""
         grid_layout = QGridLayout()
         self.initiated_surface_label = QLabel("Surface:")
+        """Surface label."""
         self.initiated_surface_textbox = QLabel("Default.")
-        # self.initiated_surface_textbox.setReadOnly(True)
-
+        """What kind of surface has been loaded."""
         self.initiated_molecules_label = QLabel("Molecule(s):")
+        """Molecule label."""
         self.initiated_molecules_textbox = QLabel("Default.")
-        # self.initiated_molecules_textbox.setReadOnly(True)
+        """How many molecules has been loaded."""
 
         grid_layout.addWidget(self.initiated_surface_label, 0, 0)
         grid_layout.addWidget(self.initiated_surface_textbox, 0, 1)
@@ -765,7 +775,7 @@ class GeneralSettings(QWidget):
     def _on_molecules_changed(self, mol_list: list[MoleculeParameters] | None) -> None:
         """Fire instantly when molecule_param_list changes in another tab."""
         if mol_list:  # Checks if list exists and is not empty
-            count = len(mol_list)
+            count: int = len(mol_list)
             # Create a summary string from the list items if desired
             self.initiated_molecules_textbox.setText(f"{count} molecule{'s'*bool(count - 1)} defined by user.")
         else:
@@ -785,6 +795,7 @@ class GeneralSettings(QWidget):
     def _assemble_layout(self, left: QWidget, center: QScrollArea) -> None:
         """Unify sub-panels inside the scalable horizontal splitter framework."""
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        """Main splitter to dynamically divide the window."""
 
         self.main_splitter.addWidget(left)
         self.main_splitter.addWidget(center)
@@ -813,26 +824,27 @@ class GeneralSettings(QWidget):
             raise ValueError(errmsg)
         return param.default
 
-    def run_simulation(self) -> None:
-        """Run the simulation."""
-        self.run_button.setEnabled(False)
-        self.run_button.setText("Computing...")
-        # Validate seed
+    def _prepare_simulation_inputs(self) -> dict[str, Any] | None:
+        """Validate UI components and format into a unified dictionary for the simulation engine.
+
+        Returns None if validation fails.
+        """
         seed_text = self.state.seed_input.text().strip()
         step_limit_val = self.state.step_limit.value()
 
-        # Convert empty fields to None, or parse them to integers
-        seed_val = int(seed_text) if seed_text else None
+        # Generate seed from current datetime in microseconds if field is empty
+        if seed_text:
+            seed_val = int(seed_text)
+        else:
+            how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
+            seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
 
-        # Instantiate the Pydantic dataclass
-        # Pydantic will automatically run its NonNegativeInt checks
         try:
             misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
         except ValidationError as e:
-            # Pydantic captures negative numbers or bad types automatically
-            errmsg =  f"Invalid parameters provided:\n{e}"
+            errmsg = f"Invalid parameters provided:\n{e}"
             self.error(errmsg)
-            return
+            return None
 
         misc_adapter = TypeAdapter(MiscParameters)
         misc_params = misc_adapter.dump_python(misc_params)
@@ -843,25 +855,23 @@ class GeneralSettings(QWidget):
         molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
         mol_adapter = TypeAdapter(MoleculeParameters)
 
-        defaultdict_of_lists = defaultdict(list)  # Automatically initialises missing keys to an empty list [].
+        defaultdict_of_lists = defaultdict(list)
         molecule_settings = [] if molecule_settings is None else molecule_settings
-        # Pivot the data
+
         for dict_in_list in molecule_settings:
             checked_dict = mol_adapter.dump_python(dict_in_list)
             for key, value in checked_dict.items():
                 defaultdict_of_lists[key].append(value)
+
         key_to_fix = "polygon"
         if key_to_fix in defaultdict_of_lists:
             defaultdict_of_lists[key_to_fix] = [
                 validate_polygon(geo_item) for geo_item in defaultdict_of_lists[key_to_fix]
             ]
 
-        def replace_keys(dict_with_old_keys: defaultdict[str, list[Polygon] | list[int]]) -> dict[str, list[Polygon] | list[int]]:
-            """Replace the keys of parameters whose name differs between the GUI and the run_simulation() function.
-
-            :param dict_with_old_keys: Dictionary with old keys.
-            :returns: Dictionary with new keys.
-            """
+        def replace_keys(
+            dict_with_old_keys: defaultdict[str, list[Polygon] | list[int]],
+        ) -> dict[str, list[Polygon] | list[int]]:
             old_keys: list[str] = ["polygon", "refl_sym", "rot_sym", "rot_cnt"]
             new_keys: list[str] = ["molecules_list", "reflection_symmetries", "rotation_symmetries", "rotation_counts"]
             mapping: dict[str, str] = dict(zip(old_keys, new_keys, strict=True))
@@ -873,20 +883,12 @@ class GeneralSettings(QWidget):
 
             return dict_with_new_keys
 
-        def filter_dict_for_func(data_dict: dict[str, Any], filter_func: Callable[..., Any] = run_simulation) -> dict[str, Any]:
-            """Filter the data_dict by the run_simulation function parameters.
-
-            :param data_dict: data_dict to filter.
-            :param filter_func: Function whose parameters are used as a filter.
-            :returns: Filtered data_dict.
-            """
-            # Get the names of the function's parameters
+        def filter_dict_for_func(
+            data_dict: dict[str, Any], filter_func: Callable[..., Any] = run_simulation
+        ) -> dict[str, Any]:
             sig = inspect.signature(filter_func)
             valid_keys = sig.parameters.keys()
-
-            # Filter the dictionary using a comprehension
             return {k: v for k, v in data_dict.items() if k in valid_keys}
-
 
         dict_of_lists = replace_keys(defaultdict_of_lists)
         dict_of_lists = filter_dict_for_func(dict_of_lists)
@@ -894,26 +896,61 @@ class GeneralSettings(QWidget):
         surface_settings: dict[str, int | float | str] = surf_adapter.dump_python(surf_settings)
         surface_settings = {} if surface_settings is None else surface_settings
 
-        # Run simulation
-        # output = run_simulation(
-        #     **misc_params,
-        #     **surface_settings,
-        #     **dict_of_lists,
-        # )[-1]
+        return {**misc_params, **surface_settings, **dict_of_lists}
 
-        task = BackgroundTask(run_simulation, **misc_params, **surface_settings, **dict_of_lists)
+    def run_simulation(self) -> None:
+        """Run exactly one instance of the simulation engine."""
+        inputs = self._prepare_simulation_inputs()
+        if inputs is None:
+            return
+
+        self.run_button.setEnabled(False)
+        self.run_button.setText("Computing...")
+
+        task = BackgroundTask(run_simulation, **inputs)
         task.signals.finished.connect(self._on_simulation_complete)
         task.signals.error.connect(self._on_simulation_error)
         QThreadPool.globalInstance().start(task)
 
-    def _on_simulation_complete(self, simulation_outputs: tuple[list[int], DistArray, int | Generator, tuple[IdxArray, ...], IdxArray, Simulator]) -> None:
+    def run_batch_simulation(self, n_instances: int) -> None:
+        """Run N parallel instances using Dask with safe child-spawned seeds."""
+        inputs = self._prepare_simulation_inputs()
+        if inputs is None:
+            return
+
+        self.run_button.setEnabled(False)
+        self.run_button.setText(f"Batch Processing ({n_instances})...")
+
+        # Inner worker function to safely build the delayed dask graph in background thread
+        def execute_dask_batch(base_inputs: dict[str, Any], total_runs: int) -> list[Any]:
+
+            tasks = []
+            master_seed = base_inputs.get("seed", 42)
+
+            # Use SeedSequence to eliminate statistical collision/leakage across workers
+            ss = np.random.SeedSequence(master_seed)
+            child_seeds = ss.spawn(total_runs)
+
+            for i in range(total_runs):
+                run_inputs = base_inputs.copy()
+                # Draw a distinct 32-bit integer out of the secure child stream
+                run_inputs["seed"] = int(child_seeds[i].generate_state(1)[0])
+                tasks.append(dask.delayed(run_simulation)(**run_inputs))
+
+            return list(dask.compute(*tasks))
+
+        task = BackgroundTask(execute_dask_batch, base_inputs=inputs, total_runs=n_instances)
+        task.signals.finished.connect(self._on_batch_simulation_complete)
+        task.signals.error.connect(self._on_simulation_error)
+        QThreadPool.globalInstance().start(task)
+
+    def _on_simulation_complete(
+        self,
+        simulation_outputs: tuple[list[int], DistArray, int | Generator, tuple[IdxArray, ...], IdxArray, Simulator],
+    ) -> None:
         """Run lightweight plotting pipeline back on the UI thread."""
         try:
-            # Unpack the multiple returns you need from the function output matrix
             output = simulation_outputs[-1]
-            molecule_counts: list[int] = simulation_outputs[0]
-            # metric_one = float(simulation_outputs[0])  # Replace 0 with your target index
-            # metric_two = float(simulation_outputs[1])  # Replace 1 with your target index
 
             # Generate SVG elements in memory
             svg_buffer = io.BytesIO()
@@ -926,13 +963,10 @@ class GeneralSettings(QWidget):
             self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
             # Populate numeric output displays
-            self.coverage_label.setText(f"Coverage: {np.sum(molecule_counts)/output.surf.all_site_count:.4f}")
+            self.coverage_label.setText(f"Coverage: {np.sum(output.coverage):.4f}")
             self.coverage_label.setToolTip("""Fraction of surface sites consumed/covered by molecules.""")
 
-            frac_of_covered_area = 0.
-            for (molcnt, molinfo) in zip(molecule_counts, output.molgroups, strict=True):
-                frac_of_covered_area += molcnt * molinfo.area
-            frac_of_covered_area /= output.surf.area
+            frac_of_covered_area = np.sum(output.fraction_of_covered_area)
 
             self.covered_area_label.setText(f"Fraction of covered area: {frac_of_covered_area:.4f}")
             self.covered_area_label.setToolTip("""Fraction of surface area covered by molecules.""")
@@ -941,7 +975,25 @@ class GeneralSettings(QWidget):
         except (ValueError, TypeError, ValidationError) as e:
             self.error(f"Error preparing visual plot data:\n{e}")
         finally:
-            # Always unlock your button when processing completes
+            # Always unlock button when processing completes
+            self.run_button.setEnabled(True)
+            self.run_button.setText("Run Simulation")
+
+    def _on_batch_simulation_complete(self, batch_outputs: list[tuple]) -> None:
+        """Process multiple parallel output tuples sent back from the dask pool cluster."""
+        try:
+            if not batch_outputs:
+                return
+
+            # Preview the final execution item onto the interactive GUI workspace panel
+            self._on_simulation_complete(batch_outputs[-1])
+
+            # Process global array statistics here if desired
+            # e.g., self.state.coverages = [run[-1].coverage for run in batch_outputs]
+
+        except Exception as e:
+            self.error(f"Error processing compiled batch metrics:\n{e}")
+        finally:
             self.run_button.setEnabled(True)
             self.run_button.setText("Run Simulation")
 
@@ -950,7 +1002,6 @@ class GeneralSettings(QWidget):
         self.error(f"Simulation engine error:\n{exception}")
         self.run_button.setEnabled(True)
         self.run_button.setText("Run Simulation")
-
 
     def error(self, msg: str) -> None:
         """Handle the errors.
@@ -1535,6 +1586,7 @@ class MoleculeGeneration(QWidget):
 
         del self.mol_params_list[idx]
         self.molecule_list_widget.takeItem(idx)
+        self.state.molecule_param_list = self.mol_params_list
 
         self.output_label.setText("Molecule deleted")
         self.molecule_list_widget.clearSelection()
@@ -1861,8 +1913,15 @@ class ResultsWidget(QWidget):
         """Initialise the ResultsWidget."""
         super().__init__()
 
+
+
 class BackgroundTaskSignals(QObject):
-    """Signals for the generic background worker."""
+    """Signals for the generic background worker.
+
+    cvar finished: Emits the raw output data package.
+    cvar error: Emits any exception caught during execution.
+    """
+
     finished = Signal(object) # Emits the raw output data package
     error = Signal(Exception)  # Emits any exception caught during execution
 
@@ -1923,7 +1982,6 @@ class ReorderableListWidget(QListWidget):
             return
 
         old_row = self.row(moving_item)
-        # item_text = moving_item.text()
 
         # QListWidget handles visual reordering
         super().dropEvent(event)
@@ -1945,10 +2003,16 @@ def _make_horizontal_line() -> QFrame:
     hline.setFrameShadow(QFrame.Shadow.Sunken)
     return hline
 
-if __name__ == "__main__":
+def main() -> int:
+    """Launch the adsorpy GUI.
+
+    :returns: Return code.
+    """
     app = QApplication(sys.argv)
     gui = AdsorpyGUI()
     gui.resize(1600, 900)
-    # app.styleHints().setColorScheme(Qt.ColorScheme.Dark)
     gui.show()
-    sys.exit(app.exec())
+    return app.exec()
+
+if __name__ == "__main__":
+    sys.exit(main())

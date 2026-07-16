@@ -286,12 +286,30 @@ def _rotation_matrix(roll: float | np.double, pitch: float | np.double, yaw: flo
 
     return rot_z @ rot_y @ rot_x
 
-
 class MoleculeViewer(QDialog):
     """Molecule spatial orientation and structural viewport configuration dashboard.
 
     Manages dynamic 3D rotational coordinate matrices (roll, pitch, yaw) for complex
     molecular clusters and applies linear structural spatial clipping filters.
+
+    :ivar _settings: Persistent configuration handle cached across software operational cycles.
+    :ivar atomkeys: Active slice mappings capturing atomic parameters matching current view states.
+    :ivar atompos: Active slice mappings capturing 3D coordinates matching current view states.
+    :ivar colours: Active slice mappings capturing style color tokens matching current view states.
+    :ivar lattice: Lattice physical constant constraint baseline scaling factor. Defaults to 1.0.
+    :ivar show_bonds: State indicator controlling rendering toggles for chemical covalent bounds.
+    :ivar atom_toggles: Active reference mapping linking atomic symbol labels to operational checkboxes.
+    :ivar orig_atomkeys: Immutable baseline array tracking atomic keys loaded from source files.
+    :ivar orig_atompos: Immutable matrix holding coordinates across 3D vector parameters.
+    :ivar orig_colours: Immutable map listing style color tokens for individual elements.
+    :ivar roll: Current rotation angle around the longitudinal axis.
+    :ivar pitch: Current elevation transformation offset angle.
+    :ivar yaw: Current horizontal rotation transformation offset angle.
+    :ivar x_offset: Baseline translation margin parallel to the abscissa.
+    :ivar y_offset: Baseline translation margin parallel to the ordinate.
+    :ivar min_z: Bounding minimum depth coordinate calculated from raw coordinates.
+    :ivar max_z: Bounding maximum depth coordinate calculated from raw coordinates.
+    :ivar z_cutoff: Active height clipping plane value used to filter hidden elements.
     """
 
     def __init__(
@@ -310,7 +328,6 @@ class MoleculeViewer(QDialog):
         super().__init__()
 
         self._settings = QSettings("adsorpy", type(self).__name__)
-        """Persistent configuration handle cached across software operational cycles."""
 
         # Step 1: Initialise raw variables and data placeholders via structural helper
         self.atomkeys, self.atompos, self.colours = self._init_data(
@@ -323,16 +340,10 @@ class MoleculeViewer(QDialog):
             init_x_offset,
             init_y_offset,
         )
-        """Active slice mappings capturing parameters matching current view states."""
 
         self.lattice: float = lattice if lattice is not None else 1.0
-        """Lattice physical constant constraint baseline scaling factor. Defaults to 1.0."""
-
         self.show_bonds: bool = False
-        """State indicator controlling rendering toggles for chemical covalent bounds."""
-
         self.atom_toggles: dict[str, QCheckBox] = {}
-        """Active reference mapping linking atomic symbol labels to operational checkboxes."""
 
         # Step 2: Build the structural layout tree
         main_vert_layout = QVBoxLayout()
@@ -397,13 +408,8 @@ class MoleculeViewer(QDialog):
         :return: Tuple containing configured baseline instance data arrays.
         """
         self.orig_atomkeys = np.array(atomkeys, dtype=np.str_)
-        """Immutable baseline array tracking atomic keys loaded from source files."""
-
         self.orig_atompos = np.array(atompos, dtype=np.double)
-        """Immutable matrix holding coordinates across 3D vector parameters."""
-
         self.orig_colours = np.array(colours, dtype=np.str_)
-        """Immutable map listing style color tokens for individual elements."""
 
         # Establish working instance clones to avoid operational mutations
         temp_atomkeys = self.orig_atomkeys.copy()
@@ -632,7 +638,7 @@ class MoleculeViewer(QDialog):
         self.bond_checkbox = QCheckBox("Show Atomic Bonds (visual guide)")
         self.bond_checkbox.setChecked(self.show_bonds)
 
-        # Connect the native toggle signal directly to your slot method
+        # Connect the native toggle signal directly to the slot method
         self.bond_checkbox.toggled.connect(self.toggle_bonds)
 
         # Insert the checkbox into the provided layout panel
@@ -1035,7 +1041,7 @@ class MoleculeViewer(QDialog):
         # 2. Define standard, colour-coded unit directions: X (Red), Y (Green), Z (Blue)
         axes_3d = np.identity(3, dtype=float)
 
-        # 3. Rotate the basis vectors with the exact matrix your atoms use
+        # 3. Rotate the basis vectors with the exact matrix the atoms use
         rotated_axes = axes_3d @ rotations
 
         # Anchor point in the bottom-left quadrant area of Panel 4
