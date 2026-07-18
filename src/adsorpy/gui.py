@@ -7,39 +7,65 @@ from __future__ import annotations
 import inspect
 import io
 import json
+import multiprocessing
 import re
 import sys
 import textwrap
 import webbrowser
 from collections import defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+
+import matplotlib
+
 if sys.version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
 else:
     from datetime import datetime
 
-import numpy as np
-from numpy.random import Generator, PCG64DXSM
-from shapely import Polygon, from_geojson, to_geojson
 from itertools import count
 from pathlib import Path
-import dask
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Literal, ParamSpec, Self, TypeVar, cast, override, get_origin, \
-    Annotated
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    ParamSpec,
+    Self,
+    TypeVar,
+    cast,
+    get_origin,
+    override,
+)
 
+import dask
+import numpy as np
 import pydantic
+from dask.distributed import Client
+from numpy.random import PCG64DXSM
 from pydantic import (
+    BeforeValidator,
     ConfigDict,
     NonNegativeInt,
+    PlainSerializer,
     PositiveFloat,
     PositiveInt,
-    ValidationError,
     TypeAdapter,
-    BeforeValidator,
-    PlainSerializer,
+    ValidationError,
 )
-from PySide6.QtCore import Property, QObject, QRegularExpression, QSettings, Qt, Signal, Slot, QThread, QRunnable, \
-    QThreadPool
+from PySide6.QtCore import (
+    Property,
+    QObject,
+    QRegularExpression,
+    QRunnable,
+    QSettings,
+    Qt,
+    QThread,
+    QThreadPool,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import (
     QAction,
     QDoubleValidator,
@@ -77,11 +103,11 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shapely import Polygon, from_geojson, to_geojson
 from shapely.geometry import mapping
 
 from adsorpy import __version__
-from adsorpy.randomsequentialadsorption import Simulator
-from adsorpy.types import DistArray, IdxArray, CoordPair
+from adsorpy.types import CoordPair
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
@@ -91,7 +117,10 @@ T_co = TypeVar("T_co", bound=bool | int | str | float, covariant=True)
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from shapely import Polygon
+    from numpy.random import Generator
+
+    from adsorpy.randomsequentialadsorption import Simulator
+    from adsorpy.types import DistArray, IdxArray
 
     P = ParamSpec("P")
     P_mol = ParamSpec("P_mol", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
@@ -258,7 +287,7 @@ class ZoomableSvgWidget(QSvgWidget):
             old_size = self.size()
             new_size = old_size * scale
             min_scale: int = 100
-            max_scale: int = 5000
+            max_scale: int = 50000
 
             if min_scale < new_size.width() < max_scale:
                 mouse_pos_widget = event.position()
@@ -394,6 +423,7 @@ class AppState(QObject, metaclass=AutoStateMeta):
     :ivar surface_params: Settings of the surface.
     :ivar coverages: Coverage of simulation results.
     :ivar fraction_of_covered_area: Fraction of covered area of simulation results.
+    :ivar gap_size_distribution: Gap size distribution of simulation results.
     """
 
     seed_input: QLineEdit
@@ -403,6 +433,7 @@ class AppState(QObject, metaclass=AutoStateMeta):
     surface_params: SurfaceParameters
     coverages: tuple[DistArray]
     fraction_of_covered_area: tuple[DistArray]
+    gap_size_distribution: DistArray
 
 
 class AdsorpyGUI(QMainWindow):
@@ -742,6 +773,14 @@ class GeneralSettings(QWidget):
         """For more detailed results, see the Results tab."""
         layout.addWidget(self.more_information_redirect, alignment=Qt.AlignmentFlag.AlignTop)
 
+        self.export_results_button = QPushButton("Export Results")
+        """Button to export the results."""
+        self.export_results_button.clicked.connect(self.export_results)
+        layout.addWidget(self.export_results_button, alignment=Qt.AlignmentFlag.AlignTop)
+        self.bulk_run_button = QPushButton("Bulk Run")
+        self.bulk_run_button.clicked.connect(self.run_batch_simulation)
+        layout.addWidget(self.bulk_run_button, alignment=Qt.AlignmentFlag.AlignTop)
+
         layout.addStretch()
 
         return layout
@@ -912,8 +951,9 @@ class GeneralSettings(QWidget):
         task.signals.error.connect(self._on_simulation_error)
         QThreadPool.globalInstance().start(task)
 
-    def run_batch_simulation(self, n_instances: int) -> None:
+    def run_batch_simulation(self) -> None:
         """Run N parallel instances using Dask with safe child-spawned seeds."""
+        n_instances = 2
         inputs = self._prepare_simulation_inputs()
         if inputs is None:
             return
@@ -921,23 +961,33 @@ class GeneralSettings(QWidget):
         self.run_button.setEnabled(False)
         self.run_button.setText(f"Batch Processing ({n_instances})...")
 
-        # Inner worker function to safely build the delayed dask graph in background thread
         def execute_dask_batch(base_inputs: dict[str, Any], total_runs: int) -> list[Any]:
 
             tasks = []
-            master_seed = base_inputs.get("seed", 42)
+            master_seed: int = base_inputs.get("seed")
 
             # Use SeedSequence to eliminate statistical collision/leakage across workers
-            ss = np.random.SeedSequence(master_seed)
-            child_seeds = ss.spawn(total_runs)
+            child_seeds = np.random.SeedSequence(master_seed).spawn(total_runs)
 
-            for i in range(total_runs):
+            def wrap_run_func(**kwargs: P.kwargs) -> tuple[DistArray, DistArray, DistArray]:
+                output = run_simulation(**kwargs)[-1]
+                return output.coverage, output.fraction_of_covered_area, output.analyse_gap_size()
+
+            for ii in range(total_runs):
                 run_inputs = base_inputs.copy()
                 # Draw a distinct 32-bit integer out of the secure child stream
-                run_inputs["seed"] = int(child_seeds[i].generate_state(1)[0])
-                tasks.append(dask.delayed(run_simulation)(**run_inputs))
+                # Cast explicitly to an int for clean cross-process serialization
+                run_inputs["seed"] = int(child_seeds[ii].generate_state(1)[0])
+                tasks.append(dask.delayed(wrap_run_func)(**run_inputs))
 
-            return list(dask.compute(*tasks))
+            # Force local multi-processing to bypass the background thread's GIL
+            # This prevents the simulation from blocking the main execution thread
+            workers = max(1, multiprocessing.cpu_count() - 1)
+
+            with Client(n_workers=workers, processes=True) as client:
+                results = client.compute(tasks, sync=True)
+
+            return list(results)
 
         task = BackgroundTask(execute_dask_batch, base_inputs=inputs, total_runs=n_instances)
         task.signals.finished.connect(self._on_batch_simulation_complete)
@@ -963,10 +1013,14 @@ class GeneralSettings(QWidget):
             self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
             # Populate numeric output displays
+            self.state.coverages = tuple(output.coverage)
             self.coverage_label.setText(f"Coverage: {np.sum(output.coverage):.4f}")
             self.coverage_label.setToolTip("""Fraction of surface sites consumed/covered by molecules.""")
 
+            self.state.fraction_of_covered_area = tuple(output.fraction_of_covered_area)
             frac_of_covered_area = np.sum(output.fraction_of_covered_area)
+
+            self.state.gap_size_distribution = output.analyse_gap_size()
 
             self.covered_area_label.setText(f"Fraction of covered area: {frac_of_covered_area:.4f}")
             self.covered_area_label.setToolTip("""Fraction of surface area covered by molecules.""")
@@ -985,11 +1039,55 @@ class GeneralSettings(QWidget):
             if not batch_outputs:
                 return
 
-            # Preview the final execution item onto the interactive GUI workspace panel
-            self._on_simulation_complete(batch_outputs[-1])
+            coverages, fraction_of_covered_area, gapsize_dist = zip(*batch_outputs, strict=True)
+            import matplotlib.pyplot as plt
+            import seaborn as sns
+            matplotlib.use("Agg")
+            fig = plt.figure(figsize=(8, 6))
+            gs = fig.add_gridspec(2, 2)
 
-            # Process global array statistics here if desired
-            # e.g., self.state.coverages = [run[-1].coverage for run in batch_outputs]
+            coverages_arr = np.array(coverages)
+            fraction_arr = np.array(fraction_of_covered_area)
+
+            missing_coverage = 1.0 - np.sum(coverages_arr, axis=1)
+            missing_fraction = 1.0 - np.sum(fraction_arr, axis=1)
+
+            coverages_final = np.column_stack((coverages_arr, missing_coverage)).tolist()
+            fraction_final = np.column_stack((fraction_arr, missing_fraction)).tolist()
+            coverages = [np.mean(x) for x in zip(*coverages_final, strict=True)]
+            fraction_of_covered_area = [np.mean(x) for x in zip(*fraction_final, strict=True)]
+
+            colors = [f"C{ii}" for ii in range(len(coverages))]
+            colors[-1] = "none"
+            # Top left plot (Row 0, Column 0)
+            ax1 = fig.add_subplot(gs[0, 0])
+            ax1.set_title("Coverage")
+            ax1.pie(coverages, colors=colors)
+
+            # Add outer circle to ax1
+            circle1 = plt.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
+            ax1.add_patch(circle1)
+
+            # Top right plot (Row 0, Column 1)
+            ax2 = fig.add_subplot(gs[1, 0])
+            ax2.set_title("Frac. cov. area")
+            ax2.pie(fraction_of_covered_area, colors=colors)
+
+            # Add outer circle to ax2
+            circle2 = plt.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
+            ax2.add_patch(circle2)
+
+            # Bottom double-length plot (Row 1, spans both Columns 0 and 1)
+            ax3 = fig.add_subplot(gs[:, 1])
+            ax3.set_title("Gap size distribution")
+            sns.violinplot(np.hstack(gapsize_dist), ax=ax3, color="0.8")
+            svg_buffer = io.BytesIO()
+            plt.savefig(svg_buffer, format="svg", bbox_inches="tight")
+            plt.close(fig)  # Clear memory
+
+            svg_data = svg_buffer.getvalue()
+            self.svg_widget.load(svg_data)
+
 
         except Exception as e:
             self.error(f"Error processing compiled batch metrics:\n{e}")
@@ -1002,6 +1100,10 @@ class GeneralSettings(QWidget):
         self.error(f"Simulation engine error:\n{exception}")
         self.run_button.setEnabled(True)
         self.run_button.setText("Run Simulation")
+
+    def export_results(self) -> None:
+        """Export the simulation results to JSON, HDF5, Pickle, or zipped CSVs."""
+
 
     def error(self, msg: str) -> None:
         """Handle the errors.
@@ -1700,6 +1802,7 @@ class FilePickerWidget(QWidget):
         """
         return self.line_edit.text()
 
+
 class SurfaceGeneration(QWidget):
     """Surface generation dashboard tab view.
 
@@ -1910,9 +2013,95 @@ class ResultsWidget(QWidget):
     """Widget for displaying results."""
 
     def __init__(self, state: AppState) -> None:
-        """Initialise the ResultsWidget."""
+        """Initialise ResultsWidget.
+
+        :param state: AppState instance for communication between tabs.
+        """
         super().__init__()
 
+        self._settings = QSettings("adsorpy", type(self).__name__)
+        """Persistent platform configuration handle cached between user runtime sessions."""
+
+        self.state = state
+        """Shared application state cache container."""
+
+
+        # Build the three core panel containers
+        left_container = self._build_left_panel()
+        scroll_area = self._build_center_panel()
+        right_container = self._build_right_panel()
+
+        # Assemble components into the splitter layout interface
+        self._assemble_layout(left_container, scroll_area, right_container)
+
+    def _build_left_panel(self) -> QWidget:
+        """Construct the left parameters control dashboard and link active list triggers.
+
+        :return: A populated structural container pane acting as the configuration panel.
+        """
+        container = QWidget()
+        self.controls_layout = QVBoxLayout(container)
+        """Layout frame coordinating selection toggles and configuration property fields."""
+
+        return container
+
+    def _build_center_panel(self) -> QScrollArea:
+        """Construct the viewport frame area housing the centered vector graphics.
+
+        :return: A scroll area wrapper managing the interactive central viewport.
+        """
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+
+        scroll_container = QWidget()
+        container_layout = QGridLayout(scroll_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.svg_widget = ZoomableSvgWidget()
+        """Custom structural viewport rendering vector polygon outlines."""
+        self.svg_widget.setMinimumSize(600, 600)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
+        scroll_area.setWidget(scroll_container)
+
+        return scroll_area
+
+    def _build_right_panel(self) -> QWidget:
+        """Construct the right tracking grid columns managing existing records.
+
+        :return: A secondary control panel listing items added to the current system context.
+        """
+        container = QWidget()
+        right_col = QVBoxLayout(container)
+
+        group = QGroupBox("Molecules")
+        group_layout = QVBoxLayout(group)
+
+        right_col.addWidget(group)
+
+        return container
+
+    def _assemble_layout(self, left: QWidget, center: QScrollArea, right: QWidget) -> None:
+        """Unify sub-panels inside the scalable horizontal splitter framework.
+
+        :param left: Parameter selection pane widget.
+        :param center: Scroll pane holding vector outputs.
+        :param right: Management column listing generated arrays.
+        """
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        """Scalable divider framework managing responsive interface margins."""
+
+        self.main_splitter.addWidget(left)
+        self.main_splitter.addWidget(center)
+        self.main_splitter.addWidget(right)
+
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 3)
+        self.main_splitter.setStretchFactor(2, 1)
+
+        root_layout = QVBoxLayout(self)
+        root_layout.addWidget(self.main_splitter)
 
 
 class BackgroundTaskSignals(QObject):

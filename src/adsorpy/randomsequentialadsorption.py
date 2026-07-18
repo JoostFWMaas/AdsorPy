@@ -1217,7 +1217,7 @@ class Simulator:
             self.rng.choice(np.asarray(molgrs), p=distribution),
         )
 
-    def analyse_gap_size(self, surf: Surface, keepzero: bool = False) -> DistArray:
+    def analyse_gap_size(self, surf: Surface | None = None, keepzero: bool = False) -> DistArray:
         """Analyse the gap distance based on the distance from surface sites to the nearest molecule.
 
         :param surf: The surface.
@@ -1225,6 +1225,8 @@ class Simulator:
 
         :return: The gap size distribution.
         """
+        surf = self.surf if surf is None else surf
+
         temp_molecules: GeoArray = cast(
             "GeoArray",
             self.mol_data.stored_mirr_data["polygon"][self.mol_data.stored_mirr_data["exists"]]
