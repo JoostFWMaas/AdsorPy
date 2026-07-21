@@ -92,7 +92,7 @@ jobs:
       # SBOM GENERATION + SIGNING INPUT
       # -------------------------------
       - name: Generate SBOM
-        uses: sbomify/sbomify-action@ac8b0d423c90447f3011ef8ab5f9ff2e854c6931
+        uses: sbomify/sbomify-action@ddf6a0d3d75b645153ad1ad60034b3fe2cb1eb63
         env:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
