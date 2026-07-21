@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeVar, cast
@@ -30,7 +31,7 @@ from pydantic import (
     validate_call,
 )
 from pydantic_extra_types import Color
-from PySide6.QtCore import QSettings, QSize, Qt
+from PySide6.QtCore import QSettings, QSize, Qt, Slot
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QVBoxLayout,
+    QApplication,
 )
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
@@ -327,7 +329,7 @@ class MoleculeViewer(QDialog):
         """Initialise matrix array buffers, orientation sliders, and plotting canvas frames."""
         super().__init__()
 
-        self._settings = QSettings("adsorpy", type(self).__name__)
+        self._settings = QSettings(type(self).__name__)
 
         # Step 1: Initialise raw variables and data placeholders via structural helper
         self.atomkeys, self.atompos, self.colours = self._init_data(
@@ -476,8 +478,7 @@ class MoleculeViewer(QDialog):
         self.z_spinbox.setValue(self.z_cutoff)
         self.z_spinbox.setEnabled(False)
         self.z_spinbox.setSuffix("Å")
-        self.z_filter_enable.toggled.connect(self.z_spinbox.setEnabled)
-        self.z_filter_enable.toggled.connect(self.apply_atom_filters)
+        self.z_filter_enable.toggled.connect(self._connect_z_filter)
         self.z_spinbox.valueChanged.connect(self.update_z_cutoff)
 
         z_layout.addWidget(self.z_filter_enable)
@@ -515,6 +516,14 @@ class MoleculeViewer(QDialog):
 
         filter_panel.addWidget(atom_group)
         return filter_panel
+
+    def _connect_z_filter(self, toggle: bool) -> None:
+        """Connect when z filter checkbox is toggled.
+
+        :param toggle: Toggle z filter active/inactive.
+        """
+        self.z_spinbox.setEnabled(toggle)
+        self.apply_atom_filters()
 
     def _create_plot_panel(self) -> QVBoxLayout:
         """Build the panel viewport frame displaying rendered molecular assets.
@@ -577,13 +586,28 @@ class MoleculeViewer(QDialog):
             box.setValue(0.0)
             box.setFixedWidth(120)
 
-            slider.valueChanged.connect(
-                lambda val, n=name, b=box: self.update_values(val, n, b),
-            )
+            @Slot(int)
+            def handle_slider(val: int, current_name: str=name, current_box: QDoubleSpinBox=box) -> None:
+                """Handle the slider update.
 
-            box.valueChanged.connect(
-                lambda _, s=slider, b=box, n=name: self.submit_values(s, b, n),
-            )
+                :param val: Slider value.
+                :param current_name: Name of the slider.
+                :param current_box: Box object to link to.
+                """
+                self.update_values(val, current_name, current_box)
+
+            @Slot(float)
+            def handle_box(_, current_slider: QSlider=slider, current_name: str =name, current_box: QDoubleSpinBox=box) -> None:
+                """Handle the box update.
+
+                :param current_slider: Slider object.
+                :param current_name: Name of the box.
+                :param current_box: Box object to link to.
+                """
+                self.submit_values(current_slider, current_name, current_box)
+
+            slider.valueChanged.connect(handle_slider)
+            box.valueChanged.connect(handle_box)
 
             row.addWidget(label)
             row.addWidget(slider, 1)
@@ -692,12 +716,12 @@ class MoleculeViewer(QDialog):
         self.lattice = float_val
         self.draw()
 
-    def submit_values(self, slider_widget: QSlider, box_widget: QDoubleSpinBox, name: str) -> None:
+    def submit_values(self, slider_widget: QSlider, name: str, box_widget: QDoubleSpinBox) -> None:
         """Unified spinbox-to-slider slot handling native numerical typing.
 
         :param slider_widget: The QSlider instance.
-        :param box_widget: The QDoubleSpinBox instance to link to the slider.
         :param name: The name of the parameter to update using setattr().
+        :param box_widget: The QDoubleSpinBox instance to link to the slider.
         """
         v = box_widget.value()
         # Block signals to avoid feedback looping when setting the companion value
@@ -1165,6 +1189,12 @@ def first_time_loader(
         )
 
     colours = np.array([colour_dict.get(k, "#FFFFFF") for k in atomkeys])
+
+    app = QApplication.instance()  # Check if running "headless": calling outside of gui.py context.
+    if app is None:
+        app = QApplication(sys.argv)
+        app.setOrganizationName("adsorpy")
+        app.setApplicationName("adsorpy-molecule_lib")
 
     viewer = MoleculeViewer(
         atomkeys,

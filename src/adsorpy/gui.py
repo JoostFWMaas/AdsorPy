@@ -13,9 +13,9 @@ import sys
 import textwrap
 import webbrowser
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field
+from dataclasses import field
 
-import matplotlib
+import matplotlib as mpl
 
 if sys.version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
@@ -43,7 +43,6 @@ import dask
 import numpy as np
 import pydantic
 from dask.distributed import Client
-from numpy.random import PCG64DXSM
 from pydantic import (
     BeforeValidator,
     ConfigDict,
@@ -61,7 +60,6 @@ from PySide6.QtCore import (
     QRunnable,
     QSettings,
     Qt,
-    QThread,
     QThreadPool,
     Signal,
     Slot,
@@ -103,11 +101,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from shapely import Polygon, from_geojson, to_geojson
+from shapely import Polygon, from_geojson
 from shapely.geometry import mapping
 
 from adsorpy import __version__
-from adsorpy.types import CoordPair
 from src.adsorpy import molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
@@ -456,7 +453,7 @@ class AdsorpyGUI(QMainWindow):
         self.state = AppState()
         """Shared application runtime cache synchronised across all view frames."""
 
-        self._settings = QSettings("adsorpy", type(self).__name__)
+        self._settings = QSettings(type(self).__name__)
         """Persistent platform configuration handle cached between user runtime sessions."""
 
         # Delegate initialisation to helper workflows
@@ -678,10 +675,15 @@ class GeneralSettings(QWidget):
 
         :param state: AppState object for communication between tab widgets.
         """
-        super().__init__()
-        self.state = state
+        super().__init__()  # Inherit from the super() class (in this case: AppState).
 
-        # Run UI Initialization steps
+        self._settings = QSettings(type(self).__name__)
+        """Persistent platform configuration handle cached between user runtime sessions."""
+
+        self.state = state
+        """App state object for communication between tab widgets."""
+
+        # Run UI Initialisation steps
         self._init_validators()
 
         # Extract widgets/layouts from the initialisation helpers
@@ -710,6 +712,17 @@ class GeneralSettings(QWidget):
 
         # Unify sub-panels using exact splitter framework layout method
         self._assemble_layout(left=left_panel, center=centre_scroll)
+
+    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type: type[T_co] = type(default) if return_type is None else return_type
+        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
 
     def _init_validators(self) -> None:
         """Instantiate validation models for text constraint processing."""
@@ -754,12 +767,32 @@ class GeneralSettings(QWidget):
 
         layout.addLayout(self._init_feedback_textboxes())
 
-        self.run_button = QPushButton("Run Simulation")
+        self.run_group = QGroupBox()
+        """Simulation run group box."""
+        run_grid = QGridLayout(self.run_group)
+
+        self.run_button = QPushButton("Run Simulation (1x)")
         """Trigger execution wrapper for adsorpy run."""
         self.run_button.setToolTip("Runs the random sequential adsorption simulation.")
-        layout.addWidget(self.run_button, alignment=Qt.AlignmentFlag.AlignTop)
+        run_grid.addWidget(self.run_button, 0, 1)
         self.run_button.clicked.connect(self.run_simulation)
 
+        self.repeat_count = QSpinBox()
+        """Repeat count value."""
+        self.repeat_count.setToolTip("Number of times to repeat. 100 is plenty for most purposes.")
+        self.repeat_count.setMinimum(1)
+        self.repeat_count.setMaximum(100000)
+        self.repeat_count.setValue(self._fetch_setting("repeat_count", 10))
+        self.repeat_count.valueChanged.connect(self._change_bulk_run_value)
+        run_grid.addWidget(self.repeat_count, 1, 0)
+
+        self.bulk_run_button = QPushButton(f"Bulk Run ({self.repeat_count.value()}x)")
+        """Trigger execution wrapper for adsorpy bulk run."""
+        self.bulk_run_button.setToolTip("Runs the simulation several times in parallel.")
+        self.bulk_run_button.clicked.connect(self.run_batch_simulation)
+        run_grid.addWidget(self.bulk_run_button, 1, 1)
+
+        layout.addWidget(self.run_group)
         layout.addWidget(_make_horizontal_line())
 
         self.coverage_label = QLabel("")
@@ -777,13 +810,18 @@ class GeneralSettings(QWidget):
         """Button to export the results."""
         self.export_results_button.clicked.connect(self.export_results)
         layout.addWidget(self.export_results_button, alignment=Qt.AlignmentFlag.AlignTop)
-        self.bulk_run_button = QPushButton("Bulk Run")
-        self.bulk_run_button.clicked.connect(self.run_batch_simulation)
-        layout.addWidget(self.bulk_run_button, alignment=Qt.AlignmentFlag.AlignTop)
 
         layout.addStretch()
 
         return layout
+
+    def _change_bulk_run_value(self, run_count: int) -> None:
+        """Change the bulk run button tooltip.
+
+        :param run_count: The number of times to repeat the simulation.
+        """
+        self.bulk_run_button.setText(f"Bulk Run ({run_count}x)")
+        self._settings.setValue("repeat_count", run_count)
 
     def _init_feedback_textboxes(self) -> QGridLayout:
         """Provide text to show the user whether data has been loaded."""
@@ -953,7 +991,7 @@ class GeneralSettings(QWidget):
 
     def run_batch_simulation(self) -> None:
         """Run N parallel instances using Dask with safe child-spawned seeds."""
-        n_instances = 2
+        n_instances = self.repeat_count.value()
         inputs = self._prepare_simulation_inputs()
         if inputs is None:
             return
@@ -1042,7 +1080,7 @@ class GeneralSettings(QWidget):
             coverages, fraction_of_covered_area, gapsize_dist = zip(*batch_outputs, strict=True)
             import matplotlib.pyplot as plt
             import seaborn as sns
-            matplotlib.use("Agg")
+            mpl.use("Agg")
             fig = plt.figure(figsize=(8, 6))
             gs = fig.add_gridspec(2, 2)
 
@@ -1131,7 +1169,7 @@ class MoleculeGeneration(QWidget):
         """"Parameter widgets derived from molecule function signatures."""
         self.opt_checkboxes: dict[str, QCheckBox] = {}
         """"Optional checkbox widgets derived from molecule function signatures."""
-        self._settings = QSettings("adsorpy", type(self).__name__)
+        self._settings = QSettings(type(self).__name__)
         """Persistent platform configuration handle cached between user runtime sessions."""
 
         self.state = state
@@ -1179,8 +1217,7 @@ class MoleculeGeneration(QWidget):
         """Registry cache linking user-facing label text keys directly to underlying library callables."""
 
         self.func_dropdown.addItems(self.generators.keys())
-        self.func_dropdown.currentTextChanged.connect(self.build_param_inputs)
-        self.func_dropdown.currentTextChanged.connect(self.plot_molecule)
+        self.func_dropdown.currentTextChanged.connect(self._update_func_dropdown)
 
         # Parameter group layout setup
         mol_param_group = QGroupBox("Parameters")
@@ -1214,6 +1251,14 @@ class MoleculeGeneration(QWidget):
         self.controls_layout.addWidget(self.output_label)
 
         return container
+
+    def _update_func_dropdown(self, name: str) -> None:
+        """Update when func dropdown changes.
+
+        :param name: The name of the dropdown option.
+        """
+        self.build_param_inputs(name)
+        self.plot_molecule()
 
     @staticmethod
     def _discover_molecule_generators() -> dict[str, Callable[[P_mol.kwargs], Polygon]]:
@@ -1489,16 +1534,15 @@ class MoleculeGeneration(QWidget):
         self.refl_sym_checkbox.setChecked(self.refl_sym)
         self.refl_sym_checkbox.setToolTip(refl_sym_tooltip_text)
 
-        rot_sym_label = QLabel("Rotation symmetry")
-        self._update_symmetry_tooltip(self.refl_sym, rot_sym_label)
-        self.refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, rot_sym_label))
+        self.rot_sym_label = QLabel("Rotation symmetry")
+        """Rotation symmetry label."""
 
         self.rot_sym_spinbox = QSpinBox()
         """Rotation symmetry spinbox, for non-negative integers."""
         self.rot_sym_spinbox.setMinimum(0)
         self.rot_sym_spinbox.setValue(self.rot_sym)
-        self._update_symmetry_tooltip(self.refl_sym, self.rot_sym_spinbox)
-        self.refl_sym_checkbox.toggled.connect(lambda checked: self._update_symmetry_tooltip(checked, self.rot_sym_spinbox))
+        self._update_symmetry_tooltip(self.refl_sym)
+        self.refl_sym_checkbox.toggled.connect(self._update_symmetry_tooltip)
 
         rot_cnt_label = QLabel("Rotation count")
         rot_cnt_tooltip_text = "Number of rotations to be used for the molecule. The step size is 360/n°."
@@ -1513,7 +1557,7 @@ class MoleculeGeneration(QWidget):
 
         symmetry_options_layout.addWidget(refl_sym_label, 0, 0)
         symmetry_options_layout.addWidget(self.refl_sym_checkbox, 0, 1)
-        symmetry_options_layout.addWidget(rot_sym_label, 1, 0)
+        symmetry_options_layout.addWidget(self.rot_sym_label, 1, 0)
         symmetry_options_layout.addWidget(self.rot_sym_spinbox, 1, 1)
         symmetry_options_layout.addWidget(rot_cnt_label, 2, 0)
         symmetry_options_layout.addWidget(self.rot_cnt_spinbox, 2, 1)
@@ -1549,11 +1593,10 @@ class MoleculeGeneration(QWidget):
 
         self.param_layout.addLayout(molecule_buttons)
 
-    def _update_symmetry_tooltip(self, is_checked: bool, widget: QWidget) -> None:
+    def _update_symmetry_tooltip(self, is_checked: bool) -> None:
         """Update the tooltip of the rotation symmetry label and spinbox.
 
         :param is_checked: True if there is reflection symmetry, False otherwise.
-        :param widget: QWidget to update the tooltip of.
         """
         symmetry_group = "D" if is_checked else "C"
         circle_group = "O(2)" if is_checked else "SO(2)"
@@ -1566,7 +1609,8 @@ class MoleculeGeneration(QWidget):
             Special case: 0 for circle symmetry ({circle_group}).""",
         )
 
-        widget.setToolTip(rot_sym_tooltip_text)
+        for widget in [self.rot_sym_label, self.rot_sym_spinbox]:
+            widget.setToolTip(rot_sym_tooltip_text)
 
     def launch_first_time_loader(self) -> None:
         """Launch the first time loader from molecule_lib.
@@ -1732,7 +1776,7 @@ class FilePickerWidget(QWidget):
         :param placeholder: Placeholder text to display in the selector box.
         """
         super().__init__(parent)
-        self._settings = QSettings("adsorpy", type(self).__name__)
+        self._settings = QSettings(type(self).__name__)
         """Load the settings between sessions."""
 
         # Layout
@@ -2019,7 +2063,7 @@ class ResultsWidget(QWidget):
         """
         super().__init__()
 
-        self._settings = QSettings("adsorpy", type(self).__name__)
+        self._settings = QSettings(type(self).__name__)
         """Persistent platform configuration handle cached between user runtime sessions."""
 
         self.state = state
@@ -2198,6 +2242,8 @@ def main() -> int:
     :returns: Return code.
     """
     app = QApplication(sys.argv)
+    app.setOrganizationName("adsorpy")
+    app.setApplicationName("adsorpy-app")
     gui = AdsorpyGUI()
     gui.resize(1600, 900)
     gui.show()
