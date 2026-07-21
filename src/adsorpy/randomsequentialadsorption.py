@@ -55,7 +55,7 @@ def _create_empty_coords() -> CoordPair:
 
 plt.rcParams.update(
     {
-        "font.size": 20,
+        "font.size": 15,
         "xtick.top": True,
         "xtick.direction": "in",
         "xtick.major.width": 3,

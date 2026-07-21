@@ -42,7 +42,7 @@ from typing import (
 import dask
 import numpy as np
 import pydantic
-from dask.distributed import Client
+from dask.distributed import Client, as_completed
 from pydantic import (
     BeforeValidator,
     ConfigDict,
@@ -93,6 +93,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QSpinBox,
@@ -527,7 +528,6 @@ class AdsorpyGUI(QMainWindow):
         self.tabs.addTab(GeneralSettings(self.state), "General")
         self.tabs.addTab(SurfaceGeneration(self.state), "Surface")
         self.tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
-        self.tabs.addTab(ResultsWidget(self.state), "Results")
 
         self.setCentralWidget(self.tabs)
 
@@ -783,31 +783,43 @@ class GeneralSettings(QWidget):
         self.repeat_count.setMinimum(1)
         self.repeat_count.setMaximum(100000)
         self.repeat_count.setValue(self._fetch_setting("repeat_count", 10))
+        self.repeat_count.setAccelerated(True)
         self.repeat_count.valueChanged.connect(self._change_bulk_run_value)
         run_grid.addWidget(self.repeat_count, 1, 0)
 
         self.bulk_run_button = QPushButton(f"Bulk Run ({self.repeat_count.value()}x)")
         """Trigger execution wrapper for adsorpy bulk run."""
-        self.bulk_run_button.setToolTip("Runs the simulation several times in parallel.")
+        self.bulk_run_button.setToolTip("Runs the simulation multiple times in parallel.")
         self.bulk_run_button.clicked.connect(self.run_batch_simulation)
         run_grid.addWidget(self.bulk_run_button, 1, 1)
 
         layout.addWidget(self.run_group)
+
         layout.addWidget(_make_horizontal_line())
+
+        self.progress_bar = QProgressBar()
+        """Progress bar for simulations."""
+        self.progress_bar.setToolTip("Simulation progress. 'Are we there yet?'")
+        self.progress_bar.setRange(0, 100)  # Maps perfectly to percentages (0 to 100)
+        self.progress_bar.setValue(0)  # Start empty
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
 
         self.coverage_label = QLabel("")
         """Coverage value."""
+        self.coverage_label.setVisible(False)
+        self.coverage_label.setToolTip("Fraction of surface sites consumed by molecules.")
         layout.addWidget(self.coverage_label, alignment=Qt.AlignmentFlag.AlignTop)
         self.covered_area_label = QLabel("")
         """Fraction of covered area value."""
+        self.coverage_label.setToolTip("Fraction of surface area covered by molecule footprints.")
+        self.covered_area_label.setVisible(False)
         layout.addWidget(self.covered_area_label, alignment=Qt.AlignmentFlag.AlignTop)
-
-        self.more_information_redirect = QLabel("")
-        """For more detailed results, see the Results tab."""
-        layout.addWidget(self.more_information_redirect, alignment=Qt.AlignmentFlag.AlignTop)
 
         self.export_results_button = QPushButton("Export Results")
         """Button to export the results."""
+        self.export_results_button.setToolTip("Export results by format of choice.")
+        self.export_results_button.setVisible(False)
         self.export_results_button.clicked.connect(self.export_results)
         layout.addWidget(self.export_results_button, alignment=Qt.AlignmentFlag.AlignTop)
 
@@ -904,7 +916,7 @@ class GeneralSettings(QWidget):
     def _prepare_simulation_inputs(self) -> dict[str, Any] | None:
         """Validate UI components and format into a unified dictionary for the simulation engine.
 
-        Returns None if validation fails.
+        :returns: Dict as input for run_simulation if successful, None if validation fails.
         """
         seed_text = self.state.seed_input.text().strip()
         step_limit_val = self.state.step_limit.value()
@@ -961,7 +973,7 @@ class GeneralSettings(QWidget):
             return dict_with_new_keys
 
         def filter_dict_for_func(
-            data_dict: dict[str, Any], filter_func: Callable[..., Any] = run_simulation
+            data_dict: dict[str, Any], filter_func: Callable[..., Any] = run_simulation,
         ) -> dict[str, Any]:
             sig = inspect.signature(filter_func)
             valid_keys = sig.parameters.keys()
@@ -981,8 +993,10 @@ class GeneralSettings(QWidget):
         if inputs is None:
             return
 
-        self.run_button.setEnabled(False)
-        self.run_button.setText("Computing...")
+        self.run_group.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        # self.run_group.setText("Computing...")
 
         task = BackgroundTask(run_simulation, **inputs)
         task.signals.finished.connect(self._on_simulation_complete)
@@ -996,38 +1010,51 @@ class GeneralSettings(QWidget):
         if inputs is None:
             return
 
-        self.run_button.setEnabled(False)
-        self.run_button.setText(f"Batch Processing ({n_instances})...")
+        self.run_group.setEnabled(False)
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
 
-        def execute_dask_batch(base_inputs: dict[str, Any], total_runs: int) -> list[Any]:
+        def execute_dask_batch(base_inputs: dict[str, Any], total_runs: int, task_ref: Any = None) -> list[Any]:
 
             tasks = []
-            master_seed: int = base_inputs.get("seed")
+            parent_seed: int = base_inputs.get("seed")
 
-            # Use SeedSequence to eliminate statistical collision/leakage across workers
-            child_seeds = np.random.SeedSequence(master_seed).spawn(total_runs)
+            child_seeds = np.random.SeedSequence(parent_seed).spawn(total_runs)
 
             def wrap_run_func(**kwargs: P.kwargs) -> tuple[DistArray, DistArray, DistArray]:
                 output = run_simulation(**kwargs)[-1]
                 return output.coverage, output.fraction_of_covered_area, output.analyse_gap_size()
 
-            for ii in range(total_runs):
+            for seed in child_seeds:
                 run_inputs = base_inputs.copy()
-                # Draw a distinct 32-bit integer out of the secure child stream
-                # Cast explicitly to an int for clean cross-process serialization
-                run_inputs["seed"] = int(child_seeds[ii].generate_state(1)[0])
+                run_inputs["seed"] = seed.generate_state(n_words=1, dtype=np.uint32)[0]
                 tasks.append(dask.delayed(wrap_run_func)(**run_inputs))
 
-            # Force local multi-processing to bypass the background thread's GIL
-            # This prevents the simulation from blocking the main execution thread
             workers = max(1, multiprocessing.cpu_count() - 1)
 
-            with Client(n_workers=workers, processes=True) as client:
-                results = client.compute(tasks, sync=True)
+            with Client(n_workers=workers, threads_per_worker=1, processes=True) as client:
+                # 1. Asynchronously submit to cluster (returns Futures immediately)
+                futures = client.compute(tasks)
+
+                # 2. Iterate dynamically as tasks complete to push progress updates
+                for idx, future in enumerate(as_completed(futures), start=1):
+                    if task_ref and hasattr(task_ref, "signals"):
+                        percentage = int((idx / total_runs) * 100)
+                        task_ref.signals.progress.emit(percentage)
+
+                # 3. Pull calculated data back over the network before closing the client context
+                results = client.gather(futures)
 
             return list(results)
 
+        # Instantiate task and pass 'task' itself into the execution function so it can access signals
         task = BackgroundTask(execute_dask_batch, base_inputs=inputs, total_runs=n_instances)
+        task.kwargs["task_ref"] = task  # Dynamically inject the task reference into kwargs
+
+        # Connect signals
+        if hasattr(self, "progress_bar"):
+            task.signals.progress.connect(self.progress_bar.setValue)
+
         task.signals.finished.connect(self._on_batch_simulation_complete)
         task.signals.error.connect(self._on_simulation_error)
         QThreadPool.globalInstance().start(task)
@@ -1038,11 +1065,12 @@ class GeneralSettings(QWidget):
     ) -> None:
         """Run lightweight plotting pipeline back on the UI thread."""
         try:
+            self.progress_bar.setValue(100)
             output = simulation_outputs[-1]
 
             # Generate SVG elements in memory
             svg_buffer = io.BytesIO()
-            dark_mode_bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
+            dark_mode_bool: bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
             output.svgplot_covered_grid(filename=svg_buffer, dark_mode_bool=dark_mode_bool)
             svg_data = svg_buffer.getvalue()
 
@@ -1062,14 +1090,14 @@ class GeneralSettings(QWidget):
 
             self.covered_area_label.setText(f"Fraction of covered area: {frac_of_covered_area:.4f}")
             self.covered_area_label.setToolTip("""Fraction of surface area covered by molecules.""")
-            self.more_information_redirect.setText("For more information, see the Results tab.")
 
         except (ValueError, TypeError, ValidationError) as e:
             self.error(f"Error preparing visual plot data:\n{e}")
         finally:
             # Always unlock button when processing completes
-            self.run_button.setEnabled(True)
-            self.run_button.setText("Run Simulation")
+            self.run_group.setEnabled(True)
+            self.progress_bar.setVisible(False)
+            # self.run_group.setText("Run Simulation")
 
     def _on_batch_simulation_complete(self, batch_outputs: list[tuple]) -> None:
         """Process multiple parallel output tuples sent back from the dask pool cluster."""
@@ -1125,19 +1153,22 @@ class GeneralSettings(QWidget):
 
             svg_data = svg_buffer.getvalue()
             self.svg_widget.load(svg_data)
+            self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
 
-        except Exception as e:
+        except (ValueError, TypeError, ValidationError) as e:
             self.error(f"Error processing compiled batch metrics:\n{e}")
         finally:
-            self.run_button.setEnabled(True)
-            self.run_button.setText("Run Simulation")
+            self.run_group.setEnabled(True)
+            self.progress_bar.setVisible(False)
+            # self.run_group.setText("Run Simulation")
 
     def _on_simulation_error(self, exception: Exception) -> None:
         """Fallback callback handling background core crashes safely."""
         self.error(f"Simulation engine error:\n{exception}")
-        self.run_button.setEnabled(True)
-        self.run_button.setText("Run Simulation")
+        self.run_group.setEnabled(True)
+        self.progress_bar.setVisible(False)
+        # self.run_group.setText("Run Simulation")
 
     def export_results(self) -> None:
         """Export the simulation results to JSON, HDF5, Pickle, or zipped CSVs."""
@@ -2045,118 +2076,16 @@ class SurfaceGeneration(QWidget):
         QMessageBox.critical(self, "Input Error", msg)
 
 
-class RepeatRunWidget(QWidget):
-    """Repeat runs in parallel using dask."""
-
-    def __init__(self, state: AppState) -> None:
-        """Initialise the RepeatRunWidget."""
-        super().__init__()
-
-
-class ResultsWidget(QWidget):
-    """Widget for displaying results."""
-
-    def __init__(self, state: AppState) -> None:
-        """Initialise ResultsWidget.
-
-        :param state: AppState instance for communication between tabs.
-        """
-        super().__init__()
-
-        self._settings = QSettings(type(self).__name__)
-        """Persistent platform configuration handle cached between user runtime sessions."""
-
-        self.state = state
-        """Shared application state cache container."""
-
-
-        # Build the three core panel containers
-        left_container = self._build_left_panel()
-        scroll_area = self._build_center_panel()
-        right_container = self._build_right_panel()
-
-        # Assemble components into the splitter layout interface
-        self._assemble_layout(left_container, scroll_area, right_container)
-
-    def _build_left_panel(self) -> QWidget:
-        """Construct the left parameters control dashboard and link active list triggers.
-
-        :return: A populated structural container pane acting as the configuration panel.
-        """
-        container = QWidget()
-        self.controls_layout = QVBoxLayout(container)
-        """Layout frame coordinating selection toggles and configuration property fields."""
-
-        return container
-
-    def _build_center_panel(self) -> QScrollArea:
-        """Construct the viewport frame area housing the centered vector graphics.
-
-        :return: A scroll area wrapper managing the interactive central viewport.
-        """
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-
-        scroll_container = QWidget()
-        container_layout = QGridLayout(scroll_container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.svg_widget = ZoomableSvgWidget()
-        """Custom structural viewport rendering vector polygon outlines."""
-        self.svg_widget.setMinimumSize(600, 600)
-        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
-
-        container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
-        scroll_area.setWidget(scroll_container)
-
-        return scroll_area
-
-    def _build_right_panel(self) -> QWidget:
-        """Construct the right tracking grid columns managing existing records.
-
-        :return: A secondary control panel listing items added to the current system context.
-        """
-        container = QWidget()
-        right_col = QVBoxLayout(container)
-
-        group = QGroupBox("Molecules")
-        group_layout = QVBoxLayout(group)
-
-        right_col.addWidget(group)
-
-        return container
-
-    def _assemble_layout(self, left: QWidget, center: QScrollArea, right: QWidget) -> None:
-        """Unify sub-panels inside the scalable horizontal splitter framework.
-
-        :param left: Parameter selection pane widget.
-        :param center: Scroll pane holding vector outputs.
-        :param right: Management column listing generated arrays.
-        """
-        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        """Scalable divider framework managing responsive interface margins."""
-
-        self.main_splitter.addWidget(left)
-        self.main_splitter.addWidget(center)
-        self.main_splitter.addWidget(right)
-
-        self.main_splitter.setStretchFactor(0, 1)
-        self.main_splitter.setStretchFactor(1, 3)
-        self.main_splitter.setStretchFactor(2, 1)
-
-        root_layout = QVBoxLayout(self)
-        root_layout.addWidget(self.main_splitter)
-
-
 class BackgroundTaskSignals(QObject):
     """Signals for the generic background worker.
 
     cvar finished: Emits the raw output data package.
-    cvar error: Emits any exception caught during execution.
+    cvar progress: Emits the current simulation progress as a percentage integer.
     """
 
-    finished = Signal(object) # Emits the raw output data package
+    finished = Signal(object)  # Emits the raw output data package
     error = Signal(Exception)  # Emits any exception caught during execution
+    progress = Signal(int)  # Emits the integer percentage (0 to 100)
 
 class BackgroundTask(QRunnable):
     """Executes a single blocking function call in the background thread pool."""
