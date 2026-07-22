@@ -8,14 +8,21 @@ import inspect
 import io
 import json
 import multiprocessing
+import pickle
 import re
 import sys
 import textwrap
 import webbrowser
+import zipfile
 from collections import defaultdict
 from dataclasses import field
 
+import h5py
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
 
 if sys.version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
@@ -56,6 +63,7 @@ from pydantic import (
 from PySide6.QtCore import (
     Property,
     QObject,
+    QRect,
     QRegularExpression,
     QRunnable,
     QSettings,
@@ -71,6 +79,10 @@ from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
     QIntValidator,
+    QPageSize,
+    QPainter,
+    QPdfWriter,
+    QPixmap,
     QRegularExpressionValidator,
     QResizeEvent,
     QWheelEvent,
@@ -246,38 +258,234 @@ class MiscParameters:
     timestep_limit: NonNegativeInt | None = None
 
 
+from PySide6.QtCore import QMarginsF
+from PySide6.QtGui import QPageLayout
+
+
 class ZoomableSvgWidget(QSvgWidget):
-    """SVG widget with zoom capabilities."""
+    """SVG widget with zoom capabilities and an absolute floating save button."""
+
+    graphics_changed = Signal(bool)
 
     def __init__(self, parent: QSvgWidget | None = None) -> None:
         """Initialise the ZoomableSvgWidget.
 
-        :param parent: The parent QSvgWidget object. If none is provided, create one of fixed size.
+        :param parent: Parent QSvgWidget.
         """
         super().__init__(parent)
 
         self.zoom_factor = 1.15
-        # Set a baseline size so it doesn't collapse to 0x0
+        self.current_svg_path: str | None = None
+        self._current_svg_bytes: bytes | None = None  # Cache raw bytes for export
+
         if parent is None:
-            self.setMinimumSize(600,600)
+            self.setMinimumSize(600, 600)
+
+        # Instantiate directly onto 'self' without a regular layout manager
+        self.save_button = QPushButton(self)
+        self.save_button.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave))
+        self.save_button.clicked.connect(self.export_graphics)
+
+        # Enforce exact bounding square dimension profile for an overlay layout
+        self.save_button.setFixedSize(40, 40)
+        self.save_button.hide()
+
+        # Connect visibility slot pipelines directly
+        self.graphics_changed.connect(self.save_button.setVisible)
+
+        # Floating subtle glass styling profile
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(240, 240, 240, 0.9);
+                border: 1px solid #ababab;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: rgba(225, 225, 225, 1.0);
+                border-color: #007BFF;
+            }
+        """)
+
+    @override
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Handle dynamic window resizes by pinning the button to the bottom right corner.
+
+        :param event: Resize event object.
+        """
+        super().resizeEvent(event)
+
+        # Offset placement geometry calculation metrics from boundary margins
+        margin = 20
+        button_w = self.save_button.width()
+        button_h = self.save_button.height()
+
+        # Calculate new destination absolute top-left point coordinates
+        x = self.width() - button_w - margin
+        y = self.height() - button_h - margin
+
+        self.save_button.move(x, y)
+
+    @override
+    def load(self, data: bytes | str | Path) -> bool:
+        """Override native load to accept raw bytes, strings, or paths while caching data.
+
+        :param data: Raw SVG byte content, string path, or Pathlib instance.
+        :returns: validity of file.
+        """
+        if isinstance(data, bytes):
+            self._current_svg_bytes = data
+            self.current_svg_path = None
+            super().load(data)
+        else:
+            path_str = str(data)
+            self.current_svg_path = path_str
+            try:
+                self._current_svg_bytes = Path(path_str).read_bytes()
+            except Exception:
+                self._current_svg_bytes = None
+            super().load(path_str)
+
+        # 2. Confirm structural document vector tracks
+        is_valid = self.renderer().isValid()
+
+        # Emit signal which updates button visibility automatically
+        self.graphics_changed.emit(is_valid)
+
+        # Force a geometry recalculation step to guarantee the button positions right away
+        if is_valid:
+            self.save_button.raise_()  # Bring the button to the absolute visual front layer
+            self.updateGeometry()
+
+        return is_valid
+
+    def load_svg(self, file_path: Path | str) -> bool:
+        """Public convenience method that accepts Pathlib or strings.
+
+        :param file_path: Path to the file to load.
+        :returns: validity of file.
+        """
+        return self.load(file_path)
+
+    def export_graphics(self) -> None:
+        """Handle exporting the SVG payload with native file handling and proper scaling."""
+        svg_renderer: QSvgRenderer = self.renderer()
+        if not svg_renderer.isValid():
+            QMessageBox.warning(self, "Export Error", "No valid SVG data loaded.")
+            return
+
+        file_filters = (
+            "Scalable Vector Graphics (*.svg);;PNG Image (*.png);;JPEG Image (*.jpg);;Portable Document Format (*.pdf)"
+        )
+
+        chosen_path_str, selected_filter = QFileDialog.getSaveFileName(self, "Save Graphics As", "", file_filters)
+
+        if not chosen_path_str:
+            return
+
+        file_path = Path(chosen_path_str)
+
+        if not file_path.suffix:
+            if "png" in selected_filter:
+                ext = ".png"
+            elif "jpg" in selected_filter:
+                ext = ".jpg"
+            elif "pdf" in selected_filter:
+                ext = ".pdf"
+            elif "svg" in selected_filter:
+                ext = ".svg"
+            else:
+                errmsg: str = "Invalid file extension."
+                QMessageBox.warning(self, "Export Error", errmsg)
+                return
+            file_path = file_path.with_suffix(ext)
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            suffix_lower = file_path.suffix.lower()
+
+            # Dynamically grab the precise bounding rectangle from the SVG itself
+            target_rect = svg_renderer.viewBoxF()
+            target_size = target_rect.size().toSize()
+
+            min_width: int = 900
+
+            if target_size.width() < min_width:
+                scale_factor: float = min_width / target_size.width()
+                target_size *= scale_factor
+            export_bounds = QRect(0, 0, target_size.width(), target_size.height())
+
+            if suffix_lower == ".svg":
+                if self._current_svg_bytes:
+                    file_path.write_bytes(self._current_svg_bytes)
+                else:
+                    # Pure procedural fallback generation if cache was ever erased
+                    generator = QSvgGenerator()
+                    generator.setFileName(str(file_path))
+                    generator.setSize(target_size)
+                    generator.setViewBox(svg_renderer.viewBox())
+
+                    painter = QPainter()
+                    if painter.begin(generator):
+                        svg_renderer.render(painter)
+                        painter.end()
+                    else:
+                        errmsg: str =  "Could not initialize SVG generator output."
+                        QMessageBox.critical(self, "Export Error", errmsg)
+                        return
+
+            elif suffix_lower in [".png", ".jpg"]:
+                pixmap = QPixmap(target_size)
+
+                if suffix_lower == ".png":
+                    pixmap.fill(Qt.GlobalColor.transparent)
+                else:
+                    pixmap.fill(Qt.GlobalColor.white)
+
+                painter = QPainter(pixmap)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+                # Render into the target coordinate canvas space
+                svg_renderer.render(painter, export_bounds)
+                painter.end()
+
+                pixmap.save(str(file_path), None, 1600)
+
+            elif suffix_lower == ".pdf":
+                writer = QPdfWriter(str(file_path))
+
+                # Use standard Points (1/72 inch) for layout dimensions
+                writer.setPageSize(QPageSize(target_rect.size(), QPageSize.Unit.Point))
+                writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Point)
+
+                painter = QPainter(writer)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+                scale_factor_x = writer.logicalDpiX() / 72.0
+                scale_factor_y = writer.logicalDpiY() / 72.0
+                painter.scale(scale_factor_x, scale_factor_y)
+
+                svg_renderer.render(painter, target_rect)
+                painter.end()
+
+            QMessageBox.information(self, "Success", f"Graphics successfully saved to:\n{file_path.name}")
+
+        except Exception as e:
+            errmsg: str = f"An error occurred while saving:\n{e!s}"
+            QMessageBox.critical(self, "Export Failed", errmsg)
+
 
     @override
     def wheelEvent(self, event: QWheelEvent) -> None:
         """Override scroll wheel events to support Zoom and Horizontal Pan.
 
-        :param event: The QWheelEvent object, triggered when using the scroll wheel.
+        :param event: QWheelEvent for when scrolling occurs.
         """
         modifiers = event.modifiers()
-
-        # Walk up the layout tree to reliably find the QScrollArea
-        # (Necessary since the widget is now inside a centered layout container)
         scroll_area = self.parent()
         while scroll_area and not isinstance(scroll_area, QScrollArea):
             scroll_area = scroll_area.parent()
 
-        # -------------------------------------------------------------
-        # CASE 1: CTRL + SCROLL = ZOOM TO MOUSE CURSOR
-        # -------------------------------------------------------------
         if modifiers == Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
             scale = self.zoom_factor if delta > 0 else 1.0 / self.zoom_factor
@@ -300,26 +508,16 @@ class ZoomableSvgWidget(QSvgWidget):
 
                     h_bar.setValue(int(h_bar.value() + delta_x))
                     v_bar.setValue(int(v_bar.value() + delta_y))
-
             event.accept()
 
-        # -------------------------------------------------------------
-        # CASE 2: SHIFT + SCROLL = HORIZONTAL PANNING
-        # -------------------------------------------------------------
         elif modifiers == Qt.KeyboardModifier.ShiftModifier:
             if scroll_area:
                 h_bar = scroll_area.horizontalScrollBar()
-                # Determine scroll steps (usually multiples of 120)
                 steps = event.angleDelta().y()
-                # Shift the horizontal slider position directly
                 h_bar.setValue(h_bar.value() - steps)
             event.accept()
 
-        # -------------------------------------------------------------
-        # CASE 3: NO MODIFIERS = STANDARD VERTICAL PANNING
-        # -------------------------------------------------------------
         elif scroll_area:
-            # Safely forward the wheel context to the native viewport
             QApplication.sendEvent(scroll_area.viewport(), event)
         else:
             event.ignore()
@@ -347,7 +545,6 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
         """
         annotations = attrs.get("__annotations__", {})
 
-        # 2. Filter out 'fields' or any other ClassVar/private attributes
         fields = {k: v for k, v in annotations.items() if k != "fields" and not k.startswith("_")}
 
         for field_name, field_type in fields.items():
@@ -702,6 +899,8 @@ class GeneralSettings(QWidget):
 
         self.state.surface_paramsChanged.connect(self._on_surface_changed)
         self.state.molecule_param_listChanged.connect(self._on_molecules_changed)
+        self.input_metadata: dict[str, Any] = {}
+        """Dict of input values, to be stored as metadata."""
 
         # Clean up scroll area borders to integrate smoothly with the splitter look
         # centre_scroll.setFrameShape(QScrollArea.FrameShape.NoFrame)
@@ -802,24 +1001,24 @@ class GeneralSettings(QWidget):
         self.progress_bar.setToolTip("Simulation progress. 'Are we there yet?'")
         self.progress_bar.setRange(0, 100)  # Maps perfectly to percentages (0 to 100)
         self.progress_bar.setValue(0)  # Start empty
-        self.progress_bar.setVisible(False)
+        self.progress_bar.hide()
         layout.addWidget(self.progress_bar, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
 
         self.coverage_label = QLabel("")
         """Coverage value."""
-        self.coverage_label.setVisible(False)
+        self.coverage_label.hide()
         self.coverage_label.setToolTip("Fraction of surface sites consumed by molecules.")
         layout.addWidget(self.coverage_label, alignment=Qt.AlignmentFlag.AlignTop)
         self.covered_area_label = QLabel("")
         """Fraction of covered area value."""
         self.coverage_label.setToolTip("Fraction of surface area covered by molecule footprints.")
-        self.covered_area_label.setVisible(False)
+        self.covered_area_label.hide()
         layout.addWidget(self.covered_area_label, alignment=Qt.AlignmentFlag.AlignTop)
 
         self.export_results_button = QPushButton("Export Results")
         """Button to export the results."""
         self.export_results_button.setToolTip("Export results by format of choice.")
-        self.export_results_button.setVisible(False)
+        self.export_results_button.hide()
         self.export_results_button.clicked.connect(self.export_results)
         layout.addWidget(self.export_results_button, alignment=Qt.AlignmentFlag.AlignTop)
 
@@ -865,7 +1064,6 @@ class GeneralSettings(QWidget):
         """Fire instantly when molecule_param_list changes in another tab."""
         if mol_list:  # Checks if list exists and is not empty
             count: int = len(mol_list)
-            # Create a summary string from the list items if desired
             self.initiated_molecules_textbox.setText(f"{count} molecule{'s'*bool(count - 1)} defined by user.")
         else:
             self.initiated_molecules_textbox.setText("Default.")
@@ -882,7 +1080,11 @@ class GeneralSettings(QWidget):
         return self.svg_widget
 
     def _assemble_layout(self, left: QWidget, center: QScrollArea) -> None:
-        """Unify sub-panels inside the scalable horizontal splitter framework."""
+        """Unify sub-panels inside the scalable horizontal splitter framework.
+
+        :param left: QWidget to place sub-panels inside.
+        :param center: QScrollArea to place sub-panels inside.
+        """
         self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         """Main splitter to dynamically divide the window."""
 
@@ -927,6 +1129,7 @@ class GeneralSettings(QWidget):
         else:
             how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
             seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
+
 
         try:
             misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
@@ -990,11 +1193,12 @@ class GeneralSettings(QWidget):
     def run_simulation(self) -> None:
         """Run exactly one instance of the simulation engine."""
         inputs = self._prepare_simulation_inputs()
+        self.input_metadata = inputs
         if inputs is None:
             return
 
         self.run_group.setEnabled(False)
-        self.progress_bar.setVisible(True)
+        self.progress_bar.show()
         self.progress_bar.setValue(0)
         # self.run_group.setText("Computing...")
 
@@ -1007,11 +1211,12 @@ class GeneralSettings(QWidget):
         """Run N parallel instances using Dask with safe child-spawned seeds."""
         n_instances = self.repeat_count.value()
         inputs = self._prepare_simulation_inputs()
+        self.input_metadata = {"repeats": n_instances, **inputs}
         if inputs is None:
             return
 
         self.run_group.setEnabled(False)
-        self.progress_bar.setVisible(True)
+        self.progress_bar.show()
         self.progress_bar.setValue(0)
 
         def execute_dask_batch(base_inputs: dict[str, Any], total_runs: int, task_ref: Any = None) -> list[Any]:
@@ -1033,16 +1238,13 @@ class GeneralSettings(QWidget):
             workers = max(1, multiprocessing.cpu_count() - 1)
 
             with Client(n_workers=workers, threads_per_worker=1, processes=True) as client:
-                # 1. Asynchronously submit to cluster (returns Futures immediately)
                 futures = client.compute(tasks)
 
-                # 2. Iterate dynamically as tasks complete to push progress updates
-                for idx, future in enumerate(as_completed(futures), start=1):
+                for idx, _ in enumerate(as_completed(futures), start=1):
                     if task_ref and hasattr(task_ref, "signals"):
                         percentage = int((idx / total_runs) * 100)
                         task_ref.signals.progress.emit(percentage)
 
-                # 3. Pull calculated data back over the network before closing the client context
                 results = client.gather(futures)
 
             return list(results)
@@ -1081,39 +1283,41 @@ class GeneralSettings(QWidget):
             # Populate numeric output displays
             self.state.coverages = tuple(output.coverage)
             self.coverage_label.setText(f"Coverage: {np.sum(output.coverage):.4f}")
-            self.coverage_label.setToolTip("""Fraction of surface sites consumed/covered by molecules.""")
-
+            self.coverage_label.show()
             self.state.fraction_of_covered_area = tuple(output.fraction_of_covered_area)
             frac_of_covered_area = np.sum(output.fraction_of_covered_area)
 
             self.state.gap_size_distribution = output.analyse_gap_size()
 
             self.covered_area_label.setText(f"Fraction of covered area: {frac_of_covered_area:.4f}")
-            self.covered_area_label.setToolTip("""Fraction of surface area covered by molecules.""")
+            self.covered_area_label.show()
 
         except (ValueError, TypeError, ValidationError) as e:
             self.error(f"Error preparing visual plot data:\n{e}")
         finally:
             # Always unlock button when processing completes
             self.run_group.setEnabled(True)
-            self.progress_bar.setVisible(False)
+            self.progress_bar.hide()
             # self.run_group.setText("Run Simulation")
 
     def _on_batch_simulation_complete(self, batch_outputs: list[tuple]) -> None:
-        """Process multiple parallel output tuples sent back from the dask pool cluster."""
+        """Process multiple parallel output tuples sent back from the dask pool cluster.
+
+        :param batch_outputs: list of output values.
+        """
         try:
             if not batch_outputs:
                 return
 
             coverages, fraction_of_covered_area, gapsize_dist = zip(*batch_outputs, strict=True)
-            import matplotlib.pyplot as plt
-            import seaborn as sns
+
             mpl.use("Agg")
             fig = plt.figure(figsize=(8, 6))
             gs = fig.add_gridspec(2, 2)
 
             coverages_arr = np.array(coverages)
             fraction_arr = np.array(fraction_of_covered_area)
+            gapsize_distribution: DistArray = np.hstack(gapsize_dist)
 
             missing_coverage = 1.0 - np.sum(coverages_arr, axis=1)
             missing_fraction = 1.0 - np.sum(fraction_arr, axis=1)
@@ -1122,6 +1326,12 @@ class GeneralSettings(QWidget):
             fraction_final = np.column_stack((fraction_arr, missing_fraction)).tolist()
             coverages = [np.mean(x) for x in zip(*coverages_final, strict=True)]
             fraction_of_covered_area = [np.mean(x) for x in zip(*fraction_final, strict=True)]
+
+            self.coverage_label.setText(f"Coverage: {(1. - coverages[-1]):.4f}")
+            self.coverage_label.show()
+            self.covered_area_label.setText(f"Fraction of covered area: {(1. - fraction_of_covered_area[-1]):.4f}")
+            self.covered_area_label.show()
+            self.export_results_button.show()
 
             colors = [f"C{ii}" for ii in range(len(coverages))]
             colors[-1] = "none"
@@ -1146,10 +1356,14 @@ class GeneralSettings(QWidget):
             # Bottom double-length plot (Row 1, spans both Columns 0 and 1)
             ax3 = fig.add_subplot(gs[:, 1])
             ax3.set_title("Gap size distribution")
-            sns.violinplot(np.hstack(gapsize_dist), ax=ax3, color="0.8")
+            sns.violinplot(gapsize_distribution, ax=ax3, color="0.8")
             svg_buffer = io.BytesIO()
             plt.savefig(svg_buffer, format="svg", bbox_inches="tight")
             plt.close(fig)  # Clear memory
+
+            self.state.coverages = tuple(col for col in coverages_arr.T)
+            self.state.fraction_of_covered_area = tuple(col for col in fraction_arr.T)
+            self.state.gap_size_distribution = gapsize_distribution
 
             svg_data = svg_buffer.getvalue()
             self.svg_widget.load(svg_data)
@@ -1160,18 +1374,142 @@ class GeneralSettings(QWidget):
             self.error(f"Error processing compiled batch metrics:\n{e}")
         finally:
             self.run_group.setEnabled(True)
-            self.progress_bar.setVisible(False)
+            self.progress_bar.hide()
             # self.run_group.setText("Run Simulation")
 
     def _on_simulation_error(self, exception: Exception) -> None:
-        """Fallback callback handling background core crashes safely."""
+        """Fallback callback handling background core crashes safely.
+
+        :param exception: Exception raised during simulation.
+        """
         self.error(f"Simulation engine error:\n{exception}")
         self.run_group.setEnabled(True)
-        self.progress_bar.setVisible(False)
+        self.progress_bar.hide()
         # self.run_group.setText("Run Simulation")
 
     def export_results(self) -> None:
         """Export the simulation results to JSON, HDF5, Pickle, or zipped CSVs."""
+        if self.state.gap_size_distribution is None:
+            QMessageBox.warning(self, "Export Warning", "No valid simulation data found to export.")
+            return
+
+        file_filters = (
+            "Hierarchical Data Format (*.h5);;"
+            "JSON Data Interchange (*.json);;"
+            "Python Pickle Binary (*.pkl);;"
+            "Zipped Comma Separated Values (*.zip)"
+        )
+
+        chosen_path_str, selected_filter = QFileDialog.getSaveFileName(
+            self, "Export Simulation Results As", "", file_filters,
+        )
+
+        if not chosen_path_str:
+            return  # User cancelled out of the file dialogue
+
+        file_path = Path(chosen_path_str)
+
+        # Enforce file extension strings if skipped by the user
+        if not file_path.suffix:
+            if "json" in selected_filter:
+                ext = ".json"
+            elif "pkl" in selected_filter:
+                ext = ".pkl"
+            elif "zip" in selected_filter:
+                ext = ".zip"
+            elif "h5" in selected_filter:
+                ext = ".h5"
+            else:
+                errmsg: str = "Incorrect file extension."
+                QMessageBox.warning(self, "Error", errmsg)
+                return
+            file_path = file_path.with_suffix(ext)
+
+        covs = self.state.coverages
+        fracs = self.state.fraction_of_covered_area
+        gaps = self.state.gap_size_distribution
+
+        suffix_lower = file_path.suffix.lower()
+
+        meta = self.input_metadata
+        print(meta)
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # -------------------------------------------------------------
+            # OPTION 1: HDF5 (.h5) -> Variable-length dataset trees
+            # -------------------------------------------------------------
+            if ".h5" in suffix_lower:
+                with h5py.File(str(file_path), "w") as f:
+                    for key, val in meta.items():
+                        f.attrs[key] = str(val)
+
+                    grp_a = f.create_group("Coverage")
+                    for i, arr in enumerate(covs):
+                        grp_a.create_dataset(f"col_{i}", data=arr, compression="gzip")
+
+                    grp_b = f.create_group("Fraction_of_covered_area")
+                    for i, arr in enumerate(fracs):
+                        grp_b.create_dataset(f"col_{i}", data=arr, compression="gzip")
+
+                    f.create_dataset("Gap_size_distribution", data=gaps, compression="gzip")
+
+            # -------------------------------------------------------------
+            # OPTION 2: JSON (.json) -> Plaintext serialization format
+            # -------------------------------------------------------------
+            elif ".json" in suffix_lower:
+                payload = {
+                    "metadata": meta,
+                    "Coverage": [arr.tolist() for arr in covs],
+                    "Fraction_of_covered_area": [arr.tolist() for arr in fracs],
+                    "Gap_size_distribution": gaps.tolist(),
+                }
+                with file_path.open("w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=4)
+
+            # -------------------------------------------------------------
+            # OPTION 3: PICKLE (.pkl) -> High-speed memory state dump
+            # -------------------------------------------------------------
+            elif ".pkl" in suffix_lower:
+                payload = {"metadata": meta, "Coverage": covs, "Fraction_of_covered_area": fracs, "Gap_size_distribution": gaps}
+                with file_path.open("wb") as f:
+                    pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+            # -------------------------------------------------------------
+            # OPTION 4: ZIPPED CSV (.csv.gz) -> Tabular with NaN padding
+            # -------------------------------------------------------------
+            elif ".zip" in suffix_lower:
+
+                # Open a compressed zip file archive stream wrapper directly
+                with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                    # File A: Build metadata.txt
+                    meta_io = io.StringIO()
+                    for key, val in meta.items():
+                        meta_io.write(f"{key}: {val}\n")
+                    zf.writestr("metadata.txt", meta_io.getvalue())
+
+                    # File B: Build aaa.csv
+                    aaa_dict = {f"aaa_col_{i}": arr for i, arr in enumerate(covs)}
+                    aaa_io = io.StringIO()
+                    pd.DataFrame(aaa_dict).to_csv(aaa_io, index=False)
+                    zf.writestr("Coverage.csv", aaa_io.getvalue())
+
+                    # File C: Build bbb.csv
+                    bbb_dict = {f"bbb_col_{i}": arr for i, arr in enumerate(fracs)}
+                    bbb_io = io.StringIO()
+                    pd.DataFrame(bbb_dict).to_csv(bbb_io, index=False)
+                    zf.writestr("Fraction_of_covered_area.csv", bbb_io.getvalue())
+
+                    # File D: Build ccc.csv
+                    ccc_io = io.StringIO()
+                    pd.DataFrame({"ccc_large_array": gaps}).to_csv(ccc_io, index=False)
+                    zf.writestr("Gap_size_distribution.csv", ccc_io.getvalue())
+
+            QMessageBox.information(self, "Success", f"Results successfully exported to:\n{file_path.name}")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Export Failed", f"An error occurred while compiling your export:\n{e!s}")
 
 
     def error(self, msg: str) -> None:

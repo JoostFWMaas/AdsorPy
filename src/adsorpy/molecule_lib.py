@@ -34,6 +34,7 @@ from pydantic_extra_types import Color
 from PySide6.QtCore import QSettings, QSize, Qt, Slot
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QDialog,
     QDoubleSpinBox,
@@ -44,7 +45,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QVBoxLayout,
-    QApplication,
 )
 from shapely import MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union

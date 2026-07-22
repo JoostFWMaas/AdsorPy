@@ -81,6 +81,7 @@ dependencies = [
     "enum34>=1.1.10",
     "ipaddress>=1.0.23",
     "ply>=3.11",
+    "PySide6>=6.11.1",
 ]
 
 [project.optional-dependencies]
@@ -117,7 +118,9 @@ dev-misc = [
 ]
 
 gui-deps = [
-    "PySide6>=6.11.1",
+    "pandas>=2.3.3",
+    "h5py>=3.16.0",
+    "seaborn>=0.13.2",
 ]
 
 dev-complete = [

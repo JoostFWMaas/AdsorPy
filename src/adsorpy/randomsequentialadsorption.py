@@ -22,7 +22,7 @@ from defusedxml.minidom import parseString
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
-from pydantic import Field, PositiveFloat, PositiveInt, NonNegativeFloat
+from pydantic import Field, NonNegativeFloat, PositiveFloat, PositiveInt
 from rtree.index import Index, Property  # RTree, helps lookups!
 from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare
 
