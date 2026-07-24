@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     Tax = TypeVar("Tax", bound=plt.Axes | None)
 
 
-def run_simulation(  # noqa: PLR0913
+def run_simulation(  # noqa: PLR0913, PLR0917
     rsa_config: RsaConfig | None = None,
     molecules_list: Polygon | list[Polygon] | GeoArray | None = None,
     rotation_symmetries: int | list[int] | IdxArray | None = None,

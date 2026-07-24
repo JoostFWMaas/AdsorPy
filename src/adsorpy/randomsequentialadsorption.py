@@ -46,12 +46,14 @@ if TYPE_CHECKING:
 
     P = ParamSpec("P")  # Helps with static type checkers.
 
+
 def _create_empty_coords() -> CoordPair:
     """Optimised localised function for dataclass factory.
 
     :returns: Empty coordinates.
     """
-    return np.empty((2, 1), dtype=np.double)
+    return cast("CoordPair", np.empty((2, 1), dtype=np.double))
+
 
 plt.rcParams.update(
     {
@@ -113,6 +115,7 @@ def _config_loader(rsa_config: RsaConfig) -> Config:
         sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
     )
 
+
 class BoundaryParameters:
     """Store the boundary parameters for the surface and the molecule groups.
 
@@ -126,12 +129,16 @@ class BoundaryParameters:
     :ivar hard_inner: All sites close to the edge of the hard boundary. These sites are True, others False.
     :ivar molecules_bounding_coords: Molecule bounding box coordinates: min/max x/y values.
     :ivar allowed_idx: Index of allowed rotations. When close to a hard boundary, some rotations are no longer possible.
-    :ivar allowed_bools: Booleans belonging to the allowed rotations. When near the hard boundary, some rotations are impossible.
+    :ivar allowed_bools: Booleans belonging to the allowed rotations.
+        When near the hard boundary, some rotations are impossible.
     :ivar extended_grid: The surface site coordinates of the extended (periodic) grid.
-    :ivar extended_occupied_by: The occupancy of the extended (periodic) grid. Filled with the indices of the molecules on the grid.
+    :ivar extended_occupied_by: The occupancy of the extended (periodic) grid.
+        Filled with the indices of the molecules on the grid.
     :ivar extended_idx: Index of the extended (periodic) grid.
-    :ivar close_to_edge: Boolean array denoting closeness to the edge. If close to the edge, periodicity must be taken into account.
-    :ivar extended_vacant: Boolean array denoting vacantness of the extended (periodic) grid. True if a site is vacant, False otherwise.
+    :ivar close_to_edge: Boolean array denoting closeness to the edge.
+        If close to the edge, periodicity must be taken into account.
+    :ivar extended_vacant: Boolean array denoting vacantness of the extended (periodic) grid.
+        True if a site is vacant, False otherwise.
     :ivar edge_flag: Flag indicating closeness to the edge. Reset this for every placement attempt.
     :ivar mirror_counter: A counter for the molecules + mirror molecules.
     :ivar mirrors: Mirror indices.
@@ -300,6 +307,7 @@ class BoundaryParameters:
                 self.extended_vacant = cast("BoolArray", np.ones_like(temp_idx, dtype=np.bool_))
                 self.close_to_edge = ~grid_boolsin  # Array of sites that have mirrors.
 
+
 class MoleculeGroup:
     """Create the molecule group class.
 
@@ -310,20 +318,24 @@ class MoleculeGroup:
     :ivar config: Config values.
     :ivar molecule: Molecule polygon.
     :ivar rotation_symmetry: Rotation symmetry. 0 for no symmetry, 1 for circle, n (int >= 2) for n-fold.
-    :ivar reflection_symmetry: Reflection symmetry. True for reflection symmetry over the y-axis, False for no reflection symmetry.
+    :ivar reflection_symmetry: Reflection symmetry. True for reflection symmetry over the y-axis,
+        False for no reflection symmetry.
     :ivar area: Area of the molecule.
     :ivar min_radius: Inradius of the molecule.
     :ivar max_radius: Circumradius of the molecule.
     :ivar rotation_count: Rotation count of the molecule. How many rotations are to be considered?
     :ivar __max_rotation: Molecules can only rotate between 0 and 360 degrees (excluding the endpoint). Do not touch.
-    :ivar rot_refl_count: Rotation + reflection count. If the molecule has no reflection symmetry, all rotations must also be attempted while reflected.
+    :ivar rot_refl_count: Rotation + reflection count. If the molecule has no reflection symmetry,
+        all rotations must also be attempted while reflected.
     :ivar allowed_rotations: Rotations for the molecule.
-    :ivar rotated_molecules: Array of rotated molecules. Used as templates, only translation is needed to get into position.
+    :ivar rotated_molecules: Array of rotated molecules. Used as templates,
+        only translation is needed to get into position.
     :ivar rotated_buffer_molecules: Buffer molecules are a special type of polygon used for vectorised calculations.
     :ivar molecule_counter: Molecule counter for this molecule type.
     :ivar occupied_by: Which molecule hinders what? Defaults to -1 (invalid). Special value -2 indicates unreachable.
     :ivar sticking_probability: Sticking probability of the molecule.
-    :ivar vacant: Vacancy array for the molecule. Shows which sites are guaranteed to be unreachable (False) and which are free.
+    :ivar vacant: Vacancy array for the molecule.
+        Shows which sites are guaranteed to be unreachable (False) and which are free.
     :ivar vacancy_count: Counts the vacant sites. Updates per placement.
     :ivar bp: Boundary parameter class.
     :ivar gap_dists: Distances for the molecules, measured as the sum of the circumradii.
@@ -471,6 +483,7 @@ class MoleculeGroup:
 
         return bopa  # If the boundary condition was hard, bounding box coordinates have been added.
 
+
 @dataclass(slots=True)
 class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     """Create a candidate molecule with temporary data.
@@ -498,7 +511,6 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     close_to_border: bool = False
     exists: bool = True
 
-
     def get_canddata(
         self,
     ) -> tuple[int, bool, int, int, int, bool, float, float, Polygon]:
@@ -521,6 +533,7 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
             self.molecule,
         )
 
+
 class Simulator:
     """Perform Random Sequential Adsorption (RSA).
 
@@ -534,12 +547,12 @@ class Simulator:
     :ivar molgroups: List of the molecule group classes.
     :ivar molgrcount: Count of the molecule group classes.
     :ivar bp: Boundary parameter class.
-    :ivar flux_flag: Flag denoting whether occupied sites can be re-attempted for placement. False fails, but adds a stepcount.
-    :ivar total_molecule_counter: Counter for all of the molecules on the surface.
-    :ivar outer_rads: Circumradii of all of the molecules. (Value of two max radii added together).
-    :ivar minmax_rads: Sums of inradii and circumradii of all of the molecules. (Value of one max and one min radius added together).
+    :ivar flux_flag: Flag denoting whether occupied sites can be re-attempted for placement.
+    :ivar total_molecule_counter: Counter for all molecules on the surface.
+    :ivar outer_rads: Circumradii of all molecules. (Value of two max radii added together).
+    :ivar minmax_rads: Sums of inradii and circumradii. (Value of one max and one min radius added together).
     :ivar mol_data: Molecule data. This is where the values of the placed molecules and mirror molecules are stored.
-    :ivar __unclaimed: Value for unreachable but unclaimed sites: sites that are not covered by a molecule but still not reachable. Do not change.
+    :ivar __unclaimed: ID value for unreachable sites: sites that are not covered by a molecule but still not reachable.
     """
 
     __slots__ = (
@@ -603,7 +616,6 @@ class Simulator:
 
         self.mol_data: MoleculeData = MoleculeData()
         self.__unclaimed: Final[int] = -2
-
 
     def _calculate_radii(self) -> None:
         """Calculate the min and max radii for the gap arrays."""
@@ -750,8 +762,8 @@ class Simulator:
             if first_rot_idx is None:
                 cand.rot_idx = int(
                     self.rng.choice(
-                    np.arange(pmg.rot_refl_count)[pmg.bp.allowed_bools],
-                ),  # Set random angle.
+                        np.arange(pmg.rot_refl_count)[pmg.bp.allowed_bools],
+                    ),  # Set random angle.
                 )
             else:
                 cand.rot_idx = int(first_rot_idx)
@@ -1278,7 +1290,13 @@ class Simulator:
 
         :returns: Array of the fraction of covered area per molecule group.
         """
-        return self.coverage * np.array([mol.area for mol in self.molgroups], dtype=np.double) * self.surf.all_site_count / self.surf.area
+        return (
+            self.coverage
+            * np.array([mol.area for mol in self.molgroups], dtype=np.double)
+            * self.surf.all_site_count
+            / self.surf.area
+        )
+
 
 class Surface:
     """Store coordinates and occupation data.
@@ -1675,6 +1693,7 @@ class Surface:
             with filename.open("wb") as f:
                 f.write(pretty_xml)
 
+
 def _create_rtree_index() -> Index:
     """Optimised localised helper to instantiate a 2D RTree Index without runtime closures.
 
@@ -1709,7 +1728,7 @@ class MoleculeData:
     :ivar _otomir_types: Types of the origin to mirror array.
     :ivar _otomir_heads_dtypes: Data types for the original molecule to mirror (otomir) struct array.
     :ivar _otomir_fill_vals: Fill values for the origin to mirror array. Defaults to strictly invalid values.
-    :ivar orig_to_mirrors: Origin to mirror struct array. Stores which mirror indices are associated with which original molecule.
+    :ivar orig_to_mirrors: Origin to mirror struct array. Stores indices linking mirror molecules to original molecules.
     :ivar coords: Coordinates of the molecules.
     :ivar mirror_coords: Mirror coordinates of the molecules.
     """

@@ -138,17 +138,17 @@ class TestWithParameters:
             rot_syms = [2]
             rot_cnts = [360]
             mirror_syms = [True]
-            mol_list = [mol.discorectangle([4.1, 3.1])]
+            mol_list = [mol.discorectangle(4.1, 3.1)]
         elif molgr_count == 2:  # noqa: PLR2004
             rot_syms = [2, 1]
             rot_cnts = [360, 360]
             mirror_syms = [True, False]
-            mol_list = [mol.discorectangle([4.1, 3.1]), mol.discorectangle([3.1, 2.1], 1)]
+            mol_list = [mol.discorectangle(4.1, 3.1), mol.discorectangle(3.1, 2.1, 1)]
         elif molgr_count == 3:  # noqa: PLR2004
             rot_syms = [2, 1, 0]
             rot_cnts = [360, 360, 360]
             mirror_syms = [True, False, True]
-            mol_list = [mol.discorectangle([4.1, 3.1]), mol.discorectangle([3.1, 2.1], 1), mol.circulium(2.05)]
+            mol_list = [mol.discorectangle(4.1, 3.1), mol.discorectangle(3.1, 2.1, 1), mol.circulium(2.05)]
         else:
             errmsg = f"The number of molecules provided ({molgr_count}) is not valid."
             raise ValueError(errmsg)
@@ -419,7 +419,7 @@ def simple_simulator() -> ExampleSimulation:
     rot_syms = [2]
     rot_cnts = [360]
     mirror_syms = [True]
-    mol_list = [mol.discorectangle([4.1, 3.1])]
+    mol_list = [mol.discorectangle(4.1, 3.1)]
     flux_flag = False
     mgc = count()
     for idx, pp in enumerate(mol_list):

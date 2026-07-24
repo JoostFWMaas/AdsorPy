@@ -288,6 +288,7 @@ def _rotation_matrix(roll: float | np.double, pitch: float | np.double, yaw: flo
 
     return rot_z @ rot_y @ rot_x
 
+
 class MoleculeViewer(QDialog):
     """Molecule spatial orientation and structural viewport configuration dashboard.
 
@@ -587,7 +588,7 @@ class MoleculeViewer(QDialog):
             box.setFixedWidth(120)
 
             @Slot(int)
-            def handle_slider(val: int, current_name: str=name, current_box: QDoubleSpinBox=box) -> None:
+            def handle_slider(val: int, current_name: str = name, current_box: QDoubleSpinBox = box) -> None:
                 """Handle the slider update.
 
                 :param val: Slider value.
@@ -597,9 +598,15 @@ class MoleculeViewer(QDialog):
                 self.update_values(val, current_name, current_box)
 
             @Slot(float)
-            def handle_box(_, current_slider: QSlider=slider, current_name: str =name, current_box: QDoubleSpinBox=box) -> None:
+            def handle_box(
+                _: float,
+                current_slider: QSlider = slider,
+                current_name: str = name,
+                current_box: QDoubleSpinBox = box,
+            ) -> None:
                 """Handle the box update.
 
+                :param _: Slider value.
                 :param current_slider: Slider object.
                 :param current_name: Name of the box.
                 :param current_box: Box object to link to.
@@ -757,7 +764,11 @@ class MoleculeViewer(QDialog):
         return pts
 
     def _circles(
-        self, pts: CoordsArray3D, idx1: Literal[0, 1, 2], idx2: Literal[0, 1, 2], offset: float,
+        self,
+        pts: CoordsArray3D,
+        idx1: Literal[0, 1, 2],
+        idx2: Literal[0, 1, 2],
+        offset: float,
     ) -> list[svg.Circle]:
         """Create svg Circles using the atom coordinates.
 
@@ -1298,7 +1309,6 @@ def _initialise_reader(
     atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.double))
 
     _xyz_verifier(atomkeys, atompos, listed_molecule_count)
-
 
     mask: BoolArray | None = None
     if isinstance(ignore_atoms, str):

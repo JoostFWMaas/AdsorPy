@@ -15,13 +15,15 @@ import textwrap
 import webbrowser
 import zipfile
 from collections import defaultdict
-from dataclasses import field
 
 import h5py
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from pydantic_core import core_schema
+from PySide6.QtCore import QMarginsF
+from PySide6.QtGui import QPageLayout
 from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
 
 if sys.version_info >= (3, 11):
@@ -40,6 +42,7 @@ from typing import (
     Literal,
     ParamSpec,
     Self,
+    TypedDict,
     TypeVar,
     cast,
     get_origin,
@@ -48,17 +51,15 @@ from typing import (
 
 import dask
 import numpy as np
-import pydantic
 from dask.distributed import Client, as_completed
 from pydantic import (
-    BeforeValidator,
     ConfigDict,
     NonNegativeInt,
-    PlainSerializer,
     PositiveFloat,
     PositiveInt,
     TypeAdapter,
     ValidationError,
+    with_config,
 )
 from PySide6.QtCore import (
     Property,
@@ -117,25 +118,26 @@ from PySide6.QtWidgets import (
 from shapely import Polygon, from_geojson
 from shapely.geometry import mapping
 
-from adsorpy import __version__
-from src.adsorpy import molecule_lib
+from src.adsorpy import __version__, molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
 T_qobj = TypeVar("T_qobj", bound=QObject)
-T_co = TypeVar("T_co", bound=bool | int | str | float, covariant=True)
+T_inv = TypeVar("T_inv", bound=bool | int | str | float)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from numpy.random import Generator
 
-    from adsorpy.randomsequentialadsorption import Simulator
-    from adsorpy.types import DistArray, IdxArray
+    from src.adsorpy.randomsequentialadsorption import Simulator
+    from src.adsorpy.types import DistArray, IdxArray
 
     P = ParamSpec("P")
     P_mol = ParamSpec("P_mol", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
+    R = TypeVar("R")
 
-def extract_param_docs(func: Callable) -> dict[str, str]:
+
+def extract_param_docs(func: Callable[P, R]) -> dict[str, str]:
     """Extract parameters and their types from the docstring of a function.
 
     This function is written for reStructuredText (rst) style docstrings.
@@ -177,6 +179,7 @@ def extract_param_docs(func: Callable) -> dict[str, str]:
 
     return param_docs
 
+
 def validate_polygon(pol: Polygon | str | dict[str, str | list[tuple[float, float]]]) -> Polygon:
     """Convert the GeoJSON dict data into a real Shapely Polygon or pass the data if it is already a Polygon.
 
@@ -196,18 +199,46 @@ def validate_polygon(pol: Polygon | str | dict[str, str | list[tuple[float, floa
         # Turns {"type": "Polygon", "coordinates": ...} into a Shapely object
         return cast("Polygon", from_geojson(pol))
 
-    errmsg =  f"Cannot convert {type(pol)} to a Shapely Polygon"
+    errmsg = f"Cannot convert {type(pol)} to a Shapely Polygon"
     raise TypeError(errmsg)
 
-# Define the custom Pydantic-safe type
-PydanticPolygon = Annotated[
-    Polygon,
-    BeforeValidator(validate_polygon),  # This runs before the Pydantic validation step.
-    PlainSerializer(mapping, return_type=dict),  # This runs when serialising: standard GeoJSON format
-]
 
-@pydantic.dataclasses.dataclass(slots=True, frozen=True, config=ConfigDict(arbitrary_types_allowed=True))
-class MoleculeParameters:
+class SimplePolygonDict(TypedDict):
+    """Concise representation of a GeoJSON Polygon dictionary."""
+
+    type: Literal["Polygon"]
+    coordinates: list[list[list[float]]]
+
+
+class PydanticPolygon:
+    """A Pydantic-native wrapper type for a Shapely Polygon."""
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        _source_type: object,
+        _handler: Callable[[object], core_schema.CoreSchema],
+    ) -> core_schema.CoreSchema:
+        """Tell Pydantic exactly how to validate and serialise a Shapely Polygon."""
+
+        def validate(value: Polygon | str | dict[str, str | list[tuple[float, float]]]) -> Polygon:
+            return validate_polygon(value)
+
+        def serialize(instance: Polygon) -> SimplePolygonDict:
+            return cast("SimplePolygonDict", mapping(instance))
+
+        return core_schema.no_info_before_validator_function(
+            validate,
+            core_schema.any_schema(),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                serialize,
+                return_schema=core_schema.dict_schema(),
+            ),
+        )
+
+
+# @pydantic.dataclasses.dataclass(slots=True, frozen=True, config=ConfigDict(arbitrary_types_allowed=True))
+class RawMoleculeParameters(TypedDict):
     """Molecule parameters dataclass.
 
     :ivar index: Index of the molecule parameters configuration.
@@ -227,39 +258,43 @@ class MoleculeParameters:
     rot_sym: NonNegativeInt
     rot_cnt: PositiveInt
     polygon: PydanticPolygon
-    settings: dict[str, float | int | str | list[str] | None] = field(default_factory=dict)
-
-pydantic.dataclasses.rebuild_dataclass(MoleculeParameters)
+    settings: dict[str, float | int | str | list[str] | None]
 
 
-@pydantic.dataclasses.dataclass(slots=True, frozen=True)
-class SurfaceParameters:
+MoleculeParameters = Annotated[
+    RawMoleculeParameters,
+    with_config(ConfigDict(arbitrary_types_allowed=True)),
+]
+
+# pydantic.dataclasses.rebuild_dataclass(MoleculeParameters)
+
+
+# @pydantic.dataclasses.dataclass(slots=True, frozen=True)
+class SurfaceParameters(TypedDict):
     """Surface parameters dataclass.
 
     :ivar lattice_type: Surface lattice type.
     :ivar site_count: Site count of the surface.
     :ivar lattice_a: Lattice spacing of the surface.
+    :ivar seed: RNG seed.
     """
 
     lattice_type: Literal["hexagonal", "triangular", "honeycomb", "square"]
     site_count: PositiveInt
-    lattice_a: PositiveFloat
+    lattice_a: PositiveFloat | None
+    seed: int | None
 
 
-@pydantic.dataclasses.dataclass(slots=True, frozen=True)
-class MiscParameters:
+# @pydantic.dataclasses.dataclass(slots=True, frozen=True)
+class MiscParameters(TypedDict):
     """Miscellaneous parameters dataclass.
 
     :ivar seed: RNG seed.
     :ivar timestep_limit: Maximum allowed step count of the simulation.
     """
 
-    seed: NonNegativeInt | None = None
-    timestep_limit: NonNegativeInt | None = None
-
-
-from PySide6.QtCore import QMarginsF
-from PySide6.QtGui import QPageLayout
+    seed: NonNegativeInt | None
+    timestep_limit: NonNegativeInt | None
 
 
 class ZoomableSvgWidget(QSvgWidget):
@@ -326,11 +361,10 @@ class ZoomableSvgWidget(QSvgWidget):
         self.save_button.move(x, y)
 
     @override
-    def load(self, data: bytes | str | Path) -> bool:
+    def load(self, data: bytes | str | Path) -> None:
         """Override native load to accept raw bytes, strings, or paths while caching data.
 
         :param data: Raw SVG byte content, string path, or Pathlib instance.
-        :returns: validity of file.
         """
         if isinstance(data, bytes):
             self._current_svg_bytes = data
@@ -341,8 +375,9 @@ class ZoomableSvgWidget(QSvgWidget):
             self.current_svg_path = path_str
             try:
                 self._current_svg_bytes = Path(path_str).read_bytes()
-            except Exception:
+            except (OSError, FileNotFoundError) as e:
                 self._current_svg_bytes = None
+                QMessageBox.warning(self, "Error", f"Data could not be loaded:\n{e}")
             super().load(path_str)
 
         # 2. Confirm structural document vector tracks
@@ -355,8 +390,6 @@ class ZoomableSvgWidget(QSvgWidget):
         if is_valid:
             self.save_button.raise_()  # Bring the button to the absolute visual front layer
             self.updateGeometry()
-
-        return is_valid
 
     def load_svg(self, file_path: Path | str) -> bool:
         """Public convenience method that accepts Pathlib or strings.
@@ -429,7 +462,7 @@ class ZoomableSvgWidget(QSvgWidget):
                         svg_renderer.render(painter)
                         painter.end()
                     else:
-                        errmsg: str =  "Could not initialize SVG generator output."
+                        errmsg: str = "Could not initialize SVG generator output."
                         QMessageBox.critical(self, "Export Error", errmsg)
                         return
 
@@ -470,10 +503,9 @@ class ZoomableSvgWidget(QSvgWidget):
 
             QMessageBox.information(self, "Success", f"Graphics successfully saved to:\n{file_path.name}")
 
-        except Exception as e:
+        except (ValueError, NotADirectoryError, OSError) as e:
             errmsg: str = f"An error occurred while saving:\n{e!s}"
             QMessageBox.critical(self, "Export Failed", errmsg)
-
 
     @override
     def wheelEvent(self, event: QWheelEvent) -> None:
@@ -769,7 +801,6 @@ class AdsorpyGUI(QMainWindow):
             )
             return
 
-
         combined_data = {
             "adsorpy_version": __version__,
             "miscellaneous_parameters": misc_dump,
@@ -781,7 +812,9 @@ class AdsorpyGUI(QMainWindow):
             json.dump(combined_data, f, indent=4)
 
         QMessageBox.information(
-            self, "Save Successful", "Your simulation configuration settings have been successfully saved!",
+            self,
+            "Save Successful",
+            "Your simulation configuration settings have been successfully saved!",
         )
 
     def _load_settings_json(self) -> None:
@@ -811,7 +844,7 @@ class AdsorpyGUI(QMainWindow):
 
             # Synchronise GUI with the newly loaded state
             misc = self.state.misc_params
-            self.state.seed_input.setText(str(misc.seed) if misc.seed is not None else "")
+            self.state.seed_input.setText(str(misc.seed) if hasattr(misc, "seed") else "")
 
             # self.log("Settings successfully loaded and validated.")
 
@@ -822,7 +855,7 @@ class AdsorpyGUI(QMainWindow):
                 f"Failed to parse settings file. Structure or type constraints were broken:\n{e}",
             )
 
-    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
         """Fetch settings by checking if they exist followed by their value.
 
         :param name: The name of the setting to fetch.
@@ -831,7 +864,7 @@ class AdsorpyGUI(QMainWindow):
         :returns: The setting value if it exists, or else the default.
         """
         check_type = type(default) if return_type is None else return_type
-        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
 
     def _reset_app(self) -> None:
         """Close and open the window to reset the app safely and completely."""
@@ -912,7 +945,7 @@ class GeneralSettings(QWidget):
         # Unify sub-panels using exact splitter framework layout method
         self._assemble_layout(left=left_panel, center=centre_scroll)
 
-    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
         """Fetch settings by checking if they exist followed by their value.
 
         :param name: The name of the setting to fetch.
@@ -920,8 +953,8 @@ class GeneralSettings(QWidget):
         :param return_type: The default return type if the setting exists. If not given, type(default) is used.
         :returns: The setting value if it exists, or else the default.
         """
-        check_type: type[T_co] = type(default) if return_type is None else return_type
-        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
+        check_type: type[T_inv] = type(default) if return_type is None else return_type
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
 
     def _init_validators(self) -> None:
         """Instantiate validation models for text constraint processing."""
@@ -1064,7 +1097,7 @@ class GeneralSettings(QWidget):
         """Fire instantly when molecule_param_list changes in another tab."""
         if mol_list:  # Checks if list exists and is not empty
             count: int = len(mol_list)
-            self.initiated_molecules_textbox.setText(f"{count} molecule{'s'*bool(count - 1)} defined by user.")
+            self.initiated_molecules_textbox.setText(f"{count} molecule{'s' * bool(count - 1)} defined by user.")
         else:
             self.initiated_molecules_textbox.setText("Default.")
 
@@ -1098,7 +1131,6 @@ class GeneralSettings(QWidget):
         root_layout.addWidget(self.main_splitter)
         self.setLayout(root_layout)  # Formally registers root_layout to this QWidget
 
-
     @staticmethod
     def get_run_sim_default(name: str) -> str | int | float | None:
         """Get the default value of a function.
@@ -1129,7 +1161,6 @@ class GeneralSettings(QWidget):
         else:
             how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
             seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
-
 
         try:
             misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
@@ -1176,7 +1207,8 @@ class GeneralSettings(QWidget):
             return dict_with_new_keys
 
         def filter_dict_for_func(
-            data_dict: dict[str, Any], filter_func: Callable[..., Any] = run_simulation,
+            data_dict: dict[str, Any],
+            filter_func: Callable[..., Any] = run_simulation,
         ) -> dict[str, Any]:
             sig = inspect.signature(filter_func)
             valid_keys = sig.parameters.keys()
@@ -1219,7 +1251,11 @@ class GeneralSettings(QWidget):
         self.progress_bar.show()
         self.progress_bar.setValue(0)
 
-        def execute_dask_batch(base_inputs: dict[str, Any], total_runs: int, task_ref: Any = None) -> list[Any]:
+        def execute_dask_batch(
+            base_inputs: dict[str, Any],
+            total_runs: int,
+            task_ref: BackgroundTask | None = None,
+        ) -> list[tuple[DistArray, DistArray, DistArray]]:
 
             tasks = []
             parent_seed: int = base_inputs.get("seed")
@@ -1241,7 +1277,7 @@ class GeneralSettings(QWidget):
                 futures = client.compute(tasks)
 
                 for idx, _ in enumerate(as_completed(futures), start=1):
-                    if task_ref and hasattr(task_ref, "signals"):
+                    if task_ref is not None:
                         percentage = int((idx / total_runs) * 100)
                         task_ref.signals.progress.emit(percentage)
 
@@ -1327,9 +1363,9 @@ class GeneralSettings(QWidget):
             coverages = [np.mean(x) for x in zip(*coverages_final, strict=True)]
             fraction_of_covered_area = [np.mean(x) for x in zip(*fraction_final, strict=True)]
 
-            self.coverage_label.setText(f"Coverage: {(1. - coverages[-1]):.4f}")
+            self.coverage_label.setText(f"Coverage: {(1.0 - coverages[-1]):.4f}")
             self.coverage_label.show()
-            self.covered_area_label.setText(f"Fraction of covered area: {(1. - fraction_of_covered_area[-1]):.4f}")
+            self.covered_area_label.setText(f"Fraction of covered area: {(1.0 - fraction_of_covered_area[-1]):.4f}")
             self.covered_area_label.show()
             self.export_results_button.show()
 
@@ -1369,7 +1405,6 @@ class GeneralSettings(QWidget):
             self.svg_widget.load(svg_data)
             self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
-
         except (ValueError, TypeError, ValidationError) as e:
             self.error(f"Error processing compiled batch metrics:\n{e}")
         finally:
@@ -1401,7 +1436,10 @@ class GeneralSettings(QWidget):
         )
 
         chosen_path_str, selected_filter = QFileDialog.getSaveFileName(
-            self, "Export Simulation Results As", "", file_filters,
+            self,
+            "Export Simulation Results As",
+            "",
+            file_filters,
         )
 
         if not chosen_path_str:
@@ -1472,7 +1510,12 @@ class GeneralSettings(QWidget):
             # OPTION 3: PICKLE (.pkl) -> High-speed memory state dump
             # -------------------------------------------------------------
             elif ".pkl" in suffix_lower:
-                payload = {"metadata": meta, "Coverage": covs, "Fraction_of_covered_area": fracs, "Gap_size_distribution": gaps}
+                payload = {
+                    "metadata": meta,
+                    "Coverage": covs,
+                    "Fraction_of_covered_area": fracs,
+                    "Gap_size_distribution": gaps,
+                }
                 with file_path.open("wb") as f:
                     pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -1480,7 +1523,6 @@ class GeneralSettings(QWidget):
             # OPTION 4: ZIPPED CSV (.csv.gz) -> Tabular with NaN padding
             # -------------------------------------------------------------
             elif ".zip" in suffix_lower:
-
                 # Open a compressed zip file archive stream wrapper directly
                 with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
                     # File A: Build metadata.txt
@@ -1508,9 +1550,8 @@ class GeneralSettings(QWidget):
 
             QMessageBox.information(self, "Success", f"Results successfully exported to:\n{file_path.name}")
 
-        except Exception as e:
+        except (OSError, ValueError, NotADirectoryError) as e:
             QMessageBox.critical(self, "Export Failed", f"An error occurred while compiling your export:\n{e!s}")
-
 
     def error(self, msg: str) -> None:
         """Handle the errors.
@@ -1534,7 +1575,7 @@ class MoleculeGeneration(QWidget):
         """
         super().__init__()
 
-        self.param_widgets: dict[str, QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit]  = {}
+        self.param_widgets: dict[str, QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit] = {}
         """"Parameter widgets derived from molecule function signatures."""
         self.opt_checkboxes: dict[str, QCheckBox] = {}
         """"Optional checkbox widgets derived from molecule function signatures."""
@@ -1714,7 +1755,7 @@ class MoleculeGeneration(QWidget):
         root_layout = QVBoxLayout(self)
         root_layout.addWidget(self.main_splitter)
 
-    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
         """Fetch settings by checking if they exist followed by their value.
 
         :param name: The name of the setting to fetch.
@@ -1722,11 +1763,12 @@ class MoleculeGeneration(QWidget):
         :param return_type: The default return type if the setting exists. If not given, type(default) is used.
         :returns: The setting value if it exists, or else the default.
         """
-        check_type: type[T_co] = type(default) if return_type is None else return_type
-        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
+        check_type: type[T_inv] = type(default) if return_type is None else return_type
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
 
     def _delete_previous_layout(self) -> None:
         """Recursively delete the layout of the previous molecule parameters."""
+
         def clear_layout(layout: QVBoxLayout | QHBoxLayout | QGridLayout | None) -> None:
             """Clear the layout by deleting its widgets or traversing its child layouts.
 
@@ -1827,7 +1869,10 @@ class MoleculeGeneration(QWidget):
         self._build_action_buttons()
 
     @staticmethod
-    def _create_param_widget(annotation: str, default: str | float | inspect.Parameter.empty) -> QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit:
+    def _create_param_widget(
+        annotation: str,
+        default: str | float | inspect.Parameter.empty,
+    ) -> QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
         :param annotation: The raw string signature representation of the type hint.
@@ -1836,7 +1881,7 @@ class MoleculeGeneration(QWidget):
         :raises TypeError: If an unmapped or exotic data structure type is processed.
         """
         default_max: int = 999
-        widget:  QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit
+        widget: QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit
         match annotation:
             case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
                 widget = QDoubleSpinBox()
@@ -1970,7 +2015,8 @@ class MoleculeGeneration(QWidget):
         symmetry_group = "D" if is_checked else "C"
         circle_group = "O(2)" if is_checked else "SO(2)"
 
-        rot_sym_tooltip_text = textwrap.dedent(f"""\
+        rot_sym_tooltip_text = textwrap.dedent(
+            f"""\
             Keep 1 for no rotation symmetry (symmetric group {symmetry_group}1),
             2 for 180° symmetry ({symmetry_group}2),
             3 for 120° symmetry ({symmetry_group}3),
@@ -1992,10 +2038,12 @@ class MoleculeGeneration(QWidget):
         for first_time_key, first_time_value in output.items():
             if first_time_value is not None:
                 if isinstance(self.param_widgets[first_time_key], QLineEdit | FilePickerWidget):
-                    fill_str: str = ",".join(first_time_value) if isinstance(first_time_value, list) else first_time_value
-                    self.param_widgets[first_time_key].setText(fill_str)
+                    fill_str: str = (
+                        ",".join(first_time_value) if isinstance(first_time_value, list) else first_time_value
+                    )
+                    cast("FilePickerWidget | QLineEdit", self.param_widgets[first_time_key]).setText(fill_str)
                 else:
-                    self.param_widgets[first_time_key].setValue(first_time_value)
+                    self.param_widgets[first_time_key].setValue(cast("float", first_time_value))
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
 
@@ -2056,7 +2104,7 @@ class MoleculeGeneration(QWidget):
 
     def add_molecule(self) -> None:
         """Add a molecule to the list of molecules to use."""
-        current_func_name =  self.func_dropdown.currentText()
+        current_func_name = self.func_dropdown.currentText()
         current_func_name = current_func_name if current_func_name != "first_time_loader" else "xyz_reader"
         molecule_func = self.generators[current_func_name]
         molecule_dict = self.get_param_values()
@@ -2069,7 +2117,11 @@ class MoleculeGeneration(QWidget):
             self.error(str(e))
             return
 
-        name = self.func_dropdown.currentText() if "file_name" not in molecule_dict else Path(molecule_dict["file_name"]).name
+        name = (
+            self.func_dropdown.currentText()
+            if "file_name" not in molecule_dict
+            else Path(cast("str", molecule_dict["file_name"])).name
+        )
 
         # Update dropdown
         index = next(self.mol_list_counter)
@@ -2112,14 +2164,14 @@ class MoleculeGeneration(QWidget):
         current_idx: int = self.molecule_list_widget.currentRow()
         if current_idx < 0 or current_idx >= len(self.mol_params_list):
             return
-        current_name: str = self.mol_params_list[current_idx].function_name
+        current_name: str = self.mol_params_list[current_idx]["function_name"]
         match_idx: int = self.func_dropdown.findText(current_name, Qt.MatchFlag.MatchExactly)
         self.func_dropdown.setCurrentIndex(match_idx)
-        for key, val in self.mol_params_list[current_idx].settings.items():
+        for key, val in self.mol_params_list[current_idx]["settings"].items():
             if val is None:
                 continue
             current_param: QSpinBox | QDoubleSpinBox | QLineEdit | FilePickerWidget = self.param_widgets[key]
-            if isinstance(current_param, QSpinBox | QDoubleSpinBox) and isinstance(val, int | float):
+            if isinstance(current_param, QSpinBox | QDoubleSpinBox) and isinstance(val, int):
                 current_param.setValue(val)
             elif isinstance(current_param, QLineEdit | FilePickerWidget) and isinstance(val, str):
                 current_param.setText(val)
@@ -2167,12 +2219,12 @@ class FilePickerWidget(QWidget):
         layout.addWidget(self.line_edit)
         layout.addWidget(self.browse_button)
 
-    def _get_text(self) -> str:
-        """Get the current file path text.
-
-        :returns: The current file path text string.
-        """
-        return self.line_edit.text()
+    # def _get_text(self) -> str:
+    #     """Get the current file path text.
+    #
+    #     :returns: The current file path text string.
+    #     """
+    #     return self.line_edit.text()
 
     @Slot(str)
     def setText(self, value: str) -> None:  # noqa: N802
@@ -2182,9 +2234,9 @@ class FilePickerWidget(QWidget):
         """
         self.line_edit.setText(value)
 
-    text = Property(str, fget=_get_text, fset=setText, user=True)
+    # text = Property(str, fget=_get_text, fset=setText, user=True)
 
-    def _fetch_setting(self, name: str, default: T_co, return_type: type[T_co] | None = None) -> T_co:
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
         """Fetch settings by checking if they exist followed by their value.
 
         :param name: The name of the setting to fetch.
@@ -2193,7 +2245,7 @@ class FilePickerWidget(QWidget):
         :returns: The setting value if it exists, or else the default.
         """
         check_type = type(default) if return_type is None else return_type
-        return cast("T_co", self._settings.value(name, defaultValue=default, type=check_type))
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
 
     def open_file_dialog(self) -> None:
         """Dialogue to display when selecting a file."""
@@ -2238,7 +2290,7 @@ class SurfaceGeneration(QWidget):
         self.real_surface_count: int = 50
         """Default computed surface site count."""
 
-        self.stored_params: SurfaceParameters
+        self.stored_params: SurfaceParameters | None = None
         """Parameters of the surface, to be communicated between tabs."""
 
         self._init_validators()
@@ -2380,12 +2432,15 @@ class SurfaceGeneration(QWidget):
                 self.error(str(e))
                 return
 
-        lattice_type = self.surface_dropdown.currentText()
-        dark_mode_bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
+        lattice_type = cast(
+            "Literal['hexagonal', 'triangular', 'honeycomb', 'square']", self.surface_dropdown.currentText(),
+        )
+        app = cast("QGuiApplication", QGuiApplication.instance())
+        dark_mode_bool = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
 
         svg_buffer = io.BytesIO()
 
-        surf_params:  dict[str, float | None | str | int] = {
+        surf_params: SurfaceParameters = {
             "lattice_a": lattice,
             "lattice_type": lattice_type,
             "seed": seed,
@@ -2417,18 +2472,20 @@ class SurfaceGeneration(QWidget):
 class BackgroundTaskSignals(QObject):
     """Signals for the generic background worker.
 
-    cvar finished: Emits the raw output data package.
-    cvar progress: Emits the current simulation progress as a percentage integer.
+    :cvar finished: Emits the raw output data package.
+    :cvar progress: Emits the current simulation progress as a percentage integer.
+    :cvar progress: Emits the integer percentage (0 to 100).
     """
 
-    finished = Signal(object)  # Emits the raw output data package
-    error = Signal(Exception)  # Emits any exception caught during execution
-    progress = Signal(int)  # Emits the integer percentage (0 to 100)
+    finished = Signal(object)
+    error = Signal(Exception)
+    progress = Signal(int)
+
 
 class BackgroundTask(QRunnable):
     """Executes a single blocking function call in the background thread pool."""
 
-    def __init__(self, func: Callable[..., Any], *args: P.args, **kwargs: P.kwargs) -> None:
+    def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> None:
         """Initialise the BackgroundTask.
 
         :param func: Function to be executed.
@@ -2436,7 +2493,7 @@ class BackgroundTask(QRunnable):
         :param kwargs: Keyword arguments to be passed to the function.
         """
         super().__init__()
-        self.func = func
+        self.func: Callable[P, R] = func
         self.args = args
         self.kwargs = kwargs
         self.signals = BackgroundTaskSignals()
@@ -2447,7 +2504,7 @@ class BackgroundTask(QRunnable):
         try:
             result = self.func(*self.args, **self.kwargs)
             self.signals.finished.emit(result)
-        except ValueError as e:
+        except (ValueError, TypeError, OSError) as e:
             self.signals.error.emit(e)
 
 
@@ -2493,6 +2550,7 @@ class ReorderableListWidget(QListWidget):
         if old_row != new_row:
             self.itemsMoved.emit(old_row, new_row)
 
+
 def _make_horizontal_line() -> QFrame:
     """Create a horizontal line widget using a QFrame object.
 
@@ -2502,6 +2560,7 @@ def _make_horizontal_line() -> QFrame:
     hline.setFrameShape(QFrame.Shape.HLine)
     hline.setFrameShadow(QFrame.Shadow.Sunken)
     return hline
+
 
 def main() -> int:
     """Launch the adsorpy GUI.
@@ -2515,6 +2574,7 @@ def main() -> int:
     gui.resize(1600, 900)
     gui.show()
     return app.exec()
+
 
 if __name__ == "__main__":
     sys.exit(main())
