@@ -12,6 +12,8 @@ from __future__ import annotations
 import io
 from sys import version_info
 
+from matplotlib.axes import Axes
+
 if version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
 else:
@@ -40,7 +42,7 @@ if TYPE_CHECKING:
     T2 = TypeVar("T2", bound=np.generic | Polygon)  # type: ignore[explicit-any]
     TargetType: TypeAlias = np.generic | Polygon  # type: ignore[explicit-any]
     Tn = TypeVar("Tn", bound=np.ndarray[tuple[int], np.dtype[np.generic | Polygon]])  # type: ignore[explicit-any]
-    Tax = TypeVar("Tax", bound=plt.Axes | None)
+    Tax = TypeVar("Tax", bound=Axes | None)
 
 
 def run_simulation(  # noqa: PLR0913, PLR0917

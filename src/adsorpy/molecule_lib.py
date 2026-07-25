@@ -105,8 +105,8 @@ Reference:
 def discorectangle(
     radius: PositiveFloat,
     distance: NonNegativeFloat,
-    offx: float = 0.0,
-    offy: float = 0.0,
+    x_offset: float = 0.0,
+    y_offset: float = 0.0,
 ) -> Polygon:
     """Create a disco-rectangle using the union of two circles and a rectangle.
 
@@ -114,22 +114,22 @@ def discorectangle(
 
     :param radius: Radius of the two circles in angstrom.
     :param distance: Distance between the two halves in angstrom.
-    :param offx: X offset.
-    :param offy: Y offset.
+    :param x_offset: X offset.
+    :param y_offset: Y offset.
     :return: The molecule shape as a polygon.
     """
-    offy *= -1.0
-    offx *= -1.0
+    y_offset *= -1.0
+    x_offset *= -1.0
     circles = MultiPoint(
-        [(offx - distance / 2.0, offy), (offx + distance / 2.0, offy)],
+        [(x_offset - distance / 2.0, y_offset), (x_offset + distance / 2.0, y_offset)],
     ).buffer(radius)
 
     rectangle = Polygon(
         [
-            (offx - distance / 2.0, offy - radius),
-            (offx + distance / 2.0, offy - radius),
-            (offx + distance / 2.0, offy + radius),
-            (offx - distance / 2.0, offy + radius),
+            (x_offset - distance / 2.0, y_offset - radius),
+            (x_offset + distance / 2.0, y_offset - radius),
+            (x_offset + distance / 2.0, y_offset + radius),
+            (x_offset - distance / 2.0, y_offset + radius),
         ],
     )
 
@@ -479,6 +479,7 @@ class MoleculeViewer(QDialog):
         self.z_spinbox.setValue(self.z_cutoff)
         self.z_spinbox.setEnabled(False)
         self.z_spinbox.setSuffix("Å")
+        self.z_spinbox.setAccelerated(True)
         self.z_filter_enable.toggled.connect(self._connect_z_filter)
         self.z_spinbox.valueChanged.connect(self.update_z_cutoff)
 
@@ -705,6 +706,7 @@ class MoleculeViewer(QDialog):
         self.lattice_spin.setRange(0.0, 100.0)
         self.lattice_spin.setSingleStep(0.01)
         self.lattice_spin.setDecimals(2)
+        self.lattice_spin.setAccelerated(True)
         self.lattice_spin.setValue(self.lattice)
 
         # Connect the change signal directly to the updater slot
@@ -1023,13 +1025,13 @@ class MoleculeViewer(QDialog):
 
             # Generate vdW elements
             for jj, px, py, r in zip(order, px_vdw, py_vdw, r_vdw, strict=True):
-                colour = self.colours[jj]
+                colour = cast("np.str_", self.colours[jj])
                 elements.append(
                     svg.Circle(
                         cx=px,
                         cy=py,
                         r=r,
-                        fill=cast("str", colour),
+                        fill=colour,
                         fill_opacity=0.25,
                         stroke=cast("str", colour),
                     ),

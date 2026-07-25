@@ -21,8 +21,12 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from dask.delayed import Delayed
+from dask.distributed import Future
+from matplotlib import patches
+from matplotlib.axes import Axes
 from pydantic_core import core_schema
-from PySide6.QtCore import QMarginsF
+from PySide6.QtCore import QByteArray, QMarginsF
 from PySide6.QtGui import QPageLayout
 from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
 
@@ -42,7 +46,9 @@ from typing import (
     Literal,
     ParamSpec,
     Self,
+    TypeAlias,
     TypedDict,
+    TypeGuard,
     TypeVar,
     cast,
     get_origin,
@@ -62,7 +68,6 @@ from pydantic import (
     with_config,
 )
 from PySide6.QtCore import (
-    Property,
     QObject,
     QRect,
     QRegularExpression,
@@ -114,6 +119,8 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
+    QLayout,
+    QLayoutItem,
 )
 from shapely import Polygon, from_geojson
 from shapely.geometry import mapping
@@ -123,9 +130,10 @@ from src.adsorpy.run_simulation import run_simulation, show_surface
 
 T_qobj = TypeVar("T_qobj", bound=QObject)
 T_inv = TypeVar("T_inv", bound=bool | int | str | float)
+T_widg = TypeVar("T_widg", bound=QWidget)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, ItemsView, ValuesView
 
     from numpy.random import Generator
 
@@ -135,6 +143,145 @@ if TYPE_CHECKING:
     P = ParamSpec("P")
     P_mol = ParamSpec("P_mol", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
     R = TypeVar("R")
+    InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QFileDialog | "FilePickerWidget"
+
+class FilePickerWidget(QWidget):
+    """Widget to help pick a file.
+
+    :cvar text: Property parameter 'text', with getter and setter functions.
+    """
+
+    def __init__(self, parent: QWidget | None = None, placeholder: str = "Select a file...") -> None:
+        """Initialise the file-picker widget.
+
+        :param parent: Parent widget.
+        :param placeholder: Placeholder text to display in the selector box.
+        """
+        super().__init__(parent)
+        self._settings = QSettings(type(self).__name__)
+        """Load the settings between sessions."""
+
+        # Layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.line_edit = QLineEdit()
+        """Line edit to show the path and hold the actual value."""
+        self.line_edit.setPlaceholderText(placeholder)
+
+        # Browse button
+        self.browse_button = QPushButton("")
+        """Button to browse files."""
+        self.browse_button.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderOpen))
+        self.browse_button.clicked.connect(self.open_file_dialog)
+
+        # Add to layout
+        layout.addWidget(self.line_edit)
+        layout.addWidget(self.browse_button)
+
+    # def _get_text(self) -> str:
+    #     """Get the current file path text.
+    #
+    #     :returns: The current file path text string.
+    #     """
+    #     return self.line_edit.text()
+
+    @Slot(str)
+    def setText(self, value: str) -> None:  # noqa: N802
+        """Set the file path text.
+
+        :param value: The new file path text string.
+        """
+        self.line_edit.setText(value)
+
+    # text = Property(str, fget=_get_text, fset=setText, user=True)
+
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type = type(default) if return_type is None else return_type
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
+
+    def open_file_dialog(self) -> None:
+        """Dialogue to display when selecting a file."""
+        # Native OS file dialogue
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            caption="Select File",
+            dir=self._fetch_setting("last_visited_directory", default=""),  # Start at current directory
+            filter="XYZ File (*.xyz)",
+        )
+        if file_path:
+            self.line_edit.setText(file_path)
+            self._settings.setValue("last_visited_directory", str(Path(file_path).parent))
+
+    def text(self) -> str:
+        """Get the text of the box being edited.
+
+        :return: Text of the box being edited.
+        """
+        return self.line_edit.text()
+
+# # class ContentInterface(Protocol):
+# #     """Protocol adding structural type hinting for the unified content property."""
+# #
+# #     @property
+# #     def content(self) -> str | float: ...
+# #
+# #     @content.setter
+# #     def content(self, value: str | float) -> None: ...
+# #
+# # class SmartWidgetMixin(Generic[T_widg], ContentInterface):
+# #     """Virtual type helper combining a native QWidget with ContentInterface."""
+#
+# def make_smart_widget(base_class: type[T_widg]) -> type[T_widg]:
+#     """Dynamically subclasses a QWidget to inject a fully-hinted .content property."""
+#
+#     class SmartWidget(base_class):  # type: ignore[valid-type, misc]
+#         @property
+#         def content(self) -> str | float:
+#             match self:
+#                 case QSpinBox():
+#                     return self.value()
+#                 case QDoubleSpinBox():
+#                     return self.value()
+#                 case QLineEdit() | FilePickerWidget():
+#                     return self.text()
+#                 case _:
+#                     msg = f".content getter not implemented for {type(self).__name__}"
+#                     raise TypeError(msg)
+#
+#         @content.setter
+#         def content(self, value: str | float) -> None:
+#             match self:
+#                 case QSpinBox():
+#                     self.setValue(int(value))
+#                 case QDoubleSpinBox():
+#                     self.setValue(float(value))
+#                 case QLineEdit() | FilePickerWidget():
+#                     self.setText(str(value))
+#                 case _:
+#                     msg = f".content setter not implemented for {type(self).__name__}"
+#                     raise TypeError(msg)
+#
+#     SmartWidget.__name__ = f"Smart{base_class.__name__}"
+#     return SmartWidget
+#
+# # SmartSpinBox: type[QSpinBox & ContentInterface] = cast(Any, make_smart_widget(QSpinBox))
+# # SmartDoubleSpinBox: type[QDoubleSpinBox & ContentInterface] = cast(Any, make_smart_widget(QDoubleSpinBox))
+# # SmartLineEdit: type[QLineEdit & ContentInterface] = cast(Any, make_smart_widget(QLineEdit))
+# # SmartFilePickerWidget: type[FilePickerWidget & ContentInterface] = cast(Any, make_smart_widget(FilePickerWidget))
+#
+# SmartSpinBox = make_smart_widget(QSpinBox)
+# SmartDoubleSpinBox = make_smart_widget(QDoubleSpinBox)
+# SmartLineEdit = make_smart_widget(QLineEdit)
+# SmartFilePickerWidget = make_smart_widget(FilePickerWidget)
 
 
 def extract_param_docs(func: Callable[P, R]) -> dict[str, str]:
@@ -236,6 +383,56 @@ class PydanticPolygon:
             ),
         )
 
+
+class ParamWidgets(TypedDict, total=False):
+    """Typed dictionary for the parameter widgets.
+
+    :ivar radius: Radius of the molecule.
+    :ivar distance: Distance between the halves.
+    :ivar x_offset: Offset in x-direction.
+    :ivar y_offset: Offset in y-direction.
+    :ivar quad_segs: How many segments in a quarter circle.
+    :ivar scale: Scale of the molecule.
+    :ivar verts: Vertex count of the molecule.
+    :ivar roundedness: Roundness of the molecule.
+    :ivar file_name: File name of the molecule.
+    :ivar ignore_atoms: Ignore atoms in the molecule.
+    :ivar roll: Roll of the molecule.
+    :ivar pitch: Pitch of the molecule.
+    :ivar yaw: Yaw of the molecule.
+    :ivar z_trim: Z trim of the molecule.
+    :ivar reference_lattice_spacing: Reference lattice spacing of the molecule.
+    """
+
+    radius: QDoubleSpinBox
+    distance: QDoubleSpinBox
+    x_offset: QDoubleSpinBox
+    y_offset: QDoubleSpinBox
+    quad_segs: QSpinBox
+    scale: QDoubleSpinBox
+    verts: QSpinBox
+    roundedness: QDoubleSpinBox
+    file_name: FilePickerWidget
+    ignore_atoms: QLineEdit
+    roll: QDoubleSpinBox
+    pitch: QDoubleSpinBox
+    yaw: QDoubleSpinBox
+    z_trim: QDoubleSpinBox
+    reference_lattice_spacing: QDoubleSpinBox
+
+ParamName = Literal[
+    "radius", "distance", "x_offset", "y_offset", "quad_segs",
+    "scale", "verts", "roundedness", "file_name", "ignore_atoms",
+    "roll", "pitch", "yaw", "z_trim", "reference_lattice_spacing",
+]
+
+def is_valid_param(name: str) -> TypeGuard[ParamName]:
+    """Check if a parameter name is valid.
+
+    :param name: Name of the parameter.
+    :returns: Boolean denoting validity.
+    """
+    return name in ParamWidgets.__annotations__
 
 # @pydantic.dataclasses.dataclass(slots=True, frozen=True, config=ConfigDict(arbitrary_types_allowed=True))
 class RawMoleculeParameters(TypedDict):
@@ -361,7 +558,7 @@ class ZoomableSvgWidget(QSvgWidget):
         self.save_button.move(x, y)
 
     @override
-    def load(self, data: bytes | str | Path) -> None:
+    def load(self, data: bytes | str | Path | QByteArray | memoryview[int]| bytearray, /) -> None:
         """Override native load to accept raw bytes, strings, or paths while caching data.
 
         :param data: Raw SVG byte content, string path, or Pathlib instance.
@@ -391,13 +588,13 @@ class ZoomableSvgWidget(QSvgWidget):
             self.save_button.raise_()  # Bring the button to the absolute visual front layer
             self.updateGeometry()
 
-    def load_svg(self, file_path: Path | str) -> bool:
+
+    def load_svg(self, file_path: Path | str) -> None:
         """Public convenience method that accepts Pathlib or strings.
 
         :param file_path: Path to the file to load.
-        :returns: validity of file.
         """
-        return self.load(file_path)
+        self.load(file_path)
 
     def export_graphics(self) -> None:
         """Handle exporting the SVG payload with native file handling and proper scaling."""
@@ -1257,7 +1454,7 @@ class GeneralSettings(QWidget):
             task_ref: BackgroundTask | None = None,
         ) -> list[tuple[DistArray, DistArray, DistArray]]:
 
-            tasks = []
+            tasks: list[Delayed] = []
             parent_seed: int = base_inputs.get("seed")
 
             child_seeds = np.random.SeedSequence(parent_seed).spawn(total_runs)
@@ -1274,14 +1471,14 @@ class GeneralSettings(QWidget):
             workers = max(1, multiprocessing.cpu_count() - 1)
 
             with Client(n_workers=workers, threads_per_worker=1, processes=True) as client:
-                futures = client.compute(tasks)
+                futures: tuple[Future, ...] = client.compute(tasks)
 
                 for idx, _ in enumerate(as_completed(futures), start=1):
                     if task_ref is not None:
                         percentage = int((idx / total_runs) * 100)
                         task_ref.signals.progress.emit(percentage)
 
-                results = client.gather(futures)
+                results: tuple[tuple[DistArray, DistArray, DistArray]] = client.gather(futures)
 
             return list(results)
 
@@ -1336,7 +1533,7 @@ class GeneralSettings(QWidget):
             self.progress_bar.hide()
             # self.run_group.setText("Run Simulation")
 
-    def _on_batch_simulation_complete(self, batch_outputs: list[tuple]) -> None:
+    def _on_batch_simulation_complete(self, batch_outputs: list[tuple[DistArray, DistArray, DistArray]]) -> None:
         """Process multiple parallel output tuples sent back from the dask pool cluster.
 
         :param batch_outputs: list of output values.
@@ -1377,7 +1574,7 @@ class GeneralSettings(QWidget):
             ax1.pie(coverages, colors=colors)
 
             # Add outer circle to ax1
-            circle1 = plt.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
+            circle1 = patches.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
             ax1.add_patch(circle1)
 
             # Top right plot (Row 0, Column 1)
@@ -1386,7 +1583,7 @@ class GeneralSettings(QWidget):
             ax2.pie(fraction_of_covered_area, colors=colors)
 
             # Add outer circle to ax2
-            circle2 = plt.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
+            circle2 = patches.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
             ax2.add_patch(circle2)
 
             # Bottom double-length plot (Row 1, spans both Columns 0 and 1)
@@ -1575,7 +1772,7 @@ class MoleculeGeneration(QWidget):
         """
         super().__init__()
 
-        self.param_widgets: dict[str, QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit] = {}
+        self.param_widgets: ParamWidgets = {}
         """"Parameter widgets derived from molecule function signatures."""
         self.opt_checkboxes: dict[str, QCheckBox] = {}
         """"Optional checkbox widgets derived from molecule function signatures."""
@@ -1623,10 +1820,10 @@ class MoleculeGeneration(QWidget):
         self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Discover generators using introspective library lookups
-        self.generators = self._discover_molecule_generators()
+        self.generators:  dict[str, Callable[P_mol, Polygon]] = self._discover_molecule_generators()
         """Registry cache linking user-facing label text keys directly to underlying library callables."""
 
-        self.func_dropdown.addItems(self.generators.keys())
+        self.func_dropdown.addItems(list(self.generators.keys()))
         self.func_dropdown.currentTextChanged.connect(self._update_func_dropdown)
 
         # Parameter group layout setup
@@ -1634,11 +1831,11 @@ class MoleculeGeneration(QWidget):
         mol_param_layout = QVBoxLayout(mol_param_group)
         mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
 
-        self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog]
-        """Active reference tracking field maps mapping variable names to their raw UI input views."""
-
-        self.opt_checkboxes: dict[str, QCheckBox]
-        """Active state checkboxes controlling presence flags for optional properties or switches."""
+        # self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog]
+        # """Active reference tracking field maps mapping variable names to their raw UI input views."""
+        #
+        # self.opt_checkboxes: dict[str, QCheckBox]
+        # """Active state checkboxes controlling presence flags for optional properties or switches."""
 
         self.param_layout = QVBoxLayout()
         """Parameter layout."""
@@ -1671,12 +1868,12 @@ class MoleculeGeneration(QWidget):
         self.plot_molecule()
 
     @staticmethod
-    def _discover_molecule_generators() -> dict[str, Callable[[P_mol.kwargs], Polygon]]:
+    def _discover_molecule_generators() -> dict[str, Callable[P_mol, Polygon]]:
         """Isolate reflection logic filtering usable library structural definitions.
 
         :return: A sorted lookup dict mapping valid function names to execution references.
         """
-        temp_generators: dict[str, Callable[[P_mol.kwargs], Polygon]] = {
+        temp_generators: dict[str, Callable[P_mol, Polygon]] = {
             name: func
             for name, func in molecule_lib.__dict__.items()
             if inspect.isfunction(func)
@@ -1769,7 +1966,7 @@ class MoleculeGeneration(QWidget):
     def _delete_previous_layout(self) -> None:
         """Recursively delete the layout of the previous molecule parameters."""
 
-        def clear_layout(layout: QVBoxLayout | QHBoxLayout | QGridLayout | None) -> None:
+        def clear_layout(layout: QLayout | None) -> None:
             """Clear the layout by deleting its widgets or traversing its child layouts.
 
             :param layout: The layout to clear.
@@ -1778,7 +1975,7 @@ class MoleculeGeneration(QWidget):
                 return
 
             while layout.count():
-                item = layout.takeAt(0)
+                item = cast("QLayoutItem", layout.takeAt(0))
 
                 # Use structural pattern matching to safely handle the item type
                 match item.widget(), item.layout():
@@ -1857,7 +2054,8 @@ class MoleculeGeneration(QWidget):
                 widget.setToolTip(param_docs[name])
 
             row.addWidget(widget, alignment=Qt.AlignmentFlag.AlignVCenter)
-            self.param_widgets[name] = widget
+            if is_valid_param(name):
+                self.param_widgets[name] = widget
             param_grid.addLayout(row, idx, 1)
 
         self.param_layout.addLayout(param_grid)
@@ -1871,7 +2069,7 @@ class MoleculeGeneration(QWidget):
     @staticmethod
     def _create_param_widget(
         annotation: str,
-        default: str | float | inspect.Parameter.empty,
+        default: str | float | inspect.Parameter,
     ) -> QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
@@ -1988,8 +2186,7 @@ class MoleculeGeneration(QWidget):
         self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
         molecule_buttons.addWidget(self.show_molecule_checkbox)
 
-        widget_object: QLineEdit | QDoubleSpinBox | QSpinBox | FilePickerWidget
-        for widget_object in self.param_widgets.values():
+        for widget_object in cast("ValuesView[InputWidget]", self.param_widgets.values()):
             if not isinstance(widget_object, QLineEdit | QDoubleSpinBox | QSpinBox):
                 continue
             if isinstance(widget_object, QLineEdit):
@@ -2034,16 +2231,21 @@ class MoleculeGeneration(QWidget):
         """
         if not self.param_widgets["file_name"].text():
             self.param_widgets["file_name"].browse_button.click()
-        output = molecule_lib.first_time_loader(self.param_widgets["file_name"].text())
+        output = molecule_lib.first_time_loader(Path(self.param_widgets["file_name"].text()))
+        first_time_key: str
+        first_time_value: str | float | list[str] | None
         for first_time_key, first_time_value in output.items():
+            if not is_valid_param(first_time_key):
+                errmsg: str = f"Not a valid key: {first_time_key}"
+                raise KeyError(errmsg)
             if first_time_value is not None:
                 if isinstance(self.param_widgets[first_time_key], QLineEdit | FilePickerWidget):
                     fill_str: str = (
-                        ",".join(first_time_value) if isinstance(first_time_value, list) else first_time_value
+                        ",".join(first_time_value) if isinstance(first_time_value, list) else str(first_time_value)
                     )
                     cast("FilePickerWidget | QLineEdit", self.param_widgets[first_time_key]).setText(fill_str)
                 else:
-                    self.param_widgets[first_time_key].setValue(cast("float", first_time_value))
+                    self.param_widgets[first_time_key].setValue(cast("float | int", first_time_value))  # type: ignore[arg-type, union-attr]
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
 
@@ -2053,10 +2255,8 @@ class MoleculeGeneration(QWidget):
         :return: Dictionary containing the key-value pairs of the parameters.
         """
         values: dict[str, float | int | str | list[str] | None] = {}
-        name: str
-        widget: QWidget
 
-        for name, widget in self.param_widgets.items():
+        for name, widget in cast("ItemsView[str, InputWidget]", self.param_widgets.items()):
             # If the widget is disabled, the optional checkbox was unchecked -> value is None
             if not widget.isEnabled():
                 continue
@@ -2093,7 +2293,7 @@ class MoleculeGeneration(QWidget):
         molecule_func = self.generators[self.func_dropdown.currentText()]
         molecule_dict = self.get_param_values()
         if molecule_func.__name__ == "first_time_loader":
-            molecule_func = molecule_lib.xyz_reader
+            molecule_func = cast("Callable[P_mol, Polygon]", molecule_lib.xyz_reader)
         try:
             svg_io = io.BytesIO()
             molecule_lib.save_molecule_svg(molecule_func(**molecule_dict), filename=svg_io)
@@ -2168,104 +2368,23 @@ class MoleculeGeneration(QWidget):
         match_idx: int = self.func_dropdown.findText(current_name, Qt.MatchFlag.MatchExactly)
         self.func_dropdown.setCurrentIndex(match_idx)
         for key, val in self.mol_params_list[current_idx]["settings"].items():
+            if not is_valid_param(key):
+                errmsg: str = f"Key does not exist: {key}"
+                raise KeyError(errmsg)
             if val is None:
                 continue
             current_param: QSpinBox | QDoubleSpinBox | QLineEdit | FilePickerWidget = self.param_widgets[key]
-            if isinstance(current_param, QSpinBox | QDoubleSpinBox) and isinstance(val, int):
-                current_param.setValue(val)
+            if isinstance(current_param, QSpinBox | QDoubleSpinBox) and isinstance(val, float | int):
+                current_param.setValue(val)  # type: ignore[arg-type]
             elif isinstance(current_param, QLineEdit | FilePickerWidget) and isinstance(val, str):
                 current_param.setText(val)
             else:
-                errmsg: str = f"Type mismatch: Param type {type(current_param)} is not compatible with val {type(val)}"
+                errmsg = f"Type mismatch: Param type {type(current_param)} is not compatible with val {type(val)}"
                 raise TypeError(errmsg)
 
             if key in self.opt_checkboxes:
                 self.opt_checkboxes[key].setChecked(True)
         self.show_molecule_checkbox.setChecked(True)
-
-
-class FilePickerWidget(QWidget):
-    """Widget to help pick a file.
-
-    :cvar text: Property parameter 'text', with getter and setter functions.
-    """
-
-    def __init__(self, parent: QWidget | None = None, placeholder: str = "Select a file...") -> None:
-        """Initialise the file-picker widget.
-
-        :param parent: Parent widget.
-        :param placeholder: Placeholder text to display in the selector box.
-        """
-        super().__init__(parent)
-        self._settings = QSettings(type(self).__name__)
-        """Load the settings between sessions."""
-
-        # Layout
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-
-        self.line_edit = QLineEdit()
-        """Line edit to show the path and hold the actual value."""
-        self.line_edit.setPlaceholderText(placeholder)
-
-        # Browse button
-        self.browse_button = QPushButton("")
-        """Button to browse files."""
-        self.browse_button.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderOpen))
-        self.browse_button.clicked.connect(self.open_file_dialog)
-
-        # Add to layout
-        layout.addWidget(self.line_edit)
-        layout.addWidget(self.browse_button)
-
-    # def _get_text(self) -> str:
-    #     """Get the current file path text.
-    #
-    #     :returns: The current file path text string.
-    #     """
-    #     return self.line_edit.text()
-
-    @Slot(str)
-    def setText(self, value: str) -> None:  # noqa: N802
-        """Set the file path text.
-
-        :param value: The new file path text string.
-        """
-        self.line_edit.setText(value)
-
-    # text = Property(str, fget=_get_text, fset=setText, user=True)
-
-    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
-        """Fetch settings by checking if they exist followed by their value.
-
-        :param name: The name of the setting to fetch.
-        :param default: The default value to return if the setting does not exist.
-        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
-        :returns: The setting value if it exists, or else the default.
-        """
-        check_type = type(default) if return_type is None else return_type
-        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
-
-    def open_file_dialog(self) -> None:
-        """Dialogue to display when selecting a file."""
-        # Native OS file dialogue
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            caption="Select File",
-            dir=self._fetch_setting("last_visited_directory", default=""),  # Start at current directory
-            filter="XYZ File (*.xyz)",
-        )
-        if file_path:
-            self.line_edit.setText(file_path)
-            self._settings.setValue("last_visited_directory", str(Path(file_path).parent))
-
-    def text(self) -> str:
-        """Get the text of the box being edited.
-
-        :return: Text of the box being edited.
-        """
-        return self.line_edit.text()
 
 
 class SurfaceGeneration(QWidget):
