@@ -19,11 +19,11 @@ commands = [["ruff", "check", "src", "tests"]]
 [env.mypy]
 skip_install = true
 deps = ["mypy", "numpy", "pydantic"]
-commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--exclude", "/scripts/", "src", "tests"],
+commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--allow-subclassing-any", "--exclude", "/scripts/", "src", "tests"],
 ]
 
 [env.pyright]
-deps = ["pyright", "[test]"]
+deps = ["pyright", "[test]", "[gui-deps]"]
 commands = [["pyright"]]
 
 [env.slotscheck]

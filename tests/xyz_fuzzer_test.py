@@ -13,6 +13,7 @@ from hypothesis.extra.numpy import arrays
 from hypothesis.strategies import SearchStrategy
 
 from src.adsorpy.molecule_lib import RADII, _xyz_verifier
+from src.adsorpy.types import CoordsArray3D, StrArray
 
 T = TypeVar("T")
 
@@ -114,8 +115,8 @@ def invalid_xyz_inputs(
 @given(valid_xyz_inputs())
 def test_xyz_verifier_valid(
     data: tuple[
-        np.ndarray[tuple[int], np.dtype[np.str_]],
-        np.ndarray[tuple[int, Literal[3]], np.dtype[np.double]],
+        StrArray,
+        CoordsArray3D,
         np.long,
     ],
 ) -> None:

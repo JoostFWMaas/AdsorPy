@@ -12,8 +12,6 @@ from __future__ import annotations
 import io
 from sys import version_info
 
-from matplotlib.axes import Axes
-
 if version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
 else:
@@ -22,7 +20,7 @@ else:
 import time  # For timing of the script.
 from itertools import count  # A simple counter, iterates with next(...).
 from pathlib import Path  # For path handling in Python.
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeAlias, TypeVar, cast  # For type hinting.
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast  # For type hinting.
 
 import numpy as np  # For vectorised computations (performed in C).
 from numpy.random import PCG64DXSM, Generator  # New random generator.
@@ -33,16 +31,16 @@ from src.adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Sur
 from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 if TYPE_CHECKING:
-    from matplotlib import pyplot as plt
+    from matplotlib.axes import Axes
 
     from src.adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
     T1 = TypeVar("T1")
-    T2 = TypeVar("T2", bound=np.generic | Polygon)  # type: ignore[explicit-any]
-    TargetType: TypeAlias = np.generic | Polygon  # type: ignore[explicit-any]
-    Tn = TypeVar("Tn", bound=np.ndarray[tuple[int], np.dtype[np.generic | Polygon]])  # type: ignore[explicit-any]
-    Tax = TypeVar("Tax", bound=Axes | None)
+    T2 = TypeVar("T2", np.generic, Polygon)  # type: ignore[explicit-any]
+    # TargetType: TypeAlias = np.generic | Polygon  # type: ignore[explicit-any]
+    Tn = TypeVar("Tn", np.ndarray[tuple[int], np.dtype[Polygon]], np.ndarray[tuple[int], np.dtype[np.generic]])  # type: ignore[explicit-any]
+    Tax = TypeVar("Tax", Axes, None)
 
 
 def run_simulation(  # noqa: PLR0913, PLR0917
@@ -362,17 +360,17 @@ def _initialise_run_parameters(
         errmsg = "The simulation type must be either 'sequential', 'codosing', or 'cascade'."
         raise ValueError(errmsg)
 
-    molecules_list = _turn_into_list(molecules_list, Polygon)
-    rotation_symmetries = _turn_into_list(rotation_symmetries, int)
-    reflection_symmetries = _turn_into_list(reflection_symmetries, bool)
-    rotation_counts = _turn_into_list(rotation_counts, int)
+    mol_array = _turn_into_list(molecules_list, Polygon)
+    rot_symmetries = _turn_into_list(rotation_symmetries, int)
+    refl_symmetries = _turn_into_list(reflection_symmetries, bool)
+    rot_counts = _turn_into_list(rotation_counts, int)
 
-    mol_list_size = molecules_list.size
-    rot_syms = _repeater(rotation_symmetries, mol_list_size)
-    refl_syms = _repeater(reflection_symmetries, mol_list_size)
-    rot_cnts = _repeater(rotation_counts, mol_list_size)
+    mol_list_size = mol_array.size
+    rot_syms = cast("IdxArray", _repeater(rot_symmetries, mol_list_size))
+    refl_syms = cast("BoolArray", _repeater(refl_symmetries, mol_list_size))
+    rot_cnts = cast("IdxArray", _repeater(rot_counts, mol_list_size))
 
-    return molecules_list, rot_syms, refl_syms, rot_cnts
+    return mol_array, rot_syms, refl_syms, rot_cnts
 
 
 def _turn_into_list(  # type: ignore[explicit-any]
@@ -398,7 +396,7 @@ def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explic
     :param comparison_len: length of the repetition.
     :return: the array repeated to the proper length.
     """
-    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array  # type: ignore[return-value]
+    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array
 
 
 def _error_checker(
@@ -547,6 +545,25 @@ def _select_and_run(
     return all_flux, phis
 
 
+# @overload
+# def show_surface(
+#     rsa_config: RsaConfig | None = None,
+#     lattice_type: str = "triangular",
+#     site_count: int | None = None,
+#     lattice_a: float | None = None,
+#     # boundary_condition: str | None = None,
+#     seed: int | Generator | None = None,
+#     # site_x_coords: DistArray | None = None,
+#     # site_y_coords: DistArray | None = None,
+#     # bounding_x_coord: float | None = None,
+#     # bounding_y_coord: float | None = None,
+#     svg_flag: bool = False,
+#     filepath: str | Path | io.BytesIO = "",
+#     ax: Axes,
+#     dark_mode_bool: bool = False,
+# ) -> Axes: ...
+
+
 def show_surface(
     rsa_config: RsaConfig | None = None,
     lattice_type: str = "triangular",
@@ -596,7 +613,7 @@ def show_surface(
         if isinstance(filepath, io.BytesIO):
             errmsg: str = "Plotter does not accept 'io.BytesIO' as directory."
             raise TypeError(errmsg)
-        return surf.plot_surface_sites("", filepath, ax)
+        return cast("Tax", surf.plot_surface_sites("", filepath, ax))
     return ax
 
 

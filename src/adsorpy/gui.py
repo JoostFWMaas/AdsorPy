@@ -21,10 +21,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-from dask.delayed import Delayed
 from dask.distributed import Future
 from matplotlib import patches
-from matplotlib.axes import Axes
 from pydantic_core import core_schema
 from PySide6.QtCore import QByteArray, QMarginsF
 from PySide6.QtGui import QPageLayout
@@ -40,7 +38,6 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Annotated,
-    Any,
     ClassVar,
     Generic,
     Literal,
@@ -50,6 +47,7 @@ from typing import (
     TypedDict,
     TypeGuard,
     TypeVar,
+    Unpack,
     cast,
     get_origin,
     override,
@@ -106,6 +104,8 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
+    QLayoutItem,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -119,8 +119,6 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QVBoxLayout,
     QWidget,
-    QLayout,
-    QLayoutItem,
 )
 from shapely import Polygon, from_geojson
 from shapely.geometry import mapping
@@ -129,27 +127,83 @@ from src.adsorpy import __version__, molecule_lib
 from src.adsorpy.run_simulation import run_simulation, show_surface
 
 T_qobj = TypeVar("T_qobj", bound=QObject)
-T_inv = TypeVar("T_inv", bound=bool | int | str | float)
-T_widg = TypeVar("T_widg", bound=QWidget)
+T_inv = TypeVar("T_inv", bool, int, str, float)
+P_mol = ParamSpec("P_mol")  # Helps with static type checkers.
+# T_widg = TypeVar("T_widg", bound=QWidget)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, ItemsView, ValuesView
 
+    from dask.delayed import Delayed
     from numpy.random import Generator
 
     from src.adsorpy.randomsequentialadsorption import Simulator
-    from src.adsorpy.types import DistArray, IdxArray
+    from src.adsorpy.rsa_config import RsaConfig
+    from src.adsorpy.types import BoolArray, DistArray, FloatArray, GeoArray, IdxArray
 
     P = ParamSpec("P")
-    P_mol = ParamSpec("P_mol", bound=int | float | str | list[str] | None)  # Helps with static type checkers.
     R = TypeVar("R")
     InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QFileDialog | "FilePickerWidget"
 
-class FilePickerWidget(QWidget):
-    """Widget to help pick a file.
 
-    :cvar text: Property parameter 'text', with getter and setter functions.
-    """
+# def _make_property(field_name: str, signal_name: str) -> property:
+#     """Define helper factory to isolate closure scope and avoid variable bleeding.
+#
+#     :param field_name: Field name.
+#     :param signal_name: Signal name.
+#     :returns: Property
+#     """
+#     private_name = f"_{field_name}"
+#
+#     def getter(self: object) -> str | float | None :
+#         return getattr(self, private_name, None)
+#
+#     def setter(self: object, value: str | float | None) -> None:
+#         # Avoid redundant updates and infinite loops in two-way bindings
+#         if getattr(self, private_name, None) == value:
+#             return
+#         setattr(self, private_name, value)
+#         getattr(self, signal_name).emit(value)
+#
+#     return property(getter, setter)
+
+
+class RunSimulationInput(TypedDict, total=False):
+    """Typed dictionary corresponding to the input of the run_simulation function."""
+
+    rsa_config: RsaConfig | None
+    molecules_list: Polygon | list[Polygon] | GeoArray | None
+    rotation_symmetries: int | list[int] | IdxArray | None
+    reflection_symmetries: bool | list[bool] | BoolArray | None
+    rotation_counts: int | list[int] | IdxArray | None
+    lattice_type: str
+    site_count: int | None
+    lattice_a: float | None
+    boundary_condition: str | None
+    simulation_type: str
+    dosing_distribution: list[float] | DistArray | None
+    include_rejected_flux: bool
+    calculate_gap_size: bool
+    prlongoutput_flag: bool
+    plot_output_flag: bool
+    seed: int | Generator | None
+    timestep_limit: int
+    site_x_coords: DistArray | None
+    site_y_coords: DistArray | None
+    bounding_x_coord: float | None
+    bounding_y_coord: float | None
+    sticking_probability: float | list[float] | DistArray
+    # repeats: int
+
+
+class BatchSimulationInput(RunSimulationInput, total=False):
+    """Typed dictionary with repeats argument."""
+
+    repeats: int
+
+
+class FilePickerWidget(QWidget):
+    """Widget to help pick a file."""
 
     def __init__(self, parent: QWidget | None = None, placeholder: str = "Select a file...") -> None:
         """Initialise the file-picker widget.
@@ -226,62 +280,7 @@ class FilePickerWidget(QWidget):
 
         :return: Text of the box being edited.
         """
-        return self.line_edit.text()
-
-# # class ContentInterface(Protocol):
-# #     """Protocol adding structural type hinting for the unified content property."""
-# #
-# #     @property
-# #     def content(self) -> str | float: ...
-# #
-# #     @content.setter
-# #     def content(self, value: str | float) -> None: ...
-# #
-# # class SmartWidgetMixin(Generic[T_widg], ContentInterface):
-# #     """Virtual type helper combining a native QWidget with ContentInterface."""
-#
-# def make_smart_widget(base_class: type[T_widg]) -> type[T_widg]:
-#     """Dynamically subclasses a QWidget to inject a fully-hinted .content property."""
-#
-#     class SmartWidget(base_class):  # type: ignore[valid-type, misc]
-#         @property
-#         def content(self) -> str | float:
-#             match self:
-#                 case QSpinBox():
-#                     return self.value()
-#                 case QDoubleSpinBox():
-#                     return self.value()
-#                 case QLineEdit() | FilePickerWidget():
-#                     return self.text()
-#                 case _:
-#                     msg = f".content getter not implemented for {type(self).__name__}"
-#                     raise TypeError(msg)
-#
-#         @content.setter
-#         def content(self, value: str | float) -> None:
-#             match self:
-#                 case QSpinBox():
-#                     self.setValue(int(value))
-#                 case QDoubleSpinBox():
-#                     self.setValue(float(value))
-#                 case QLineEdit() | FilePickerWidget():
-#                     self.setText(str(value))
-#                 case _:
-#                     msg = f".content setter not implemented for {type(self).__name__}"
-#                     raise TypeError(msg)
-#
-#     SmartWidget.__name__ = f"Smart{base_class.__name__}"
-#     return SmartWidget
-#
-# # SmartSpinBox: type[QSpinBox & ContentInterface] = cast(Any, make_smart_widget(QSpinBox))
-# # SmartDoubleSpinBox: type[QDoubleSpinBox & ContentInterface] = cast(Any, make_smart_widget(QDoubleSpinBox))
-# # SmartLineEdit: type[QLineEdit & ContentInterface] = cast(Any, make_smart_widget(QLineEdit))
-# # SmartFilePickerWidget: type[FilePickerWidget & ContentInterface] = cast(Any, make_smart_widget(FilePickerWidget))
-#
-# SmartSpinBox = make_smart_widget(QSpinBox)
-# SmartDoubleSpinBox = make_smart_widget(QDoubleSpinBox)
-# SmartLineEdit = make_smart_widget(QLineEdit)
-# SmartFilePickerWidget = make_smart_widget(FilePickerWidget)
+        return cast("str", self.line_edit.text())
 
 
 def extract_param_docs(func: Callable[P, R]) -> dict[str, str]:
@@ -420,11 +419,25 @@ class ParamWidgets(TypedDict, total=False):
     z_trim: QDoubleSpinBox
     reference_lattice_spacing: QDoubleSpinBox
 
+
 ParamName = Literal[
-    "radius", "distance", "x_offset", "y_offset", "quad_segs",
-    "scale", "verts", "roundedness", "file_name", "ignore_atoms",
-    "roll", "pitch", "yaw", "z_trim", "reference_lattice_spacing",
+    "radius",
+    "distance",
+    "x_offset",
+    "y_offset",
+    "quad_segs",
+    "scale",
+    "verts",
+    "roundedness",
+    "file_name",
+    "ignore_atoms",
+    "roll",
+    "pitch",
+    "yaw",
+    "z_trim",
+    "reference_lattice_spacing",
 ]
+
 
 def is_valid_param(name: str) -> TypeGuard[ParamName]:
     """Check if a parameter name is valid.
@@ -434,7 +447,7 @@ def is_valid_param(name: str) -> TypeGuard[ParamName]:
     """
     return name in ParamWidgets.__annotations__
 
-# @pydantic.dataclasses.dataclass(slots=True, frozen=True, config=ConfigDict(arbitrary_types_allowed=True))
+
 class RawMoleculeParameters(TypedDict):
     """Molecule parameters dataclass.
 
@@ -463,11 +476,8 @@ MoleculeParameters = Annotated[
     with_config(ConfigDict(arbitrary_types_allowed=True)),
 ]
 
-# pydantic.dataclasses.rebuild_dataclass(MoleculeParameters)
 
-
-# @pydantic.dataclasses.dataclass(slots=True, frozen=True)
-class SurfaceParameters(TypedDict):
+class SurfaceParameters(TypedDict, total=False):
     """Surface parameters dataclass.
 
     :ivar lattice_type: Surface lattice type.
@@ -482,7 +492,6 @@ class SurfaceParameters(TypedDict):
     seed: int | None
 
 
-# @pydantic.dataclasses.dataclass(slots=True, frozen=True)
 class MiscParameters(TypedDict):
     """Miscellaneous parameters dataclass.
 
@@ -558,7 +567,7 @@ class ZoomableSvgWidget(QSvgWidget):
         self.save_button.move(x, y)
 
     @override
-    def load(self, data: bytes | str | Path | QByteArray | memoryview[int]| bytearray, /) -> None:
+    def load(self, data: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:
         """Override native load to accept raw bytes, strings, or paths while caching data.
 
         :param data: Raw SVG byte content, string path, or Pathlib instance.
@@ -577,7 +586,6 @@ class ZoomableSvgWidget(QSvgWidget):
                 QMessageBox.warning(self, "Error", f"Data could not be loaded:\n{e}")
             super().load(path_str)
 
-        # 2. Confirm structural document vector tracks
         is_valid = self.renderer().isValid()
 
         # Emit signal which updates button visibility automatically
@@ -587,7 +595,6 @@ class ZoomableSvgWidget(QSvgWidget):
         if is_valid:
             self.save_button.raise_()  # Bring the button to the absolute visual front layer
             self.updateGeometry()
-
 
     def load_svg(self, file_path: Path | str) -> None:
         """Public convenience method that accepts Pathlib or strings.
@@ -659,7 +666,7 @@ class ZoomableSvgWidget(QSvgWidget):
                         svg_renderer.render(painter)
                         painter.end()
                     else:
-                        errmsg: str = "Could not initialize SVG generator output."
+                        errmsg = "Could not initialize SVG generator output."
                         QMessageBox.critical(self, "Export Error", errmsg)
                         return
 
@@ -701,7 +708,7 @@ class ZoomableSvgWidget(QSvgWidget):
             QMessageBox.information(self, "Success", f"Graphics successfully saved to:\n{file_path.name}")
 
         except (ValueError, NotADirectoryError, OSError) as e:
-            errmsg: str = f"An error occurred while saving:\n{e!s}"
+            errmsg = f"An error occurred while saving:\n{e!s}"
             QMessageBox.critical(self, "Export Failed", errmsg)
 
     @override
@@ -752,7 +759,7 @@ class ZoomableSvgWidget(QSvgWidget):
             event.ignore()
 
 
-class AutoStateMeta(type(QObject), Generic[T_qobj]):
+class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc]
     """Metaclass for AppState to automatically communicate between tabs.
 
     This metaclass scans the ``fields`` class variable and dynamically
@@ -764,7 +771,7 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
 
     fields: ClassVar[dict[str, type]]
 
-    def __new__(cls: type[Self], name: str, bases: tuple[type, ...], attrs: dict[str, Any]) -> type[Self]:
+    def __new__(cls: type[Self], name: str, bases: tuple[type, ...], attrs: dict[str, object]) -> type[Self]:
         """Create an AutoState class instance.
 
         :param name: The name of the class.
@@ -772,7 +779,7 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
         :param attrs: The class attributes.
         :return: The AutoState class instance.
         """
-        annotations = attrs.get("__annotations__", {})
+        annotations = cast("dict[str, type]", attrs.get("__annotations__", {}))
 
         fields = {k: v for k, v in annotations.items() if k != "fields" and not k.startswith("_")}
 
@@ -811,12 +818,12 @@ class AutoStateMeta(type(QObject), Generic[T_qobj]):
 
             attrs[field_name] = property(getter, setter)
 
-        new_class = super().__new__(cls, name, bases, attrs)
+        new_class: type[Self] = cast("type[Self]", super().__new__(cls, name, bases, attrs))
         new_class.fields = fields
 
         return new_class
 
-    def __call__(cls: type[Self], *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
+    def __call__(cls, *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
         """Instantiate the class and auto-initialise its fields.
 
         :param args: Positional arguments.
@@ -855,8 +862,8 @@ class AppState(QObject, metaclass=AutoStateMeta):
     misc_params: MiscParameters
     molecule_param_list: list[MoleculeParameters]
     surface_params: SurfaceParameters
-    coverages: tuple[DistArray]
-    fraction_of_covered_area: tuple[DistArray]
+    coverages: tuple[DistArray, ...]
+    fraction_of_covered_area: tuple[DistArray, ...]
     gap_size_distribution: DistArray
 
 
@@ -1041,7 +1048,7 @@ class AdsorpyGUI(QMainWindow):
 
             # Synchronise GUI with the newly loaded state
             misc = self.state.misc_params
-            self.state.seed_input.setText(str(misc.seed) if hasattr(misc, "seed") else "")
+            self.state.seed_input.setText(getattr(misc, "seed", ""))
 
             # self.log("Settings successfully loaded and validated.")
 
@@ -1129,7 +1136,7 @@ class GeneralSettings(QWidget):
 
         self.state.surface_paramsChanged.connect(self._on_surface_changed)
         self.state.molecule_param_listChanged.connect(self._on_molecules_changed)
-        self.input_metadata: dict[str, Any] = {}
+        self.input_metadata: BatchSimulationInput = BatchSimulationInput()
         """Dict of input values, to be stored as metadata."""
 
         # Clean up scroll area borders to integrate smoothly with the splitter look
@@ -1342,9 +1349,9 @@ class GeneralSettings(QWidget):
         if param.default is inspect.Parameter.empty:
             errmsg: str = f"{name} has no default"
             raise ValueError(errmsg)
-        return param.default
+        return cast("str | int | float | None", param.default)
 
-    def _prepare_simulation_inputs(self) -> dict[str, Any] | None:
+    def _prepare_simulation_inputs(self) -> BatchSimulationInput:
         """Validate UI components and format into a unified dictionary for the simulation engine.
 
         :returns: Dict as input for run_simulation if successful, None if validation fails.
@@ -1364,7 +1371,7 @@ class GeneralSettings(QWidget):
         except ValidationError as e:
             errmsg = f"Invalid parameters provided:\n{e}"
             self.error(errmsg)
-            return None
+            return BatchSimulationInput()
 
         misc_adapter = TypeAdapter(MiscParameters)
         misc_params = misc_adapter.dump_python(misc_params)
@@ -1375,7 +1382,7 @@ class GeneralSettings(QWidget):
         molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
         mol_adapter = TypeAdapter(MoleculeParameters)
 
-        defaultdict_of_lists = defaultdict(list)
+        defaultdict_of_lists: defaultdict[str, list[Polygon] | list[int] | list[bool]] = defaultdict(list)
         molecule_settings = [] if molecule_settings is None else molecule_settings
 
         for dict_in_list in molecule_settings:
@@ -1390,8 +1397,8 @@ class GeneralSettings(QWidget):
             ]
 
         def replace_keys(
-            dict_with_old_keys: defaultdict[str, list[Polygon] | list[int]],
-        ) -> dict[str, list[Polygon] | list[int]]:
+            dict_with_old_keys: defaultdict[str, list[Polygon] | list[int] | list[bool]],
+        ) -> dict[str, list[Polygon] | list[int] | list[bool]]:
             old_keys: list[str] = ["polygon", "refl_sym", "rot_sym", "rot_cnt"]
             new_keys: list[str] = ["molecules_list", "reflection_symmetries", "rotation_symmetries", "rotation_counts"]
             mapping: dict[str, str] = dict(zip(old_keys, new_keys, strict=True))
@@ -1404,20 +1411,19 @@ class GeneralSettings(QWidget):
             return dict_with_new_keys
 
         def filter_dict_for_func(
-            data_dict: dict[str, Any],
-            filter_func: Callable[..., Any] = run_simulation,
-        ) -> dict[str, Any]:
-            sig = inspect.signature(filter_func)
+            data_dict: dict[str, list[Polygon] | list[int] | list[bool]],
+        ) -> dict[str, list[Polygon] | list[int] | list[bool]]:
+            sig = inspect.signature(run_simulation)
             valid_keys = sig.parameters.keys()
             return {k: v for k, v in data_dict.items() if k in valid_keys}
 
         dict_of_lists = replace_keys(defaultdict_of_lists)
         dict_of_lists = filter_dict_for_func(dict_of_lists)
 
-        surface_settings: dict[str, int | float | str] = surf_adapter.dump_python(surf_settings)
-        surface_settings = {} if surface_settings is None else surface_settings
-
-        return {**misc_params, **surface_settings, **dict_of_lists}
+        surface_settings: SurfaceParameters = surf_adapter.dump_python(surf_settings)
+        surface_settings = SurfaceParameters() if surface_settings is None else surface_settings
+        surface_settings.pop("seed") if "seed" in surface_settings else None
+        return BatchSimulationInput(**misc_params, **surface_settings, **dict_of_lists)  # type: ignore[typeddict-item, no-any-return]
 
     def run_simulation(self) -> None:
         """Run exactly one instance of the simulation engine."""
@@ -1431,7 +1437,9 @@ class GeneralSettings(QWidget):
         self.progress_bar.setValue(0)
         # self.run_group.setText("Computing...")
 
-        task = BackgroundTask(run_simulation, **inputs)
+        sim_input = RunSimulationInput(**{key: value for key, value in inputs.items() if key != "repeats"})  # type: ignore[typeddict-item]
+
+        task = BackgroundTask(run_simulation, **sim_input)
         task.signals.finished.connect(self._on_simulation_complete)
         task.signals.error.connect(self._on_simulation_error)
         QThreadPool.globalInstance().start(task)
@@ -1440,7 +1448,7 @@ class GeneralSettings(QWidget):
         """Run N parallel instances using Dask with safe child-spawned seeds."""
         n_instances = self.repeat_count.value()
         inputs = self._prepare_simulation_inputs()
-        self.input_metadata = {"repeats": n_instances, **inputs}
+        self.input_metadata = BatchSimulationInput(repeats=n_instances, **inputs)
         if inputs is None:
             return
 
@@ -1449,17 +1457,17 @@ class GeneralSettings(QWidget):
         self.progress_bar.setValue(0)
 
         def execute_dask_batch(
-            base_inputs: dict[str, Any],
+            base_inputs: RunSimulationInput,
             total_runs: int,
             task_ref: BackgroundTask | None = None,
         ) -> list[tuple[DistArray, DistArray, DistArray]]:
 
             tasks: list[Delayed] = []
-            parent_seed: int = base_inputs.get("seed")
+            parent_seed: int = cast("int", base_inputs.get("seed"))
 
             child_seeds = np.random.SeedSequence(parent_seed).spawn(total_runs)
 
-            def wrap_run_func(**kwargs: P.kwargs) -> tuple[DistArray, DistArray, DistArray]:
+            def wrap_run_func(**kwargs: Unpack[RunSimulationInput]) -> tuple[DistArray, DistArray, DistArray]:
                 output = run_simulation(**kwargs)[-1]
                 return output.coverage, output.fraction_of_covered_area, output.analyse_gap_size()
 
@@ -1483,7 +1491,11 @@ class GeneralSettings(QWidget):
             return list(results)
 
         # Instantiate task and pass 'task' itself into the execution function so it can access signals
-        task = BackgroundTask(execute_dask_batch, base_inputs=inputs, total_runs=n_instances)
+        task = BackgroundTask(
+            execute_dask_batch,
+            base_inputs=inputs,
+            total_runs=n_instances,
+        )  # typing: ignore[arg-type]
         task.kwargs["task_ref"] = task  # Dynamically inject the task reference into kwargs
 
         # Connect signals
@@ -1514,10 +1526,10 @@ class GeneralSettings(QWidget):
             self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
             # Populate numeric output displays
-            self.state.coverages = tuple(output.coverage)
+            self.state.coverages = (output.coverage,)
             self.coverage_label.setText(f"Coverage: {np.sum(output.coverage):.4f}")
             self.coverage_label.show()
-            self.state.fraction_of_covered_area = tuple(output.fraction_of_covered_area)
+            self.state.fraction_of_covered_area = (output.fraction_of_covered_area,)
             frac_of_covered_area = np.sum(output.fraction_of_covered_area)
 
             self.state.gap_size_distribution = output.analyse_gap_size()
@@ -1542,36 +1554,41 @@ class GeneralSettings(QWidget):
             if not batch_outputs:
                 return
 
-            coverages, fraction_of_covered_area, gapsize_dist = zip(*batch_outputs, strict=True)
+            coverages: tuple[DistArray, ...]
+            fraction_of_cov_ar: tuple[DistArray, ...]
+            gapsize_dist: tuple[DistArray, ...]
+            coverages, fraction_of_cov_ar, gapsize_dist = zip(*batch_outputs, strict=True)
 
             mpl.use("Agg")
             fig = plt.figure(figsize=(8, 6))
             gs = fig.add_gridspec(2, 2)
 
             coverages_arr = np.array(coverages)
-            fraction_arr = np.array(fraction_of_covered_area)
+            fraction_arr = np.array(fraction_of_cov_ar)
             gapsize_distribution: DistArray = np.hstack(gapsize_dist)
 
             missing_coverage = 1.0 - np.sum(coverages_arr, axis=1)
             missing_fraction = 1.0 - np.sum(fraction_arr, axis=1)
 
-            coverages_final = np.column_stack((coverages_arr, missing_coverage)).tolist()
-            fraction_final = np.column_stack((fraction_arr, missing_fraction)).tolist()
-            coverages = [np.mean(x) for x in zip(*coverages_final, strict=True)]
-            fraction_of_covered_area = [np.mean(x) for x in zip(*fraction_final, strict=True)]
+            coverages_final: FloatArray = np.column_stack((coverages_arr, missing_coverage)).tolist()
+            fraction_final: FloatArray = np.column_stack((fraction_arr, missing_fraction)).tolist()
+            cov = [np.mean(x) for x in zip(*coverages_final, strict=True)]  # typing: ignore[explicit-any, assignment]
+            frac_of_cov_ar = [
+                np.mean(x) for x in zip(*fraction_final, strict=True)
+            ]  # typing: ignore[explicit-any, assignment]
 
-            self.coverage_label.setText(f"Coverage: {(1.0 - coverages[-1]):.4f}")
+            self.coverage_label.setText(f"Coverage: {(1.0 - cov[-1]):.4f}")
             self.coverage_label.show()
-            self.covered_area_label.setText(f"Fraction of covered area: {(1.0 - fraction_of_covered_area[-1]):.4f}")
+            self.covered_area_label.setText(f"Fraction of covered area: {(1.0 - frac_of_cov_ar[-1]):.4f}")
             self.covered_area_label.show()
             self.export_results_button.show()
 
-            colors = [f"C{ii}" for ii in range(len(coverages))]
+            colors = [f"C{ii}" for ii in range(len(cov))]
             colors[-1] = "none"
             # Top left plot (Row 0, Column 0)
             ax1 = fig.add_subplot(gs[0, 0])
             ax1.set_title("Coverage")
-            ax1.pie(coverages, colors=colors)
+            ax1.pie(cov, colors=colors)
 
             # Add outer circle to ax1
             circle1 = patches.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
@@ -1580,7 +1597,7 @@ class GeneralSettings(QWidget):
             # Top right plot (Row 0, Column 1)
             ax2 = fig.add_subplot(gs[1, 0])
             ax2.set_title("Frac. cov. area")
-            ax2.pie(fraction_of_covered_area, colors=colors)
+            ax2.pie(frac_of_cov_ar, colors=colors)
 
             # Add outer circle to ax2
             circle2 = patches.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
@@ -1722,27 +1739,23 @@ class GeneralSettings(QWidget):
             elif ".zip" in suffix_lower:
                 # Open a compressed zip file archive stream wrapper directly
                 with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-                    # File A: Build metadata.txt
                     meta_io = io.StringIO()
                     for key, val in meta.items():
                         meta_io.write(f"{key}: {val}\n")
                     zf.writestr("metadata.txt", meta_io.getvalue())
 
-                    # File B: Build aaa.csv
-                    aaa_dict = {f"aaa_col_{i}": arr for i, arr in enumerate(covs)}
+                    aaa_dict = {f"col_{i}": arr for i, arr in enumerate(covs)}
                     aaa_io = io.StringIO()
                     pd.DataFrame(aaa_dict).to_csv(aaa_io, index=False)
                     zf.writestr("Coverage.csv", aaa_io.getvalue())
 
-                    # File C: Build bbb.csv
-                    bbb_dict = {f"bbb_col_{i}": arr for i, arr in enumerate(fracs)}
+                    bbb_dict = {f"col_{i}": arr for i, arr in enumerate(fracs)}
                     bbb_io = io.StringIO()
                     pd.DataFrame(bbb_dict).to_csv(bbb_io, index=False)
                     zf.writestr("Fraction_of_covered_area.csv", bbb_io.getvalue())
 
-                    # File D: Build ccc.csv
                     ccc_io = io.StringIO()
-                    pd.DataFrame({"ccc_large_array": gaps}).to_csv(ccc_io, index=False)
+                    pd.DataFrame({"gap_size_distribution": gaps}).to_csv(ccc_io, index=False)
                     zf.writestr("Gap_size_distribution.csv", ccc_io.getvalue())
 
             QMessageBox.information(self, "Success", f"Results successfully exported to:\n{file_path.name}")
@@ -1820,7 +1833,10 @@ class MoleculeGeneration(QWidget):
         self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Discover generators using introspective library lookups
-        self.generators:  dict[str, Callable[P_mol, Polygon]] = self._discover_molecule_generators()
+        self.generators: dict[str, Callable[P_mol, Polygon]] = cast(
+            "dict[str, Callable[P_mol, Polygon]]",
+            self._discover_molecule_generators(),
+        )
         """Registry cache linking user-facing label text keys directly to underlying library callables."""
 
         self.func_dropdown.addItems(list(self.generators.keys()))
@@ -2243,9 +2259,9 @@ class MoleculeGeneration(QWidget):
                     fill_str: str = (
                         ",".join(first_time_value) if isinstance(first_time_value, list) else str(first_time_value)
                     )
-                    cast("FilePickerWidget | QLineEdit", self.param_widgets[first_time_key]).setText(fill_str)
+                    self.param_widgets[first_time_key].setText(fill_str)
                 else:
-                    self.param_widgets[first_time_key].setValue(cast("float | int", first_time_value))  # type: ignore[arg-type, union-attr]
+                    self.param_widgets[first_time_key].setValue(cast("float | int", first_time_value))
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
 
@@ -2375,7 +2391,7 @@ class MoleculeGeneration(QWidget):
                 continue
             current_param: QSpinBox | QDoubleSpinBox | QLineEdit | FilePickerWidget = self.param_widgets[key]
             if isinstance(current_param, QSpinBox | QDoubleSpinBox) and isinstance(val, float | int):
-                current_param.setValue(val)  # type: ignore[arg-type]
+                current_param.setValue(val)
             elif isinstance(current_param, QLineEdit | FilePickerWidget) and isinstance(val, str):
                 current_param.setText(val)
             else:
@@ -2552,7 +2568,8 @@ class SurfaceGeneration(QWidget):
                 return
 
         lattice_type = cast(
-            "Literal['hexagonal', 'triangular', 'honeycomb', 'square']", self.surface_dropdown.currentText(),
+            "Literal['hexagonal', 'triangular', 'honeycomb', 'square']",
+            self.surface_dropdown.currentText(),
         )
         app = cast("QGuiApplication", QGuiApplication.instance())
         dark_mode_bool = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
@@ -2692,7 +2709,7 @@ def main() -> int:
     gui = AdsorpyGUI()
     gui.resize(1600, 900)
     gui.show()
-    return app.exec()
+    return cast("int", app.exec())
 
 
 if __name__ == "__main__":

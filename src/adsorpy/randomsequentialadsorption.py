@@ -1063,7 +1063,7 @@ class Simulator:
 
             return angle, reflect_x
 
-        filename: Path | io.BytesIO = (
+        filepath: Path | io.BytesIO = (
             Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
         )
 
@@ -1179,7 +1179,7 @@ class Simulator:
 
         root_group_elements.extend(site_group)
 
-        surf.create_and_write_svg(filename, root_group_elements, width, height, definitions, style)
+        surf.create_and_write_svg(filepath, root_group_elements, width, height, definitions, style)
 
     def attempt_cascading_placement(
         self,
@@ -1570,7 +1570,7 @@ class Surface:
         :param filename: The filepath of the SVG file. If io.BytesIO is provided, the file will be written to bytes.
         :param dark_mode_bool: True if dark mode, False if light mode.
         """
-        filename: Path | io.BytesIO = (
+        filepath: Path | io.BytesIO = (
             Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
         )
 
@@ -1578,7 +1578,7 @@ class Surface:
         definitions = svg.Defs(elements=[site_template])
         style = self.create_dark_css_style(dark_mode_bool)
 
-        self.create_and_write_svg(filename, site_group, width, height, definitions, style)
+        self.create_and_write_svg(filepath, site_group, width, height, definitions, style)
 
     def make_surface_svg_elements(self, rounding: int = 4) -> tuple[svg.Circle, list[svg.G | svg.Rect], float, float]:
         """Make the SVG elements of the surface.

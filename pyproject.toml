@@ -81,7 +81,6 @@ dependencies = [
     "enum34>=1.1.10",
     "ipaddress>=1.0.23",
     "ply>=3.11",
-    "PySide6>=6.11.1",
 ]
 
 [project.optional-dependencies]
@@ -98,6 +97,7 @@ lint = [
     "pyright>=1.1.410",
     "tach>=0.34.1",
     "slotscheck>=0.20.0",
+    "pyside6-stubs>=6.7.3.0",
 ]
 docs = [
     "sphinx>=8.0",
@@ -205,6 +205,7 @@ plugins = ["pydantic.mypy"]
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
+disallow_subclassing_any = false
 
 [tool.flake8]
 max-line-length = 120

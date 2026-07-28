@@ -13,7 +13,7 @@ import json
 import sys
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeVar, cast, overload
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -52,10 +52,10 @@ from shapely.ops import unary_union
 if TYPE_CHECKING:
     from PySide6.QtGui import QFontMetrics
 
-    from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, RotMatrix, StrArray
+    from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, IdxArray, RotMatrix, StrArray
 
-    T = TypeVar("T", bound=bool | int | str | float)
-    Tfloat = TypeVar("Tfloat", bound=float | np.double)
+    T = TypeVar("T", bool, int, str, float)
+    Tfloat = TypeVar("Tfloat", float, np.double, DistArray)
     # P = ParamSpec("P")  # Helps with static type checkers.
 
 plt.rcParams.update(
@@ -298,13 +298,13 @@ class MoleculeViewer(QDialog):
     :ivar _settings: Persistent configuration handle cached across software operational cycles.
     :ivar atomkeys: Active slice mappings capturing atomic parameters matching current view states.
     :ivar atompos: Active slice mappings capturing 3D coordinates matching current view states.
-    :ivar colours: Active slice mappings capturing style color tokens matching current view states.
+    :ivar colours: Active slice mappings capturing style colour tokens matching current view states.
     :ivar lattice: Lattice physical constant constraint baseline scaling factor. Defaults to 1.0.
     :ivar show_bonds: State indicator controlling rendering toggles for chemical covalent bounds.
     :ivar atom_toggles: Active reference mapping linking atomic symbol labels to operational checkboxes.
     :ivar orig_atomkeys: Immutable baseline array tracking atomic keys loaded from source files.
     :ivar orig_atompos: Immutable matrix holding coordinates across 3D vector parameters.
-    :ivar orig_colours: Immutable map listing style color tokens for individual elements.
+    :ivar orig_colours: Immutable map listing style colour tokens for individual elements.
     :ivar roll: Current rotation angle around the longitudinal axis.
     :ivar pitch: Current elevation transformation offset angle.
     :ivar yaw: Current horizontal rotation transformation offset angle.
@@ -410,9 +410,9 @@ class MoleculeViewer(QDialog):
         :param init_y_offset: Baseline translation margin parallel to the ordinate.
         :return: Tuple containing configured baseline instance data arrays.
         """
-        self.orig_atomkeys = np.array(atomkeys, dtype=np.str_)
-        self.orig_atompos = np.array(atompos, dtype=np.double)
-        self.orig_colours = np.array(colours, dtype=np.str_)
+        self.orig_atomkeys: StrArray = np.array(atomkeys, dtype=np.str_)
+        self.orig_atompos: CoordsArray3D = np.array(atompos, dtype=np.double)
+        self.orig_colours: StrArray = np.array(colours, dtype=np.str_)
 
         # Establish working instance clones to avoid operational mutations
         temp_atomkeys = self.orig_atomkeys.copy()
@@ -496,7 +496,7 @@ class MoleculeViewer(QDialog):
         unique_atoms: list[str] = sorted(set(self.orig_atomkeys), key=list(RADII.keys()).index)
 
         for atom in unique_atoms:
-            idx: np.ndarray = np.where(self.orig_atomkeys == atom)
+            idx: IdxArray = cast("IdxArray", np.where(self.orig_atomkeys == atom))
             color_hex: str = self.orig_colours[idx][0] if idx[0].size else "#FFFFFF"
 
             item_row: QHBoxLayout = QHBoxLayout()
@@ -647,9 +647,9 @@ class MoleculeViewer(QDialog):
             mask = np.ones_like(self.orig_atompos[:, 2], dtype=np.bool_)
 
         allowed_types: set[str] = {atom for atom, cb in self.atom_toggles.items() if cb.isChecked()}
-        type_mask: np.ndarray = np.isin(self.orig_atomkeys, list(allowed_types))
+        type_mask: BoolArray = np.isin(self.orig_atomkeys, list(allowed_types))
 
-        combined_mask: np.ndarray = mask & type_mask
+        combined_mask: BoolArray = mask & type_mask
 
         self.atomkeys = self.orig_atomkeys[combined_mask]
         self.atompos = self.orig_atompos[combined_mask]
@@ -827,15 +827,15 @@ class MoleculeViewer(QDialog):
         all_x: DistArray = np.concatenate([xs, zs, lattice_x])
         all_y: DistArray = np.concatenate([ys, zs, lattice_y])
 
-        xmin_v: float
-        xmax_v: float
-        ymin_v: float
-        ymax_v: float
+        xmin_v: np.float64
+        xmax_v: np.float64
+        ymin_v: np.float64
+        ymax_v: np.float64
 
         xmin_v, xmax_v = np.min(all_x), np.max(all_x)
         ymin_v, ymax_v = np.min(all_y), np.max(all_y)
 
-        span = max(xmax_v - xmin_v, ymax_v - ymin_v) * 1.5
+        span: float | np.float64 = max(xmax_v - xmin_v, ymax_v - ymin_v) * 1.5
         min_comparison: float = 1e-9
         if span < min_comparison:
             span = 1.0
@@ -920,14 +920,21 @@ class MoleculeViewer(QDialog):
 
             return elements
 
-        def norm(val: Tfloat, center: Tfloat) -> Tfloat:
+        @overload
+        def norm(val: float, center: float, span: float) -> float: ...
+
+        @overload
+        def norm(val: DistArray, center: float | DistArray, span: float | DistArray) -> DistArray: ...
+
+        def norm(val: float | DistArray, center: float | DistArray, span: float | DistArray) -> float | DistArray:
             """Calculate the norm.
 
             :param val: Value to calculate the norm.
             :param center: Centre point.
+            :param span: Span of the range.
             :returns: The norm.
             """
-            return (val - center) / span
+            return cast("DistArray", (val - center) / span)
 
         def scatter_proj(
             xdata: DistArray,
@@ -949,12 +956,10 @@ class MoleculeViewer(QDialog):
             cy = offset_y + panel * (row + 0.5)
             elements: list[svg.Line | svg.Circle] = []
 
-            # 1. Render bonds first if enabled, so they sit visually behind the atom markers
             for idx1, idx2 in bond_pairs:
-                nx1, ny1 = norm(xdata[idx1], cx_data), norm(ydata[idx1], cy_data)
-                nx2, ny2 = norm(xdata[idx2], cx_data), norm(ydata[idx2], cy_data)
+                nx1, ny1 = norm(xdata[idx1], cx_data, span), norm(ydata[idx1], cy_data, span)
+                nx2, ny2 = norm(xdata[idx2], cx_data, span), norm(ydata[idx2], cy_data, span)
 
-                # --- CRITICAL FIX: Inverted Y axis (changed '-' to '+') ---
                 px1, py1 = cx + nx1 * scale * 2, cy + ny1 * scale * 2
                 px2, py2 = cx + nx2 * scale * 2, cy + ny2 * scale * 2
 
@@ -962,7 +967,6 @@ class MoleculeViewer(QDialog):
                     svg.Line(x1=px1, y1=py1, x2=px2, y2=py2, stroke="#aaaaaa", stroke_width=2, stroke_dasharray=[4, 4]),
                 )
 
-            # 2. Render depth-sorted atoms
             min_comparison: float = 1e-9
             order = np.argsort(depth)
             dmin: float
@@ -971,13 +975,12 @@ class MoleculeViewer(QDialog):
             depth_range = dmax - dmin if (dmax - dmin) > min_comparison else 1.0
             size = 30 + (depth - dmin) / depth_range * 30
 
-            nx_array = norm(xdata[order], cx_data)
-            ny_array = norm(ydata[order], cy_data)
+            nx_array = norm(xdata[order], cx_data, span)
+            ny_array = norm(ydata[order], cy_data, span)
 
-            px_array = cx + nx_array * scale * 2
-            # --- CRITICAL FIX: Inverted Y axis (changed '-' to '+') ---
-            py_array = cy + ny_array * scale * 2
-            r_array = size[order] * 0.2
+            px_array: DistArray = cx + nx_array * scale * 2
+            py_array: DistArray = cy + ny_array * scale * 2
+            r_array: DistArray = size[order] * 0.2
 
             elements.extend(
                 [
@@ -1015,8 +1018,8 @@ class MoleculeViewer(QDialog):
 
             order = np.argsort(depth)
 
-            nx_vdw = norm(xdata[order], cx_data)
-            ny_vdw = norm(ydata[order], cy_data)
+            nx_vdw = norm(xdata[order], cx_data, span)
+            ny_vdw = norm(ydata[order], cy_data, span)
 
             px_vdw = cx + nx_vdw * scale * 2
             py_vdw = cy + ny_vdw * scale * 2
@@ -1048,8 +1051,8 @@ class MoleculeViewer(QDialog):
 
             # --- lattice points ---
             for lx, ly in zip(lattice_x, lattice_y, strict=True):
-                nx = norm(lx, cx_data)
-                ny = norm(ly, cy_data)
+                nx = norm(lx, cx_data, span)
+                ny = norm(ly, cy_data, span)
 
                 px = cx + nx * scale * 2
                 py = cy + ny * scale * 2
@@ -1087,16 +1090,16 @@ class MoleculeViewer(QDialog):
         axis_pixel_len = 35  # Visual size of the vectors
 
         # Axis properties for mapping loops: colours, labels, and drawing order (by depth/Z)
-        axis_meta: list[dict[str, str | np.ndarray]] = [
+        axis_meta: list[dict[str, str | DistArray]] = [
             {"vec": rotated_axes[0], "color": "#d32f2f", "label": "x"},  # Red X
             {"vec": rotated_axes[1], "color": "#388e3c", "label": "y"},  # Green Y
             {"vec": rotated_axes[2], "color": "#1976d2", "label": "z"},  # Blue Z
         ]
         # Sort by depth (Z-value) so background vectors don't overlap foreground elements uglily
-        axis_meta.sort(key=lambda item: cast("np.ndarray", item["vec"])[2])
+        axis_meta.sort(key=lambda item: cast("DistArray", item["vec"])[2])
 
         for axis in axis_meta:
-            vec_arr = cast("np.ndarray", axis["vec"])
+            vec_arr = cast("DistArray", axis["vec"])
             vx, vy = vec_arr[0], vec_arr[1]
 
             # Map components to 2D view screen (X maps right, Y maps inverted up)
@@ -1417,5 +1420,5 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
 if __name__ == "__main__":  # Best practice
     # while (file := input("File path name, or q to quit: ")).lower() not in {"q", "quit"}:
     #     first_time_loader(file)
-    file = r"C:\Users\Flash User\Downloads\xyz_examples\fluorochloromethanol.xyz"
+    file = Path(r"C:\Users\Flash User\Downloads\xyz_examples\fluorochloromethanol.xyz")
     first_time_loader(file)

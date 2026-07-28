@@ -75,6 +75,7 @@ dev-complete = [
     { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pre-commit" },
     { name = "pyright" },
+    { name = "pyside6-stubs" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -129,6 +130,7 @@ gui-deps = [
 lint = [
     { name = "mypy" },
     { name = "pyright" },
+    { name = "pyside6-stubs" },
     { name = "ruff" },
     { name = "slotscheck" },
     { name = "tach" },
@@ -173,6 +175,7 @@ requires-dist = [
     { name = "pyproject-hooks", specifier = ">=1.0.0" },
     { name = "pyright", marker = "extra == 'lint'", specifier = ">=1.1.410" },
     { name = "pyside6", specifier = ">=6.11.1" },
+    { name = "pyside6-stubs", marker = "extra == 'lint'", specifier = ">=6.7.3.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.0.3" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=7.1.0" },
     { name = "pywin32-ctypes", specifier = ">=0.2.3" },
@@ -3050,6 +3053,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4c/c5/da4c5f23c6540ac5211a1f60177c8dee84b1bf40f2719479587ab8c60731/pyside6_essentials-6.11.1-cp310-abi3-manylinux_2_39_aarch64.whl", hash = "sha256:a039b6da68a3a4b9d243217b2b98d475eed3f617159ef6be925badab53c11b0d", size = 78960051, upload-time = "2026-05-13T09:43:35.423Z" },
     { url = "https://files.pythonhosted.org/packages/64/0e/b663ecc96ca57b5c91b83b6615d6b174380b0faf30338125c26e053d6aa7/pyside6_essentials-6.11.1-cp310-abi3-win_amd64.whl", hash = "sha256:63311bd48e32c584599ab04b9ef7c324082374cd2c9fa533f978fb893bb47e40", size = 77549267, upload-time = "2026-05-13T09:43:44.92Z" },
     { url = "https://files.pythonhosted.org/packages/f1/12/eb6723faf5cb7fa581145da1c15f40d641b96e080f0491af2f1859fdeedb/pyside6_essentials-6.11.1-cp310-abi3-win_arm64.whl", hash = "sha256:11253ea52aabecefe9febddbbe78b43a824129e3af1cec98431028fba7fa954f", size = 57964512, upload-time = "2026-05-13T09:43:52.968Z" },
+]
+
+[[package]]
+name = "pyside6-stubs"
+version = "6.7.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mypy" },
+    { name = "pyside6" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/2b/d2a3fdb212475682b11e8b6330f2cada60dcbbaf151f73f86844b11d1db6/pyside6_stubs-6.7.3.0.tar.gz", hash = "sha256:db8def2bb9c74091bfa2a4df7610d3ea344ecd00ebd4283995eeb5fda8383603", size = 509931, upload-time = "2025-03-04T05:49:15.755Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e9/2e/3488fa3baca56ff494b9502424675f5b14b11e966eb74d5adaf1811cd651/pyside6_stubs-6.7.3.0-py3-none-any.whl", hash = "sha256:7a2ef0d7486939f240e745829f80887ec3eab280e52c9930d64b48b3de95042a", size = 550616, upload-time = "2025-03-04T05:49:13.154Z" },
 ]
 
 [[package]]
