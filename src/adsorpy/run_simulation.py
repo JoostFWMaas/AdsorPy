@@ -20,7 +20,7 @@ else:
 import time  # For timing of the script.
 from itertools import count  # A simple counter, iterates with next(...).
 from pathlib import Path  # For path handling in Python.
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast  # For type hinting.
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast, overload  # For type hinting.
 
 import numpy as np  # For vectorised computations (performed in C).
 from numpy.random import PCG64DXSM, Generator  # New random generator.
@@ -37,9 +37,15 @@ if TYPE_CHECKING:
 
     P = ParamSpec("P")  # Helps with static type checkers.
     T1 = TypeVar("T1")
-    T2 = TypeVar("T2", np.generic, Polygon)  # type: ignore[explicit-any]
-    # TargetType: TypeAlias = np.generic | Polygon  # type: ignore[explicit-any]
-    Tn = TypeVar("Tn", np.ndarray[tuple[int], np.dtype[Polygon]], np.ndarray[tuple[int], np.dtype[np.generic]])  # type: ignore[explicit-any]
+    T2 = TypeVar("T2", np.double, np.str_, np.long, Polygon, np.bool_)
+    Tn = TypeVar(
+        "Tn",
+        np.ndarray[tuple[int], np.dtype[Polygon]],
+        np.ndarray[tuple[int], np.dtype[np.double]],
+        np.ndarray[tuple[int], np.dtype[np.long]],
+        np.ndarray[tuple[int], np.dtype[np.str_]],
+        np.ndarray[tuple[int], np.dtype[np.bool]],
+    )
     Tax = TypeVar("Tax", Axes, None)
 
 
@@ -366,14 +372,38 @@ def _initialise_run_parameters(
     rot_counts = _turn_into_list(rotation_counts, int)
 
     mol_list_size = mol_array.size
-    rot_syms = cast("IdxArray", _repeater(rot_symmetries, mol_list_size))
-    refl_syms = cast("BoolArray", _repeater(refl_symmetries, mol_list_size))
-    rot_cnts = cast("IdxArray", _repeater(rot_counts, mol_list_size))
+    rot_syms = _repeater(rot_symmetries, mol_list_size)
+    refl_syms = _repeater(refl_symmetries, mol_list_size)
+    rot_cnts = _repeater(rot_counts, mol_list_size)
 
     return mol_array, rot_syms, refl_syms, rot_cnts
 
 
-def _turn_into_list(  # type: ignore[explicit-any]
+@overload
+def _turn_into_list(
+    val_or_list: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]], compare_to: type,
+) -> np.ndarray[tuple[int], np.dtype[np.bool_]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]], compare_to: type,
+) -> np.ndarray[tuple[int], np.dtype[np.long]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: float | list[float] | np.ndarray[tuple[int], np.dtype[np.double]], compare_to: type,
+) -> np.ndarray[tuple[int], np.dtype[np.double]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: str | list[str] | np.ndarray[tuple[int], np.dtype[np.str_]], compare_to: type,
+) -> np.ndarray[tuple[int], np.dtype[np.str_]]: ...
+
+
+def _turn_into_list(
     val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
     compare_to: type[T1],
 ) -> np.ndarray[
@@ -389,7 +419,7 @@ def _turn_into_list(  # type: ignore[explicit-any]
     return np.asarray([val_or_list] if isinstance(val_or_list, compare_to) else val_or_list)
 
 
-def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explicit-any]
+def _repeater(orig_array: Tn, comparison_len: int) -> Tn:
     """Take the array and repeat it if it has a length of 1.
 
     :param orig_array: original array.

@@ -129,6 +129,8 @@ from src.adsorpy.run_simulation import run_simulation, show_surface
 T_qobj = TypeVar("T_qobj", bound=QObject)
 T_inv = TypeVar("T_inv", bool, int, str, float)
 P_mol = ParamSpec("P_mol")  # Helps with static type checkers.
+P = ParamSpec("P")
+R = TypeVar("R")
 # T_widg = TypeVar("T_widg", bound=QWidget)
 
 if TYPE_CHECKING:
@@ -141,31 +143,7 @@ if TYPE_CHECKING:
     from src.adsorpy.rsa_config import RsaConfig
     from src.adsorpy.types import BoolArray, DistArray, FloatArray, GeoArray, IdxArray
 
-    P = ParamSpec("P")
-    R = TypeVar("R")
     InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QFileDialog | "FilePickerWidget"
-
-
-# def _make_property(field_name: str, signal_name: str) -> property:
-#     """Define helper factory to isolate closure scope and avoid variable bleeding.
-#
-#     :param field_name: Field name.
-#     :param signal_name: Signal name.
-#     :returns: Property
-#     """
-#     private_name = f"_{field_name}"
-#
-#     def getter(self: object) -> str | float | None :
-#         return getattr(self, private_name, None)
-#
-#     def setter(self: object, value: str | float | None) -> None:
-#         # Avoid redundant updates and infinite loops in two-way bindings
-#         if getattr(self, private_name, None) == value:
-#             return
-#         setattr(self, private_name, value)
-#         getattr(self, signal_name).emit(value)
-#
-#     return property(getter, setter)
 
 
 class RunSimulationInput(TypedDict, total=False):
@@ -193,7 +171,6 @@ class RunSimulationInput(TypedDict, total=False):
     bounding_x_coord: float | None
     bounding_y_coord: float | None
     sticking_probability: float | list[float] | DistArray
-    # repeats: int
 
 
 class BatchSimulationInput(RunSimulationInput, total=False):
@@ -234,13 +211,6 @@ class FilePickerWidget(QWidget):
         layout.addWidget(self.line_edit)
         layout.addWidget(self.browse_button)
 
-    # def _get_text(self) -> str:
-    #     """Get the current file path text.
-    #
-    #     :returns: The current file path text string.
-    #     """
-    #     return self.line_edit.text()
-
     @Slot(str)
     def setText(self, value: str) -> None:  # noqa: N802
         """Set the file path text.
@@ -248,8 +218,6 @@ class FilePickerWidget(QWidget):
         :param value: The new file path text string.
         """
         self.line_edit.setText(value)
-
-    # text = Property(str, fget=_get_text, fset=setText, user=True)
 
     def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
         """Fetch settings by checking if they exist followed by their value.
@@ -771,7 +739,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
 
     fields: ClassVar[dict[str, type]]
 
-    def __new__(cls: type[Self], name: str, bases: tuple[type, ...], attrs: dict[str, object]) -> type[Self]:
+    def __new__(cls, name: str, bases: tuple[type, ...], attrs: dict[str, object]) -> type[AutoStateMeta]:
         """Create an AutoState class instance.
 
         :param name: The name of the class.
@@ -823,6 +791,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
 
         return new_class
 
+    @override
     def __call__(cls, *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
         """Instantiate the class and auto-initialise its fields.
 
@@ -841,7 +810,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
         return obj
 
 
-class AppState(QObject, metaclass=AutoStateMeta):
+class AppState(QObject, metaclass=AutoStateMeta):  # pyright: ignore[reportMissingTypeArgument]
     """AppState class to communicate between tabs.
 
     This class maintains synchronised states across the user interface. Changes
@@ -1076,9 +1045,10 @@ class AdsorpyGUI(QMainWindow):
 
         self.hide()
         new_window = AdsorpyGUI()
-        app.activeWindow = new_window
-        new_window.resize(1600, 900)
-        new_window.show()
+        if app is not None:
+            app.activeWindow = new_window
+            new_window.resize(1600, 900)
+            new_window.show()
         self.deleteLater()
 
     @override  # This decorator is used to indicate a method overrides a method of the base class.
@@ -1363,7 +1333,7 @@ class GeneralSettings(QWidget):
         if seed_text:
             seed_val = int(seed_text)
         else:
-            how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
+            how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()
             seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
 
         try:
@@ -1459,7 +1429,7 @@ class GeneralSettings(QWidget):
         def execute_dask_batch(
             base_inputs: RunSimulationInput,
             total_runs: int,
-            task_ref: BackgroundTask | None = None,
+            task_ref: BackgroundTask | None = None,  # type: ignore[type-arg]
         ) -> list[tuple[DistArray, DistArray, DistArray]]:
 
             tasks: list[Delayed] = []
@@ -2248,11 +2218,11 @@ class MoleculeGeneration(QWidget):
         if not self.param_widgets["file_name"].text():
             self.param_widgets["file_name"].browse_button.click()
         output = molecule_lib.first_time_loader(Path(self.param_widgets["file_name"].text()))
-        first_time_key: str
+        first_time_key: ParamName
         first_time_value: str | float | list[str] | None
-        for first_time_key, first_time_value in output.items():
+        for first_time_key, first_time_value in output.items():  # type: ignore[assignment]
             if not is_valid_param(first_time_key):
-                errmsg: str = f"Not a valid key: {first_time_key}"
+                errmsg = f"Not a valid key: {first_time_key}"
                 raise KeyError(errmsg)
             if first_time_value is not None:
                 if isinstance(self.param_widgets[first_time_key], QLineEdit | FilePickerWidget):
@@ -2618,7 +2588,7 @@ class BackgroundTaskSignals(QObject):
     progress = Signal(int)
 
 
-class BackgroundTask(QRunnable):
+class BackgroundTask(QRunnable, Generic[P, R]):
     """Executes a single blocking function call in the background thread pool."""
 
     def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> None:

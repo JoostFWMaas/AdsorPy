@@ -38,7 +38,7 @@ if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
     P = ParamSpec("P")  # Helps with static type checkers.
 
 
-@njit("double[:, :](double[:, :], double[:, :])", parallel=True, cache=True)  # pyright: ignore[reportUntypedFunctionDecorator]
+@njit("double[:, :](double[:, :], double[:, :])", parallel=True, cache=True)
 def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.double]]:
     """Calculate the square distance between two sets of coordinates.
 

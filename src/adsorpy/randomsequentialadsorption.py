@@ -924,8 +924,8 @@ class Simulator:
         plt_flag: bool = False,
         timestr: str = "",
         results_folder: str | Path = "",
-        use_ax: plt.Axes | None = None,
-    ) -> plt.Axes:
+        use_ax: Axes | None = None,
+    ) -> Axes:
         """Plot the molecules with the grid and save it as a figure.
 
         :param surf: The surface.
@@ -1680,7 +1680,7 @@ class Surface:
             width=svg.Length(width, "cm"),
             height=svg.Length(height, "cm"),
             viewBox=svg.ViewBoxSpec(0, 0, width, height),
-            elements=root_elements,
+            elements=root_elements,  # pyright: ignore[reportArgumentType]
         )
 
         raw_xml = root.as_str()
