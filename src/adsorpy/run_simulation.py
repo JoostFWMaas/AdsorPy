@@ -415,7 +415,7 @@ def _turn_into_list(
 
 
 def _turn_into_list(  # pyright: ignore[reportInvalidTypeArguments]
-    val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],
+    val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
     compare_to: type[T1],
 ) -> np.ndarray[
     tuple[int],
@@ -437,7 +437,7 @@ def _repeater(orig_array: Tn, comparison_len: int) -> Tn:
     :param comparison_len: length of the repetition.
     :return: the array repeated to the proper length.
     """
-    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array
+    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array  # pyright: ignore[reportReturnType]
 
 
 def _error_checker(

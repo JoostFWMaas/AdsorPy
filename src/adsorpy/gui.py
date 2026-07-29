@@ -554,7 +554,7 @@ class ZoomableSvgWidget(QSvgWidget):
         self.save_button.move(x, y)
     # Unfortunately, load() is an overloaded method. Overriding will always result in a signature error.
     @override
-    def load(self, contents: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:  # pyright: ignore[reportUnusedImport]
+    def load(self, contents: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
         """Override native load to accept raw bytes, strings, or paths while caching data.
 
         :param contents: Raw SVG byte content, string path, or Pathlib instance.

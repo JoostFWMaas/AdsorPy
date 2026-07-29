@@ -12,6 +12,7 @@ import io
 import json
 import sys
 import warnings
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Final, Literal, TypeVar, cast, overload
 
@@ -31,7 +32,7 @@ from pydantic import (
     validate_call,
 )
 from pydantic_extra_types import Color
-from PySide6.QtCore import QSettings, QSize, Qt, Slot
+from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QApplication,
@@ -588,34 +589,34 @@ class MoleculeViewer(QDialog):
             box.setValue(0.0)
             box.setFixedWidth(120)
 
-            @Slot(int)
-            def handle_slider(val: int, current_name: str = name, current_box: QDoubleSpinBox = box) -> None:
+            # @Slot(int)
+            def handle_slider(current_name: str, current_box: QDoubleSpinBox, val: int) -> None:
                 """Handle the slider update.
 
-                :param val: Slider value.
                 :param current_name: Name of the slider.
                 :param current_box: Box object to link to.
+                :param val: Slider value.
                 """
                 self.update_values(val, current_name, current_box)
 
-            @Slot(float)
+            # @Slot(float)
             def handle_box(
+                current_slider: QSlider,
+                current_name: str,
+                current_box: QDoubleSpinBox,
                 _: float,
-                current_slider: QSlider = slider,
-                current_name: str = name,
-                current_box: QDoubleSpinBox = box,
             ) -> None:
                 """Handle the box update.
 
-                :param _: Slider value.
                 :param current_slider: Slider object.
                 :param current_name: Name of the box.
                 :param current_box: Box object to link to.
+                :param _: Slider value.
                 """
                 self.submit_values(current_slider, current_name, current_box)
 
-            slider.valueChanged.connect(handle_slider)
-            box.valueChanged.connect(handle_box)
+            slider.valueChanged.connect(partial(handle_slider, name, box))
+            box.valueChanged.connect(partial(handle_box, slider, name, box))
 
             row.addWidget(label)
             row.addWidget(slider, 1)
@@ -1024,7 +1025,7 @@ class MoleculeViewer(QDialog):
             px_vdw = cx + nx_vdw * scale * 2
             py_vdw = cy + ny_vdw * scale * 2
 
-            r_vdw = np.array([RADII[self.atomkeys[jj]] * unit_to_pixel_ratio for jj in order])
+            r_vdw = np.array([RADII[cast("np.str_", self.atomkeys[jj])] * unit_to_pixel_ratio for jj in order])
 
             # Generate vdW elements
             for jj, px, py, r in zip(order, px_vdw, py_vdw, r_vdw, strict=True):
@@ -1148,8 +1149,10 @@ class MoleculeViewer(QDialog):
             height=svg.Length(100, "%"),
             viewBox=svg.ViewBoxSpec(0, 0, width, height),
             preserveAspectRatio=svg.PreserveAspectRatio(),
-            elements=elements,
-        )
+            elements=cast("list[svg.Element]", elements),  # type: ignore[redundant-cast]
+        )  # TODO: Notify svg package author of pyright error:
+        # error: Argument of type "list[Line | Text | Polygon | Circle | Rect]" cannot be assigned to parameter
+        # "elements" of type "list[Element] | None" in function "__init__"
 
         self.svg_widget.load(str(svg_out).encode("utf-8"))
 
@@ -1351,7 +1354,7 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
     )
 
     poly = svg.Polygon(
-        points=coords.flatten().tolist(),
+        points=[svg.Point(x=pts[0], y=pts[1]) for pts in coords],
         fill="grey",
         stroke="none",
     )
@@ -1371,8 +1374,12 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
     all_y = np.concatenate([coords[:, 1], lattice_y])
 
     padding = max(lattice, 5)
-    min_x, max_x = np.min(all_x) - padding, np.max(all_x) + padding
-    min_y, max_y = np.min(all_y) - padding, np.max(all_y) + padding
+    min_x: float
+    max_x: float
+    min_y: float
+    max_y: float
+    min_x, max_x = cast("float", np.min(all_x)) - padding, cast("float", np.max(all_x)) + padding
+    min_y, max_y = cast("float", np.min(all_y)) - padding, cast("float", np.max(all_y)) + padding
 
     view_w = max_x - min_x
     view_h = max_y - min_y
@@ -1398,7 +1405,7 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
         height=svg.Length(100, "%"),
         viewBox=svg.ViewBoxSpec(min_x, min_y, view_w, view_h),
         preserveAspectRatio=aspect_ratio,  # Injected corrected aspect behaviour
-        elements=[poly, *elements],
+        elements=[poly, *elements],  # pyright: ignore[reportArgumentType]
     )
 
     # 6. Handle output

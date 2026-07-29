@@ -29,6 +29,8 @@ from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepa
 import src.adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
@@ -1120,7 +1122,7 @@ class Simulator:
             shape_id = f"mol_{mol_gr.group_id}"
 
             poly = svg.Polygon(
-                points=coords.flatten().tolist(),
+                points=[svg.Point(x=pts[0], y=pts[1]) for pts in coords],
                 id=shape_id,
                 fill=getattr(mol_gr, "color", next(tab10_colors_old)),
                 stroke="none",
@@ -1573,7 +1575,6 @@ class Surface:
         filepath: Path | io.BytesIO = (
             Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
         )
-
         site_template, site_group, width, height = self.make_surface_svg_elements()
         definitions = svg.Defs(elements=[site_template])
         style = self.create_dark_css_style(dark_mode_bool)
@@ -1652,7 +1653,7 @@ class Surface:
     @staticmethod
     def create_and_write_svg(
         filename: Path | io.BytesIO,
-        root_group_elements: list[svg.Rect | svg.G | svg.Point],
+        root_group_elements: Sequence[svg.Rect | svg.G | svg.Point],
         width: float,
         height: float,
         definitions: svg.Defs,
@@ -1672,7 +1673,7 @@ class Surface:
                 svg.Scale(x=1, y=-1),
                 svg.Translate(x=0, y=-height),
             ],
-            elements=root_group_elements,
+            elements=cast("list[svg.Element]", root_group_elements),
         )
         root_elements.append(root_group)
 
