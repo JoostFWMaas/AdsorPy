@@ -37,12 +37,10 @@ from itertools import count
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
-    Annotated,
     ClassVar,
     Generic,
     Literal,
     ParamSpec,
-    Self,
     TypeAlias,
     TypedDict,
     TypeGuard,
@@ -50,11 +48,12 @@ from typing import (
     Unpack,
     cast,
     get_origin,
+    get_type_hints,
     override,
 )
 
-import dask
 import numpy as np
+from dask.delayed import delayed
 from dask.distributed import Client, as_completed
 from pydantic import (
     ConfigDict,
@@ -143,7 +142,8 @@ if TYPE_CHECKING:
     from src.adsorpy.rsa_config import RsaConfig
     from src.adsorpy.types import BoolArray, DistArray, FloatArray, GeoArray, IdxArray
 
-    InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QFileDialog | "FilePickerWidget"
+    InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QLineEdit | "FilePickerWidget"
+    RunResult: TypeAlias = tuple[DistArray, DistArray, DistArray]
 
 
 class RunSimulationInput(TypedDict, total=False):
@@ -251,6 +251,30 @@ class FilePickerWidget(QWidget):
         return cast("str", self.line_edit.text())
 
 
+def set_content(
+    widget: QSpinBox | QDoubleSpinBox | QLineEdit | FilePickerWidget,
+    content: str | float | list[str],
+) -> None:
+    """Set content of widget by matched content type.
+
+    :param widget: The widget being edited.
+    :param content: The content of the widget being edited.
+    :raises ValueError: If the content does not match the widget.
+    """
+    match widget, content:
+        case (QSpinBox(), int()):
+            widget.setValue(content)
+        case (QDoubleSpinBox(), float()):
+            widget.setValue(content)
+        case (QLineEdit() | FilePickerWidget(), str()):
+            widget.setText(content)
+        case (QLineEdit(), list()):
+            widget.setText(",".join(content))
+        case _:
+            errmsg = f"Widget and content mismatch: {type(widget).__name__} and {type(content).__name__}"
+            raise ValueError(errmsg)
+
+
 def extract_param_docs(func: Callable[P, R]) -> dict[str, str]:
     """Extract parameters and their types from the docstring of a function.
 
@@ -324,7 +348,7 @@ class SimplePolygonDict(TypedDict):
     coordinates: list[list[list[float]]]
 
 
-class PydanticPolygon:
+class PydanticPolygon(Polygon):
     """A Pydantic-native wrapper type for a Shapely Polygon."""
 
     @classmethod
@@ -416,7 +440,8 @@ def is_valid_param(name: str) -> TypeGuard[ParamName]:
     return name in ParamWidgets.__annotations__
 
 
-class RawMoleculeParameters(TypedDict):
+@with_config(ConfigDict(arbitrary_types_allowed=True))
+class MoleculeParameters(TypedDict):
     """Molecule parameters dataclass.
 
     :ivar index: Index of the molecule parameters configuration.
@@ -437,12 +462,6 @@ class RawMoleculeParameters(TypedDict):
     rot_cnt: PositiveInt
     polygon: PydanticPolygon
     settings: dict[str, float | int | str | list[str] | None]
-
-
-MoleculeParameters = Annotated[
-    RawMoleculeParameters,
-    with_config(ConfigDict(arbitrary_types_allowed=True)),
-]
 
 
 class SurfaceParameters(TypedDict, total=False):
@@ -533,19 +552,19 @@ class ZoomableSvgWidget(QSvgWidget):
         y = self.height() - button_h - margin
 
         self.save_button.move(x, y)
-
+    # Unfortunately, load() is an overloaded method. Overriding will always result in a signature error.
     @override
-    def load(self, data: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:
+    def load(self, contents: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:  # pyright: ignore[reportUnusedImport]
         """Override native load to accept raw bytes, strings, or paths while caching data.
 
-        :param data: Raw SVG byte content, string path, or Pathlib instance.
+        :param contents: Raw SVG byte content, string path, or Pathlib instance.
         """
-        if isinstance(data, bytes):
-            self._current_svg_bytes = data
+        if isinstance(contents, bytes):
+            self._current_svg_bytes = contents
             self.current_svg_path = None
-            super().load(data)
+            super().load(contents)
         else:
-            path_str = str(data)
+            path_str = str(contents)
             self.current_svg_path = path_str
             try:
                 self._current_svg_bytes = Path(path_str).read_bytes()
@@ -739,7 +758,12 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
 
     fields: ClassVar[dict[str, type]]
 
-    def __new__(cls, name: str, bases: tuple[type, ...], attrs: dict[str, object]) -> type[AutoStateMeta]:
+    def __new__(
+        cls,
+        name: str,
+        bases: tuple[type, ...],
+        attrs: dict[str, object],
+    ) -> AutoStateMeta[P_mol, T_qobj]:
         """Create an AutoState class instance.
 
         :param name: The name of the class.
@@ -760,7 +784,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
                 qt_compatible_type = object
             attrs[signal_name] = Signal(qt_compatible_type)
 
-            def getter(self: Self, private_name: str = private_name) -> object:
+            def getter(self: object, private_name: str = private_name) -> object:
                 """Get the value.
 
                 :param private_name: private name.
@@ -769,8 +793,8 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
                 return getattr(self, private_name)
 
             def setter(
-                self: Self,
-                value: str,
+                self: object,
+                value: object,
                 private_name: str = private_name,
                 signal_name: str = signal_name,
             ) -> None:
@@ -786,8 +810,8 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
 
             attrs[field_name] = property(getter, setter)
 
-        new_class: type[Self] = cast("type[Self]", super().__new__(cls, name, bases, attrs))
-        new_class.fields = fields
+        new_class = cast("AutoStateMeta[P_mol, T_qobj]", super().__new__(cls, name, bases, attrs))
+        type(new_class).fields = fields
 
         return new_class
 
@@ -872,10 +896,6 @@ class AdsorpyGUI(QMainWindow):
         # ----------------------------------------------------
         file_menu = menubar.addMenu("File")
 
-        self._new_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentNew), "New Simulation", self)
-        """Action trigger to wipe runtime matrices and reset configurations."""
-        self._new_action.triggered.connect(self._reset_app)
-
         self._open_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentOpen), "Open…", self)
         """Action trigger to parse a serialized system JSON file from disk."""
         self._open_action.triggered.connect(self._load_settings_json)
@@ -888,7 +908,6 @@ class AdsorpyGUI(QMainWindow):
         """Action trigger to safely kill background workers and close window frames."""
         self._exit_action.triggered.connect(self.close)
 
-        file_menu.addAction(self._new_action)
         file_menu.addAction(self._open_action)
         file_menu.addAction(self._save_action)
         file_menu.addSeparator()
@@ -1039,18 +1058,6 @@ class AdsorpyGUI(QMainWindow):
         check_type = type(default) if return_type is None else return_type
         return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
 
-    def _reset_app(self) -> None:
-        """Close and open the window to reset the app safely and completely."""
-        app = QApplication.instance()
-
-        self.hide()
-        new_window = AdsorpyGUI()
-        if app is not None:
-            app.activeWindow = new_window
-            new_window.resize(1600, 900)
-            new_window.show()
-        self.deleteLater()
-
     @override  # This decorator is used to indicate a method overrides a method of the base class.
     def resizeEvent(self, event: QResizeEvent) -> None:
         """Trigger automatically whenever the window size changes.
@@ -1104,8 +1111,8 @@ class GeneralSettings(QWidget):
         centre_scroll.setWidgetResizable(True)
         centre_scroll.setWidget(svg_widget)
 
-        self.state.surface_paramsChanged.connect(self._on_surface_changed)
-        self.state.molecule_param_listChanged.connect(self._on_molecules_changed)
+        self.state.surface_paramsChanged.connect(self._on_surface_changed)  # pyright: ignore[reportAttributeAccessIssue]
+        self.state.molecule_param_listChanged.connect(self._on_molecules_changed)  # pyright: ignore[reportAttributeAccessIssue]
         self.input_metadata: BatchSimulationInput = BatchSimulationInput()
         """Dict of input values, to be stored as metadata."""
 
@@ -1132,8 +1139,9 @@ class GeneralSettings(QWidget):
 
     def _init_validators(self) -> None:
         """Instantiate validation models for text constraint processing."""
-        self._seed_validator = QRegularExpressionValidator(regularExpression=QRegularExpression(r"^\d+$"))
+        self._seed_validator = QRegularExpressionValidator()
         """Restricts string parameters strictly to absolute positive digits."""
+        self._seed_validator.setRegularExpression(QRegularExpression(r"^\d+$"))
 
     def _init_controls(self) -> QVBoxLayout:
         """Assemble environment settings selectors and connect state triggers.
@@ -1163,7 +1171,7 @@ class GeneralSettings(QWidget):
         # self.step_limit.setValidator(self._gt_one_validator)
         self.step_limit.setMinimum(0)
         self.step_limit.setMaximum(100000000)
-        self.step_limit.setValue(self.get_run_sim_default("timestep_limit"))
+        self.step_limit.setValue(cast("int", self.get_run_sim_default("timestep_limit")))
         self.step_limit.setAccelerated(True)
         self.step_limit.setStepType(QSpinBox.StepType.AdaptiveDecimalStepType)
         self.state.step_limit = self.step_limit
@@ -1363,7 +1371,8 @@ class GeneralSettings(QWidget):
         key_to_fix = "polygon"
         if key_to_fix in defaultdict_of_lists:
             defaultdict_of_lists[key_to_fix] = [
-                validate_polygon(geo_item) for geo_item in defaultdict_of_lists[key_to_fix]
+                validate_polygon(cast("Polygon | str | dict[str, str | list[tuple[float, float]]]", geo_item))
+                for geo_item in defaultdict_of_lists[key_to_fix]
             ]
 
         def replace_keys(
@@ -1418,7 +1427,8 @@ class GeneralSettings(QWidget):
         """Run N parallel instances using Dask with safe child-spawned seeds."""
         n_instances = self.repeat_count.value()
         inputs = self._prepare_simulation_inputs()
-        self.input_metadata = BatchSimulationInput(repeats=n_instances, **inputs)
+        self.input_metadata = inputs.copy()
+        self.input_metadata["repeats"] = n_instances
         if inputs is None:
             return
 
@@ -1430,33 +1440,33 @@ class GeneralSettings(QWidget):
             base_inputs: RunSimulationInput,
             total_runs: int,
             task_ref: BackgroundTask | None = None,  # type: ignore[type-arg]
-        ) -> list[tuple[DistArray, DistArray, DistArray]]:
+        ) -> list[RunResult]:
 
             tasks: list[Delayed] = []
             parent_seed: int = cast("int", base_inputs.get("seed"))
 
             child_seeds = np.random.SeedSequence(parent_seed).spawn(total_runs)
 
-            def wrap_run_func(**kwargs: Unpack[RunSimulationInput]) -> tuple[DistArray, DistArray, DistArray]:
+            def wrap_run_func(**kwargs: Unpack[RunSimulationInput]) -> RunResult:
                 output = run_simulation(**kwargs)[-1]
                 return output.coverage, output.fraction_of_covered_area, output.analyse_gap_size()
 
             for seed in child_seeds:
                 run_inputs = base_inputs.copy()
                 run_inputs["seed"] = seed.generate_state(n_words=1, dtype=np.uint32)[0]
-                tasks.append(dask.delayed(wrap_run_func)(**run_inputs))
+                tasks.append(delayed(wrap_run_func)(**run_inputs))
 
             workers = max(1, multiprocessing.cpu_count() - 1)
 
             with Client(n_workers=workers, threads_per_worker=1, processes=True) as client:
-                futures: tuple[Future, ...] = client.compute(tasks)
+                futures: list[Future[RunResult]] = client.compute(tasks)  # pyright: ignore[reportAssignmentType]
 
                 for idx, _ in enumerate(as_completed(futures), start=1):
                     if task_ref is not None:
                         percentage = int((idx / total_runs) * 100)
                         task_ref.signals.progress.emit(percentage)
 
-                results: tuple[tuple[DistArray, DistArray, DistArray]] = client.gather(futures)
+                results: tuple[RunResult] = client.gather(futures)  # pyright: ignore[reportAssignmentType]
 
             return list(results)
 
@@ -1487,7 +1497,7 @@ class GeneralSettings(QWidget):
 
             # Generate SVG elements in memory
             svg_buffer = io.BytesIO()
-            dark_mode_bool: bool = QGuiApplication.instance().styleHints().colorScheme() == Qt.ColorScheme.Dark
+            dark_mode_bool: bool = QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
             output.svgplot_covered_grid(filename=svg_buffer, dark_mode_bool=dark_mode_bool)
             svg_data = svg_buffer.getvalue()
 
@@ -1515,7 +1525,7 @@ class GeneralSettings(QWidget):
             self.progress_bar.hide()
             # self.run_group.setText("Run Simulation")
 
-    def _on_batch_simulation_complete(self, batch_outputs: list[tuple[DistArray, DistArray, DistArray]]) -> None:
+    def _on_batch_simulation_complete(self, batch_outputs: list[RunResult]) -> None:
         """Process multiple parallel output tuples sent back from the dask pool cluster.
 
         :param batch_outputs: list of output values.
@@ -1803,10 +1813,7 @@ class MoleculeGeneration(QWidget):
         self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
         # Discover generators using introspective library lookups
-        self.generators: dict[str, Callable[P_mol, Polygon]] = cast(
-            "dict[str, Callable[P_mol, Polygon]]",
-            self._discover_molecule_generators(),
-        )
+        self.generators = cast("dict[str, Callable[P_mol, Polygon]]", self._discover_molecule_generators())  # pyright: ignore[reportGeneralTypeIssues]
         """Registry cache linking user-facing label text keys directly to underlying library callables."""
 
         self.func_dropdown.addItems(list(self.generators.keys()))
@@ -2004,6 +2011,8 @@ class MoleculeGeneration(QWidget):
         self.param_widgets = {}
         self.opt_checkboxes = {}
 
+        widget_type_hints: dict[str, InputWidget] = get_type_hints(ParamWidgets)
+
         param_grid = QGridLayout()
         for idx, (name, param) in enumerate(sig.parameters.items()):
             default = param.default
@@ -2020,11 +2029,7 @@ class MoleculeGeneration(QWidget):
             widget = self._create_param_widget(param.annotation, default)
 
             if not (is_required or is_optional):
-                match widget:
-                    case QSpinBox() | QDoubleSpinBox():
-                        widget.setValue(default)
-                    case QLineEdit():
-                        widget.setText(str(default))
+                set_content(widget, default)
 
             if is_optional:
                 checkbox = QCheckBox()
@@ -2040,8 +2045,12 @@ class MoleculeGeneration(QWidget):
                 widget.setToolTip(param_docs[name])
 
             row.addWidget(widget, alignment=Qt.AlignmentFlag.AlignVCenter)
-            if is_valid_param(name):
-                self.param_widgets[name] = widget
+            widg_hint = widget_type_hints.get(name)
+            if is_valid_param(name) and widg_hint is not None and isinstance(widget, widg_hint):  # pyright: ignore[reportArgumentType]
+                self.param_widgets[name] = widget  # pyright: ignore[reportGeneralTypeIssues]
+            else:
+                errmsg = "Parameter input widget mismatch."
+                QMessageBox.critical(None, "Value Error", errmsg)
             param_grid.addLayout(row, idx, 1)
 
         self.param_layout.addLayout(param_grid)
@@ -2056,7 +2065,7 @@ class MoleculeGeneration(QWidget):
     def _create_param_widget(
         annotation: str,
         default: str | float | inspect.Parameter,
-    ) -> QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit:
+    ) -> InputWidget:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
         :param annotation: The raw string signature representation of the type hint.
@@ -2065,7 +2074,7 @@ class MoleculeGeneration(QWidget):
         :raises TypeError: If an unmapped or exotic data structure type is processed.
         """
         default_max: int = 999
-        widget: QSpinBox | QDoubleSpinBox | FilePickerWidget | QLineEdit
+        widget: InputWidget
         match annotation:
             case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
                 widget = QDoubleSpinBox()
@@ -2215,23 +2224,22 @@ class MoleculeGeneration(QWidget):
 
         If no file path has been provided, prompt the user to add one before running the first time loader.
         """
+        if "file_name" not in self.param_widgets:
+            errmsg = "Parameter file_name not found in widget."
+            QMessageBox.critical(None, "Key Error", errmsg)
+            return
         if not self.param_widgets["file_name"].text():
             self.param_widgets["file_name"].browse_button.click()
         output = molecule_lib.first_time_loader(Path(self.param_widgets["file_name"].text()))
         first_time_key: ParamName
         first_time_value: str | float | list[str] | None
         for first_time_key, first_time_value in output.items():  # type: ignore[assignment]
-            if not is_valid_param(first_time_key):
+            if not (is_valid_param(first_time_key) or first_time_key in self.param_widgets):
                 errmsg = f"Not a valid key: {first_time_key}"
-                raise KeyError(errmsg)
+                QMessageBox.critical(None, "Key Error", errmsg)
+                return
             if first_time_value is not None:
-                if isinstance(self.param_widgets[first_time_key], QLineEdit | FilePickerWidget):
-                    fill_str: str = (
-                        ",".join(first_time_value) if isinstance(first_time_value, list) else str(first_time_value)
-                    )
-                    self.param_widgets[first_time_key].setText(fill_str)
-                else:
-                    self.param_widgets[first_time_key].setValue(cast("float | int", first_time_value))
+                set_content(self.param_widgets[first_time_key], first_time_value)  # pyright: ignore[reportTypedDictNotRequiredAccess]
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
 
@@ -2252,10 +2260,7 @@ class MoleculeGeneration(QWidget):
                 case QSpinBox() | QDoubleSpinBox():
                     values[name] = widget.value()
 
-                case QLineEdit():
-                    values[name] = widget.text()
-
-                case FilePickerWidget():
+                case QLineEdit() | FilePickerWidget():
                     values[name] = widget.text()
 
                 case _:
@@ -2270,7 +2275,7 @@ class MoleculeGeneration(QWidget):
 
         :param msg: Error message.
         """
-        QMessageBox.critical(self, "Input Error", msg)
+        QMessageBox.critical(None, "Input Error", msg)
 
     def plot_molecule(self) -> None:
         """Plot the molecule."""
@@ -2279,10 +2284,10 @@ class MoleculeGeneration(QWidget):
         molecule_func = self.generators[self.func_dropdown.currentText()]
         molecule_dict = self.get_param_values()
         if molecule_func.__name__ == "first_time_loader":
-            molecule_func = cast("Callable[P_mol, Polygon]", molecule_lib.xyz_reader)
+            molecule_func = cast("Callable[P_mol, Polygon]", molecule_lib.xyz_reader)  # pyright: ignore[reportGeneralTypeIssues]
         try:
             svg_io = io.BytesIO()
-            molecule_lib.save_molecule_svg(molecule_func(**molecule_dict), filename=svg_io)
+            molecule_lib.save_molecule_svg(molecule_func(**molecule_dict), filename=svg_io)  # pyright: ignore[reportCallIssue]
             svg_data = svg_io.getvalue()
             self.svg_widget.load(svg_data)
         except ValueError as e:
@@ -2298,7 +2303,7 @@ class MoleculeGeneration(QWidget):
         #     molecule_func = molecule_lib.xyz_reader
 
         try:
-            result = molecule_func(**molecule_dict)
+            result = molecule_func(**molecule_dict)  # pyright: ignore[reportCallIssue]
         except ValidationError as e:
             self.error(str(e))
             return
@@ -2318,7 +2323,7 @@ class MoleculeGeneration(QWidget):
             index=index,
             function_name=current_func_name,
             label=label,
-            polygon=result,
+            polygon=PydanticPolygon(result),
             settings=molecule_dict,
             refl_sym=self.refl_sym_checkbox.isChecked(),
             rot_sym=self.rot_sym_spinbox.value(),
@@ -2354,19 +2359,13 @@ class MoleculeGeneration(QWidget):
         match_idx: int = self.func_dropdown.findText(current_name, Qt.MatchFlag.MatchExactly)
         self.func_dropdown.setCurrentIndex(match_idx)
         for key, val in self.mol_params_list[current_idx]["settings"].items():
-            if not is_valid_param(key):
+            if not is_valid_param(key) or key not in self.param_widgets:
                 errmsg: str = f"Key does not exist: {key}"
                 raise KeyError(errmsg)
             if val is None:
                 continue
-            current_param: QSpinBox | QDoubleSpinBox | QLineEdit | FilePickerWidget = self.param_widgets[key]
-            if isinstance(current_param, QSpinBox | QDoubleSpinBox) and isinstance(val, float | int):
-                current_param.setValue(val)
-            elif isinstance(current_param, QLineEdit | FilePickerWidget) and isinstance(val, str):
-                current_param.setText(val)
-            else:
-                errmsg = f"Type mismatch: Param type {type(current_param)} is not compatible with val {type(val)}"
-                raise TypeError(errmsg)
+            current_param: InputWidget = self.param_widgets[key]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+            set_content(current_param, val)
 
             if key in self.opt_checkboxes:
                 self.opt_checkboxes[key].setChecked(True)
@@ -2420,8 +2419,12 @@ class SurfaceGeneration(QWidget):
 
     def _init_validators(self) -> None:
         """Instantiate validation models for text constraint processing."""
-        self._gt_one_validator = QIntValidator(bottom=1)
-        self._pos_float_validator = QDoubleValidator(bottom=0.0)
+        self._gt_one_validator = QIntValidator()
+        """Validator to ensure an int >= 1"""
+        self._gt_one_validator.setBottom(1)
+        self._pos_float_validator = QDoubleValidator()
+        """Validator to ensure a float >= 0.0"""
+        self._pos_float_validator.setBottom(0.0)
 
     def _build_left_panel(self) -> QWidget:
         """Construct the left controls container pane layout.
@@ -2522,7 +2525,7 @@ class SurfaceGeneration(QWidget):
         seed_text = self.state.seed_input.text().strip()
         seed: int | None = None
         if seed_text:
-            if not seed_text.isnumeric() or int(seed_text) < 0:
+            if not (seed_text.isnumeric() or int(seed_text) < 0):
                 self.error("Seed must be a positive integer")
                 return
             seed = int(seed_text)

@@ -36,11 +36,11 @@ if TYPE_CHECKING:
     from src.adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
-    T1 = TypeVar("T1")
+    T1 = TypeVar("T1", bool, int, float, str, np.double, np.str_, np.long, Polygon, np.bool_)
     T2 = TypeVar("T2", np.double, np.str_, np.long, Polygon, np.bool_)
     Tn = TypeVar(
         "Tn",
-        np.ndarray[tuple[int], np.dtype[Polygon]],
+        np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
         np.ndarray[tuple[int], np.dtype[np.double]],
         np.ndarray[tuple[int], np.dtype[np.long]],
         np.ndarray[tuple[int], np.dtype[np.str_]],
@@ -380,31 +380,42 @@ def _initialise_run_parameters(
 
 
 @overload
-def _turn_into_list(
-    val_or_list: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]], compare_to: type,
-) -> np.ndarray[tuple[int], np.dtype[np.bool_]]: ...
-
-
-@overload
-def _turn_into_list(
-    val_or_list: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]], compare_to: type,
+def _turn_into_list(  # type: ignore[overload-overlap]
+    val_or_list: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]],
+    compare_to: type[int],
 ) -> np.ndarray[tuple[int], np.dtype[np.long]]: ...
 
 
 @overload
 def _turn_into_list(
-    val_or_list: float | list[float] | np.ndarray[tuple[int], np.dtype[np.double]], compare_to: type,
+    val_or_list: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]],
+    compare_to: type[bool],
+) -> np.ndarray[tuple[int], np.dtype[np.bool_]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: float | list[float] | np.ndarray[tuple[int], np.dtype[np.double]],
+    compare_to: type[float],
 ) -> np.ndarray[tuple[int], np.dtype[np.double]]: ...
 
 
 @overload
 def _turn_into_list(
-    val_or_list: str | list[str] | np.ndarray[tuple[int], np.dtype[np.str_]], compare_to: type,
+    val_or_list: str | list[str] | np.ndarray[tuple[int], np.dtype[np.str_]],
+    compare_to: type[str],
 ) -> np.ndarray[tuple[int], np.dtype[np.str_]]: ...
 
 
+@overload
 def _turn_into_list(
-    val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
+    val_or_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
+    compare_to: type[Polygon],
+) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # pyright: ignore[reportInvalidTypeArguments]
+
+
+def _turn_into_list(  # pyright: ignore[reportInvalidTypeArguments]
+    val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],
     compare_to: type[T1],
 ) -> np.ndarray[
     tuple[int],
