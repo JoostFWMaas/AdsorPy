@@ -90,6 +90,7 @@ test = [
     "hypothesis>=6.155.1",
     "scipy>=1.15.3",
     "codecov>=2.1.13",
+    "pytest-qt>=4.5.0",
 ]
 lint = [
     "mypy>=2.1.0",
@@ -159,6 +160,7 @@ include = [
 testpaths = ["tests"]
 pythonpath = ["src/adsorpy"]
 addopts = ["--cov=src/adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers"]
+qt_api = "pyside6"
 
 [tool.coverage.run]
 omit = [

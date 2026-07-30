@@ -872,7 +872,10 @@ class AdsorpyGUI(QMainWindow):
     window_resized: Signal = Signal(int, int)
 
     def __init__(self) -> None:
-        """Initialise frame parameters, global context caches, and child windows."""
+        """Initialise frame parameters, global context caches, and child windows.
+
+        This is the main window of the AdsorPy simulation application.
+        """
         super().__init__()
 
         self.setWindowTitle("AdsorPy Simulation GUI")
@@ -2050,7 +2053,7 @@ class MoleculeGeneration(QWidget):
                 self.param_widgets[name] = widget  # pyright: ignore[reportGeneralTypeIssues]
             else:
                 errmsg = "Parameter input widget mismatch."
-                QMessageBox.critical(None, "Value Error", errmsg)
+                QMessageBox.critical(self, "Value Error", errmsg)
             param_grid.addLayout(row, idx, 1)
 
         self.param_layout.addLayout(param_grid)
@@ -2226,7 +2229,7 @@ class MoleculeGeneration(QWidget):
         """
         if "file_name" not in self.param_widgets:
             errmsg = "Parameter file_name not found in widget."
-            QMessageBox.critical(None, "Key Error", errmsg)
+            QMessageBox.critical(self, "Key Error", errmsg)
             return
         if not self.param_widgets["file_name"].text():
             self.param_widgets["file_name"].browse_button.click()
@@ -2236,7 +2239,7 @@ class MoleculeGeneration(QWidget):
         for first_time_key, first_time_value in output.items():  # type: ignore[assignment]
             if not (is_valid_param(first_time_key) or first_time_key in self.param_widgets):
                 errmsg = f"Not a valid key: {first_time_key}"
-                QMessageBox.critical(None, "Key Error", errmsg)
+                QMessageBox.critical(self, "Key Error", errmsg)
                 return
             if first_time_value is not None:
                 set_content(self.param_widgets[first_time_key], first_time_value)  # pyright: ignore[reportTypedDictNotRequiredAccess]
@@ -2275,7 +2278,7 @@ class MoleculeGeneration(QWidget):
 
         :param msg: Error message.
         """
-        QMessageBox.critical(None, "Input Error", msg)
+        QMessageBox.critical(self, "Input Error", msg)
 
     def plot_molecule(self) -> None:
         """Plot the molecule."""
@@ -2513,7 +2516,7 @@ class SurfaceGeneration(QWidget):
         surface_type: str = self.surface_dropdown.currentText()
         temp_count: str = self.site_count_input.text().strip()
         self.surface_count = default_count if not temp_count else int(temp_count)
-        self.real_surface_count = self.surface_count
+        self.real_surface_count = self.surface_count * self.surface_count
         if surface_type == "hexagonal":
             self.real_surface_count *= 2
         elif surface_type == "honeycomb":
@@ -2525,7 +2528,7 @@ class SurfaceGeneration(QWidget):
         seed_text = self.state.seed_input.text().strip()
         seed: int | None = None
         if seed_text:
-            if not (seed_text.isnumeric() or int(seed_text) < 0):
+            if not seed_text.isnumeric() or int(seed_text) < 0:
                 self.error("Seed must be a positive integer")
                 return
             seed = int(seed_text)
