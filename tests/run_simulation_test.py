@@ -16,12 +16,12 @@ from shapely import Polygon, unary_union
 from shapely.ops import orient
 from shapely.prepared import prep
 
-from src.adsorpy.randomsequentialadsorption import Simulator
-from src.adsorpy.rsa_config import RsaConfig
-from src.adsorpy.run_simulation import _select_and_run, run_simulation
+from adsorpy.randomsequentialadsorption import Simulator
+from adsorpy.rsa_config import RsaConfig
+from adsorpy.run_simulation import _select_and_run, run_simulation
 
 if TYPE_CHECKING:
-    from src.adsorpy.types import GeoArray
+    from adsorpy.types import GeoArray
 
 SEED = 123654789
 
@@ -208,12 +208,12 @@ def test_run_simulation_randomness(
 ) -> None:
     """Test the randomness based on datetime seed."""
     fixed_datetime = datetime(2023, 1, 1, 0, 0, 0, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr("run_simulation.datetime", fixed_datetime)
+    monkeypatch.setattr("adsorpy.run_simulation.datetime", fixed_datetime)
 
     results_1 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
 
     # Move time forward by 1 second to ensure a different seed.
-    monkeypatch.setattr("run_simulation.datetime", fixed_datetime + timedelta(seconds=1))
+    monkeypatch.setattr("adsorpy.run_simulation.datetime", fixed_datetime + timedelta(seconds=1))
 
     results_2 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
 
@@ -229,12 +229,12 @@ def test_run_simulation_determinism(rsa_config: RsaConfig, default_polygon: Poly
         "molecules_list": [default_polygon],
         "seed": 42,
     }
-    results_1 = run_simulation(rsa_config, **kwargs)[:-1]  # type: ignore[arg-type]
-    results_2 = run_simulation(rsa_config, **kwargs)[:-1]  # type: ignore[arg-type]
+    results_1 = run_simulation(rsa_config, **kwargs)[:-1]
+    results_2 = run_simulation(rsa_config, **kwargs)[:-1]
     comparison_test_names = ("Mol count", "Gap size", "Seed", "Flux/dose", "ASF")
     for comparison_test_name, output_1, output_2 in zip(comparison_test_names, results_1, results_2, strict=True):
         with subtests.test(f"{comparison_test_name} equivalence"):
-            assert np.array_equal(output_1, output_2)  # type: ignore[arg-type]
+            assert np.array_equal(output_1, output_2)
 
 
 @st.composite
@@ -335,7 +335,7 @@ class TestCustomGrid:
             ValueError,
             match=r"A custom grid will only be generated if 'site_x_coords', 'site_y_coords',*",
         ):
-            run_simulation(rsa_config=rsa_config, site_x_coords=[1.1])  # type: ignore[arg-type]
+            run_simulation(rsa_config=rsa_config, site_x_coords=[1.1])
 
     def test_bad_xcoords(self) -> None:
         """Raise an error when the x coordinates are negative. Same effect as the y coordinates."""
@@ -343,8 +343,8 @@ class TestCustomGrid:
         with pytest.raises(ValueError, match=r"Site x coordinates must be positive.*"):
             run_simulation(
                 rsa_config=rsa_config,
-                site_x_coords=[-1.1],  # type: ignore[arg-type]
-                site_y_coords=[-2.0, 1.1],  # type: ignore[arg-type]
+                site_x_coords=[-1.1],
+                site_y_coords=[-2.0, 1.1],
                 bounding_x_coord=-10,
                 bounding_y_coord=-10,
             )
@@ -384,11 +384,11 @@ def test_select_and_run() -> None:
         ValueError,
         match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported.",
     ):
-        _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # type: ignore[arg-type]
+        _select_and_run(None, None, None, bad_simulation_type, flux, None, None)
 
 
 def test_wrong_stickingprobability() -> None:
     """When the wrong sticking probability type is used, an error should be raised."""
     rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
     with pytest.raises(TypeError, match=r"sticking_probability must be a float, list, or np.ndarray"):
-        run_simulation(rsa_config=rsa_config, simulation_type="sequential", sticking_probability="one")  # type: ignore[arg-type]
+        run_simulation(rsa_config=rsa_config, simulation_type="sequential", sticking_probability="one")

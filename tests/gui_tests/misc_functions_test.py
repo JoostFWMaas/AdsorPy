@@ -4,7 +4,6 @@
 
 import json
 from collections.abc import Callable
-from typing import Any
 
 import pytest
 from PySide6.QtWidgets import QDoubleSpinBox, QLineEdit, QSpinBox, QWidget
@@ -12,7 +11,7 @@ from pytestqt.qtbot import QtBot
 from shapely import from_geojson
 from shapely.geometry import Polygon
 
-from src.adsorpy.gui import FilePickerWidget, extract_param_docs, set_content, validate_polygon
+from adsorpy.gui import FilePickerWidget, extract_param_docs, set_content, validate_polygon
 
 
 def test_set_content_success_cases(qtbot: QtBot, subtests: pytest.Subtests) -> None:
@@ -31,14 +30,14 @@ def test_set_content_success_cases(qtbot: QtBot, subtests: pytest.Subtests) -> N
         qtbot.addWidget(w)
 
     with subtests.test(msg="QSpinBox integer assignment"):
-        val = 42
-        set_content(spinbox, val)
-        assert spinbox.value() == val
+        vali = 42
+        set_content(spinbox, vali)
+        assert spinbox.value() == vali
 
     with subtests.test(msg="QDoubleSpinBox float assignment"):
-        val = 3.14
-        set_content(double_spinbox, val)
-        assert double_spinbox.value() == pytest.approx(val)
+        valf = 3.14
+        set_content(double_spinbox, valf)
+        assert double_spinbox.value() == pytest.approx(valf)
 
     with subtests.test(msg="QLineEdit string assignment"):
         text = "Hello World"
@@ -79,7 +78,7 @@ def test_set_content_mismatch_raises_value_error(
     qtbot.addWidget(widget)
 
     with pytest.raises(ValueError, match="Widget and content mismatch"):
-        set_content(widget, invalid_content)  # type: ignore[arg-type]
+        set_content(widget, invalid_content)
 
 
 def test_extract_param_docs_success() -> None:
@@ -119,7 +118,10 @@ def sample_geojson() -> dict[str, str | list[list[list[float]]]]:
     return {"type": "Polygon", "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]]}
 
 
-def test_validate_polygon_success_cases(sample_geojson: dict[str, Any], subtests: pytest.Subtests) -> None:
+def test_validate_polygon_success_cases(
+    sample_geojson: dict[str, str | list[list[list[float]]]],
+    subtests: pytest.Subtests,
+) -> None:
     """Verify that shape logic accepts Polygon objects, dictionary models, and raw JSON strings.
 
     :param sample_geojson: A preconstructed geometric square template payload fixture.
@@ -146,4 +148,4 @@ def test_validate_polygon_raises_type_error_for_invalid_input() -> None:
     invalid_input: list[float] = [0.0, 0.0, 1.0, 1.0]
 
     with pytest.raises(TypeError, match="Cannot convert"):
-        validate_polygon(invalid_input)  # type: ignore[arg-type]
+        validate_polygon(invalid_input)

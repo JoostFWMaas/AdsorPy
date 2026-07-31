@@ -22,8 +22,8 @@ from PySide6.QtWidgets import (
 )
 from pytestqt.qtbot import QtBot
 
-from src.adsorpy import molecule_lib
-from src.adsorpy.gui import (
+from adsorpy import molecule_lib
+from adsorpy.gui import (
     AppState,
     MoleculeGeneration,
     ReorderableListWidget,
@@ -96,7 +96,7 @@ def test_discover_molecule_generators_filters_library_signatures(
         # and func.__module__ == molecule_lib.__name__
         # and inspect.signature(func).return_annotation in {"Polygon", "dict[str, str | float | list[str] | None]"}
     }
-    temp_generators = dict(sorted(temp_generators.items()))
+    # temp_generators = dict(sorted(temp_generators.items()))
 
     assert temp_generators, "Unfiltered generator list is empty."
     assert generators, "Generator list is empty."
@@ -115,7 +115,9 @@ def test_discover_molecule_generators_filters_library_signatures(
                 assert key not in generators, f"Generator should be filtered out: {key}"
             else:
                 assert key in generators, f"Generator should not be filtered out: {key}"
-                assert genv is generators[key], f"Registered wrong function reference for: {key}"
+                print(f"Test function module: {genv.__module__}")
+                print(f"Discovered function module: {generators[key].__module__}")
+                assert genv == generators[key], f"Registered wrong function for: {key}"
 
 
 def test_delete_previous_layout_clears_widgets_and_nested_layouts(
@@ -237,7 +239,7 @@ def test_build_bad_param_inputs_raises_error(molecule_tab: MoleculeGeneration, q
     """Verify reflection engine extracts arguments to compile type-safe input controls."""
 
     # Define a custom molecule generation function to inspect
-    def bad_generator(
+    def bad_generator(  # type: ignore[explicit-any]
         ignore_atoms: Any | None = None,  # noqa: ANN401
     ) -> None:
         """Temporary generator function.

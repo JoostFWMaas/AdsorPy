@@ -17,11 +17,11 @@ from scipy.spatial.distance import cdist
 from shapely import Polygon, unary_union
 from shapely.prepared import prep
 
-import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
-import src.adsorpy.randomsequentialadsorption as rsarun
-from src.adsorpy.rsa_calculator import squared_cdist
-from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-from src.adsorpy.types import CoordsArray, GeoArray
+import adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
+import adsorpy.randomsequentialadsorption as rsarun
+from adsorpy.rsa_calculator import squared_cdist
+from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+from adsorpy.types import CoordsArray, GeoArray
 
 
 class ExampleSimulation:
@@ -93,7 +93,8 @@ class TestWithParameters:
 
     # A fixture sets up the testing environment/provides test data in a test suite.
     @pytest.fixture(scope="class")
-    def simulator(self, configname: str, molgr_count: int, surf_type: str) -> ExampleSimulation:
+    @classmethod
+    def simulator(cls) -> ExampleSimulation:
         """Fixture for the test simulation class."""
         return ExampleSimulation(123123)
 
@@ -319,7 +320,8 @@ class TestWithParameters:
         assert np.all(gaps <= circumradius)
 
     @pytest.fixture(scope="class")
-    def alt_simulator(self, configname: str, molgr_count: int, surf_type: str) -> ExampleSimulation:
+    @classmethod
+    def alt_simulator(cls) -> ExampleSimulation:
         """Fixture for the test simulation class, seed differs by 1."""
         return ExampleSimulation(123124)
 
@@ -387,7 +389,7 @@ def test_boundarytype_invalid_input() -> None:
     """An error is raised for invalid boundary types."""
     bad_type: int = 10
     with pytest.raises(TypeError, match=f"The boundary_type of type {type(bad_type).__name__} is not a string."):
-        rsarun.BoundaryParameters(bad_type)  # type: ignore[arg-type]
+        rsarun.BoundaryParameters(bad_type)
 
     bad_name: str = "Dogbonium"
     with pytest.raises(ValueError, match=f"The boundary_type string {bad_name} is not 'soft', 'hard', or 'periodic'."):
@@ -400,7 +402,7 @@ def test_molecules_invalid_input() -> None:
     sim.set_configname("config_test_soft.json")
     sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
     with pytest.raises(ValueError, match=r"No molecules have been provided!"):
-        rsarun.Simulator(sim.rsa_config, None, None, [], None)  # type: ignore[arg-type]
+        rsarun.Simulator(sim.rsa_config, None, None, [], None)
 
 
 @pytest.fixture(scope="class")
@@ -655,7 +657,7 @@ def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[i
     out_gaps = my_gaps - simrad.sim.molgroups[0].max_radius
     out_gaps[out_gaps < 0.0] = 0.0
 
-    assert simrad.sim.total_molecule_counter == 1
+    assert simrad.sim.total_molecule_counter == 1, "Only 1 molecule may be present."
 
-    assert np.all(out_gaps <= gaps + tolerance)
-    assert np.all(gaps <= in_gaps + tolerance)
+    assert np.all(out_gaps <= gaps + tolerance), "The outradius gaps do not fall within tolerance."
+    assert np.all(gaps <= in_gaps + tolerance), "The inradius gaps do not fall within tolerance."

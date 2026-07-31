@@ -26,14 +26,14 @@ import numpy as np  # For vectorised computations (performed in C).
 from numpy.random import PCG64DXSM, Generator  # New random generator.
 from shapely import Polygon  # Shapely creates and manipulates polygons.
 
-import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
-from src.adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Surface
-from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+import adsorpy.molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
+from adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Surface
+from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
-    from src.adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
+    from adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
     T1 = TypeVar("T1", bool, int, float, str, np.double, np.str_, np.long, Polygon, np.bool_)
@@ -322,7 +322,7 @@ def _run_flux_fixedrotation(
     :param distribution: list of floats indicating the distribution of the molecules. Empty for uniform distribution.
     :return: list of indices during which adsorption takes place.
     """
-    all_flux: tuple[IdxArray, ...] = cast("tuple[IdxArray, ...]", tuple(np.empty(0, dtype=np.long)))
+    all_flux: tuple[IdxArray, ...] = tuple(np.empty(0, dtype=np.long))
     all_phis: list[int] = []
     mol_array: GeoArray = np.array(molecules)
     all_phis = all_phis * mol_array.size

@@ -12,8 +12,8 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from hypothesis.strategies import SearchStrategy
 
-from src.adsorpy.molecule_lib import RADII, _xyz_verifier
-from src.adsorpy.types import CoordsArray3D, StrArray
+from adsorpy.molecule_lib import RADII, _xyz_verifier
+from adsorpy.types import CoordsArray3D, StrArray
 
 T = TypeVar("T")
 
@@ -146,4 +146,4 @@ def test_xyz_verifier_invalid(
 
     # Most invalid combinations should raise
     with pytest.raises(ValueError):  # noqa: PT011
-        _xyz_verifier(atomkeys, atompos, count)  # type: ignore[arg-type]
+        _xyz_verifier(atomkeys, atompos, count)

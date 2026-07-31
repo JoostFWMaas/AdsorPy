@@ -122,8 +122,8 @@ from PySide6.QtWidgets import (
 from shapely import Polygon, from_geojson
 from shapely.geometry import mapping
 
-from src.adsorpy import __version__, molecule_lib
-from src.adsorpy.run_simulation import run_simulation, show_surface
+from adsorpy import __version__, molecule_lib
+from adsorpy.run_simulation import run_simulation, show_surface
 
 T_qobj = TypeVar("T_qobj", bound=QObject)
 T_inv = TypeVar("T_inv", bool, int, str, float)
@@ -138,9 +138,9 @@ if TYPE_CHECKING:
     from dask.delayed import Delayed
     from numpy.random import Generator
 
-    from src.adsorpy.randomsequentialadsorption import Simulator
-    from src.adsorpy.rsa_config import RsaConfig
-    from src.adsorpy.types import BoolArray, DistArray, FloatArray, GeoArray, IdxArray
+    from adsorpy.randomsequentialadsorption import Simulator
+    from adsorpy.rsa_config import RsaConfig
+    from adsorpy.types import BoolArray, DistArray, FloatArray, GeoArray, IdxArray
 
     InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QLineEdit | "FilePickerWidget"
     RunResult: TypeAlias = tuple[DistArray, DistArray, DistArray]
@@ -2241,7 +2241,7 @@ class MoleculeGeneration(QWidget):
         output = molecule_lib.first_time_loader(Path(self.param_widgets["file_name"].text()))
         first_time_key: ParamName
         first_time_value: str | float | list[str] | None
-        for first_time_key, first_time_value in output.items():  # type: ignore[assignment]
+        for first_time_key, first_time_value in output.items():
             if not (is_valid_param(first_time_key) or first_time_key in self.param_widgets):
                 errmsg = f"Not a valid key: {first_time_key}"
                 QMessageBox.critical(self, "Key Error", errmsg)
@@ -2633,7 +2633,7 @@ class ReorderableListWidget(QListWidget):
 
     itemsMoved = Signal(int, int)  # noqa: N815
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QListWidget | None = None) -> None:
         """Initialise the ReorderableListWidget.
 
         :param parent: Parent widget.

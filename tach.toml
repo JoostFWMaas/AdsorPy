@@ -7,29 +7,33 @@ exclude = [
     "**/venv",
 ]
 source_roots = [
-    ".",
+    "src",
 ]
 
 [[modules]]
-path = "src.adsorpy.rsa_calculator"
+path = "adsorpy.rsa_calculator"
 depends_on = []
 
 [[modules]]
-path = "src.adsorpy.randomsequentialadsorption"
-depends_on = ["src.adsorpy.rsa_calculator"]
+path = "adsorpy.randomsequentialadsorption"
+depends_on = ["adsorpy.rsa_calculator"]
 
 [[modules]]
-path = "src.adsorpy.rsa_config"
+path = "adsorpy.rsa_config"
 depends_on = []
 
 [[modules]]
-path = "src.adsorpy.molecule_lib"
+path = "adsorpy.molecule_lib"
 depends_on = []
 
 [[modules]]
-path = "src.adsorpy.run_simulation"
-depends_on = [
-    "src.adsorpy.randomsequentialadsorption",
-    "src.adsorpy.rsa_config",
-    "src.adsorpy.molecule_lib"
-]
+path = "adsorpy.run_simulation"
+depends_on = ["adsorpy.randomsequentialadsorption", "adsorpy.molecule_lib", "adsorpy.rsa_config"]
+
+[[modules]]
+path = "adsorpy.gui"
+depends_on = ["adsorpy.run_simulation", "adsorpy.molecule_lib"]
+
+[[modules]]
+path = "adsorpy.types"
+depends_on = []

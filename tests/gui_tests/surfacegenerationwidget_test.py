@@ -13,7 +13,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QLineEdit, QMessageBox
 from pytestqt.qtbot import QtBot
 
-from src.adsorpy.gui import AppState, SurfaceGeneration, SurfaceParameters
+from adsorpy.gui import AppState, SurfaceGeneration, SurfaceParameters
 
 P = ParamSpec("P")
 
@@ -112,7 +112,7 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
 
     # Mock out the plotting pipeline and core graphics widget loaders
     with (
-        patch("src.adsorpy.gui.show_surface") as mock_show_surface,
+        patch("adsorpy.gui.show_surface") as mock_show_surface,
         patch.object(surface_tab.svg_widget, "load") as mock_svg_load,
     ):
         # Simulate physical button interaction
@@ -151,7 +151,7 @@ def test_generate_surface_handles_malformed_seed_gracefully(surface_tab: Surface
     # Patch native alert mechanisms to prevent blocked workflow execution threads
     with (
         patch.object(QMessageBox, "critical") as mock_critical,
-        patch("src.adsorpy.gui.show_surface") as mock_show_surface,
+        patch("adsorpy.gui.show_surface") as mock_show_surface,
     ):
         qtbot.mouseClick(surface_tab.generate_surface_button, Qt.MouseButton.LeftButton)
 
@@ -172,7 +172,7 @@ def test_generate_surface_respects_dark_mode_visibility_rules(surface_tab: Surfa
 
     with (
         patch.object(QGuiApplication, "instance") as mock_app_instance,
-        patch("src.adsorpy.gui.show_surface") as mock_show_surface,
+        patch("adsorpy.gui.show_surface") as mock_show_surface,
     ):
         mock_app_instance.return_value.styleHints.return_value = mock_hints
 
@@ -198,7 +198,7 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
 
     # 2. Mock out the core rendering and widget loader interfaces
     with (
-        patch("src.adsorpy.gui.show_surface") as mock_show_surface,
+        patch("adsorpy.gui.show_surface") as mock_show_surface,
         patch.object(surface_tab.svg_widget, "load") as mock_svg_load,
         patch.object(surface_tab.svg_widget, "renderer") as mock_renderer_getter,
     ):
@@ -207,7 +207,7 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
         mock_renderer_getter.return_value = mock_renderer
 
         # Inject our mock bytes payload when show_surface accesses the BytesIO stream
-        def mock_show_surface_impl(*args: P.args, **kwargs: P.kwargs) -> None:
+        def mock_show_surface_impl(*args: P.args, **kwargs: P.kwargs) -> None:  # type: ignore[valid-type]
             """Mock function to implement the show surface function.
 
             :param args: Positional arguments.

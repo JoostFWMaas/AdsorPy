@@ -21,7 +21,8 @@ if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
     from shapely import Polygon
     from shapely.prepared import PreparedGeometry
 
-    from src.adsorpy.types import (
+    from adsorpy.randomsequentialadsorption import CandidateMolecule, MoleculeGroup, Simulator
+    from adsorpy.types import (
         BoolArray,
         CoordPair,
         CoordsArray,
@@ -31,8 +32,6 @@ if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
         GeoArray,
         IdxArray,
     )
-
-    from .randomsequentialadsorption import CandidateMolecule, MoleculeGroup, Simulator
 
     T = TypeVar("T", CoordsArray, CoordsArray3D)
     P = ParamSpec("P")  # Helps with static type checkers.

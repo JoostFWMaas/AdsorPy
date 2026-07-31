@@ -162,8 +162,8 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src/adsorpy"]
-addopts = ["--cov=src/adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers"]
+pythonpath = ["."]
+addopts = ["--cov=src/adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
 qt_api = "pyside6"
 
 [tool.coverage.run]
@@ -195,10 +195,13 @@ exclude_also = [
     "if version_info", # Is tested with Tox (between instances of Pytest). False negative.
     "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
     "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
+    "def svg*",
+    "def show_*",
+    "def save_*",
 ]
 
 [tool.mypy]
-mypy_path = ["src", "optional", "tests"]
+mypy_path = ["."]
 ignore_missing_imports = true
 strict = true
 disallow_any_explicit = true
@@ -247,6 +250,7 @@ line-length = 88
 [tool.ruff]
 line-length = 120
 include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]
+src = ["src"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -286,9 +290,8 @@ runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass"]
 
 [tool.pyright]
 include = ["src", "tests"]
-
+extraPaths = ["src"]
 typeCheckingMode = "strict"
-
 useLibraryCodeForTypes = true
 
 # Avoid penalising third-party libraries.

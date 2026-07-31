@@ -11,7 +11,7 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import QLineEdit, QPushButton
 from pytestqt.qtbot import QtBot
 
-from src.adsorpy.gui import FilePickerWidget
+from adsorpy.gui import FilePickerWidget
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,7 @@
 from PySide6.QtWidgets import QLineEdit
 from pytestqt.qtbot import QtBot
 
-from src.adsorpy.gui import AppState, GeneralSettings, SurfaceParameters
+from adsorpy.gui import AppState, GeneralSettings, SurfaceParameters
 
 
 def test_app_state_metaclass_scans_annotations() -> None:

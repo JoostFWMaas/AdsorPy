@@ -8,7 +8,7 @@ import pytest
 from PySide6.QtCore import QThreadPool
 from pytestqt.qtbot import QtBot
 
-from src.adsorpy.gui import BackgroundTask
+from adsorpy.gui import BackgroundTask
 
 
 def sample_successful_job(a: int, b: int, message: str = "done") -> str:

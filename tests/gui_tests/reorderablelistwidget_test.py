@@ -8,12 +8,12 @@ from unittest.mock import patch
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 from pytestqt.qtbot import QtBot
 
-from src.adsorpy.gui import ReorderableListWidget
+from adsorpy.gui import ReorderableListWidget
 
 P = ParamSpec("P")
 
@@ -50,7 +50,9 @@ def test_reorderable_list_hypothesis_shuffled_moves(
     qtbot.addWidget(widget)
 
     # Populate item entries
-    # items: list[QListWidgetItem] = [QListWidgetItem(name, widget) for name in item_names]
+    items: list[QListWidgetItem] = [QListWidgetItem(name, widget) for name in item_names]
+    for item in items:
+        widget.addItem(item)
     total_count: int = len(item_names)
 
     # Draw random row selection bounds
@@ -58,19 +60,15 @@ def test_reorderable_list_hypothesis_shuffled_moves(
     new_row: int = move_indices.draw(st.integers(min_value=0, max_value=total_count - 1))
 
     # Keep target item selected at its original index
-    target_item: QListWidgetItem = widget.item(old_row)
-    widget.setCurrentItem(target_item)
+    widget.setCurrentRow(old_row)
+    target_item: QListWidgetItem = widget.currentItem()
 
-    # Use *args to catch the event parameter safely via PySide's runtime binding
-    def mock_super_drop(*args: P.args, **kwargs: P.kwargs) -> None:
-        """Mock function for drag and drop.
-
-        :param args: Positional arguments.
-        :param kwargs: Keyword arguments.
-        """
+    def mock_super_drop(signal: Signal) -> None:
+        """Mock function for drag and drop."""
+        # Mutate the widget state using the instance passed by the patch
         widget.takeItem(old_row)
         widget.insertItem(new_row, target_item)
-        widget.setCurrentItem(target_item)  # Ensure item remains selected
+        widget.setCurrentItem(target_item)
 
     mock_event: QDropEvent = QDropEvent(
         widget.rect().center(),

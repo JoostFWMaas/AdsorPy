@@ -26,7 +26,7 @@ from pydantic import Field, NonNegativeFloat, PositiveFloat, PositiveInt
 from rtree.index import Index, Property  # RTree, helps lookups!
 from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare
 
-import src.adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
+import adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-    from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-    from src.adsorpy.types import (
+    from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+    from adsorpy.types import (
         BoolArray,
         BufferArray,
         CoordPair,
@@ -107,14 +107,14 @@ def _config_loader(rsa_config: RsaConfig) -> Config:
     """
     return Config(
         # rsa_config=rsa_config,  TODO: Maybe use cast("int | None", ...)?
-        sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
-        xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
-        ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
-        zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
-        max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
-        lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
-        boundary_type=rsa_config.get_value("boundary_type"),  # type: ignore[arg-type]
-        sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
+        sites=rsa_config.get_value("sites", required=False),
+        xsize=rsa_config.get_value("xsize", required=False),
+        ysize=rsa_config.get_value("ysize", required=False),
+        zsize=rsa_config.get_value("zsize", required=False),
+        max_molecule_count=rsa_config.get_value("max_molecule_count"),
+        lattice_a=rsa_config.get_value("lattice_a"),
+        boundary_type=rsa_config.get_value("boundary_type"),
+        sticking_probability=rsa_config.get_value("sticking_probability"),
     )
 
 
@@ -852,7 +852,7 @@ class Simulator:
                         *mirr_coords.ravel(),
                     ),
                 )
-                new_data = (  # type: ignore[assignment]
+                new_data = (
                     mdx,
                     *cast("tuple[int, bool, int]", basic_data[:3]),  # type: ignore[redundant-cast]
                     mirror,

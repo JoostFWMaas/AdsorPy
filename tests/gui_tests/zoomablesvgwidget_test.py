@@ -3,16 +3,15 @@
 """Test the ZoomableSvgWidget class of the `gui.py` module."""
 
 from pathlib import Path
-from typing import Any
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
-from PySide6.QtCore import QPoint, QPointF, QSize, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QSize, Qt
 from PySide6.QtGui import QResizeEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QScrollArea
-from pytestqt.qtbot import QtBot
+from pytestqt.qtbot import QtBot, QWidget
 
-from src.adsorpy.gui import ZoomableSvgWidget
+from adsorpy.gui import ZoomableSvgWidget
 
 VALID_SVG_BYTES: bytes = (
     b'<svg xmlns="http://w3.org" viewBox="0 0 20 20" width="20" height="20">'
@@ -157,7 +156,7 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Verify that disk I/O errors are caught by the exception block and report via critical dialog."""
+    """Verify that disk I/O errors are caught by the exception block and report via critical dialogue."""
     widget: ZoomableSvgWidget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
     widget.load(VALID_SVG_BYTES)
@@ -169,11 +168,11 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: mock_file_dialog)  # noqa: ARG005
 
     # FORCE any file write attempt on Path objects to immediately raise an IOError
-    def mock_write_bytes(self: Path, data: bytes) -> int:
+    def mock_write_bytes(self: Path, data: bytes) -> None:
         errmsg = "Simulated Disk I/O Failure"
         raise OSError(errmsg)
 
-    def mock_open_failed(self: Path, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+    def mock_open_failed(self: Path) -> None:
         errmsg = "Simulated Disk Open Failure"
         raise OSError(errmsg)
 
@@ -182,7 +181,7 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
 
     critical_triggered: bool = False
 
-    def mock_critical(parent: Any, title: str, text: str) -> None:  # noqa: ANN401
+    def mock_critical(parent: QWidget, title: str, text: str) -> None:
         nonlocal critical_triggered
         # Check if "Export Failed" or "Error" is in either the title or text body
         if "Export" in title or "Error" in title or "Fail" in title:
@@ -315,7 +314,7 @@ def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
 
     event_forwarded: bool = False
 
-    def mock_send_event(receiver: Any, event: Any) -> bool:  # noqa: ANN401
+    def mock_send_event(receiver: QWidget, event: QEvent) -> bool:
         nonlocal event_forwarded
         if receiver == scroll_area.viewport():
             event_forwarded = True

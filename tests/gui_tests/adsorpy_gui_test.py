@@ -11,7 +11,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from src.adsorpy.gui import AdsorpyGUI, AppState
+from adsorpy.gui import AdsorpyGUI, AppState
 
 
 @pytest.fixture

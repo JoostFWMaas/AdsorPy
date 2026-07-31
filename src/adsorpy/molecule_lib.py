@@ -53,7 +53,7 @@ from shapely.ops import unary_union
 if TYPE_CHECKING:
     from PySide6.QtGui import QFontMetrics
 
-    from src.adsorpy.types import BoolArray, CoordsArray3D, DistArray, IdxArray, RotMatrix, StrArray
+    from adsorpy.types import BoolArray, CoordsArray3D, DistArray, IdxArray, RotMatrix, StrArray
 
     T = TypeVar("T", bool, int, str, float)
     Tfloat = TypeVar("Tfloat", float, np.double, DistArray)
