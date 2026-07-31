@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the AppState and AutoStateMeta classes of the `gui.py` module."""
+
 from PySide6.QtWidgets import QLineEdit
 from pytestqt.qtbot import QtBot
 
@@ -26,8 +27,8 @@ def test_app_state_initializes_private_fields_to_none() -> None:
     # Assert private fields are instantiated automatically
     assert hasattr(state, "_seed_input")
     assert hasattr(state, "_surface_params")
-    assert state._seed_input is None
-    assert state._surface_params is None
+    assert state._seed_input is None  # noqa: SLF001
+    assert state._surface_params is None  # noqa: SLF001
 
 
 def test_setting_property_emits_changed_signal(qtbot: QtBot) -> None:

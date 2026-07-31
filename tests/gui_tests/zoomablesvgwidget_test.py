@@ -1,12 +1,13 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the ZoomableSvgWidget class of the `gui.py` module."""
+
 from pathlib import Path
 from typing import Any
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
-from PySide6.QtCore import QPoint, QPointF, QRect, QSize, Qt
+from PySide6.QtCore import QPoint, QPointF, QSize, Qt
 from PySide6.QtGui import QResizeEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QScrollArea
 from pytestqt.qtbot import QtBot
@@ -62,7 +63,7 @@ def test_widget_initialisation_state(qtbot: QtBot) -> None:
 
     assert widget.zoom_factor == pytest.approx(1.15)
     assert widget.current_svg_path is None
-    assert widget._current_svg_bytes is None
+    assert widget._current_svg_bytes is None  # noqa: SLF001
     assert widget.save_button.isVisible() is False
     assert widget.save_button.size() == QSize(40, 40)
 
@@ -102,7 +103,7 @@ def test_load_caches_bytes_and_toggles_visibility(qtbot: QtBot, sample_svg_file:
 
     assert blocker.args == [True]
     assert widget.current_svg_path == str(sample_svg_file)
-    assert widget._current_svg_bytes == VALID_SVG_BYTES
+    assert widget._current_svg_bytes == VALID_SVG_BYTES  # noqa: SLF001
     assert widget.save_button.isVisibleTo(widget) is True
 
 
@@ -117,13 +118,16 @@ def test_load_handles_raw_bytes_directly(qtbot: QtBot) -> None:
     widget.load(VALID_SVG_BYTES)
 
     assert widget.current_svg_path is None
-    assert widget._current_svg_bytes == VALID_SVG_BYTES
+    assert widget._current_svg_bytes == VALID_SVG_BYTES  # noqa: SLF001
     assert widget.save_button.isVisibleTo(widget) is True
 
 
 @pytest.mark.parametrize("extension", [".svg", ".png", ".jpg", ".pdf"])
 def test_export_graphics_success_formats(
-    qtbot: QtBot, monkeypatch: MonkeyPatch, tmp_path: Path, extension: str
+    qtbot: QtBot,
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    extension: str,
 ) -> None:
     """Verify that export routing converts and dumps all core target format profiles safely.
 
@@ -137,10 +141,10 @@ def test_export_graphics_success_formats(
     destination_file: Path = tmp_path / f"output_export{extension}"
 
     mock_file_dialog: tuple[str, str] = (str(destination_file), f"Format File (*{extension})")
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: mock_file_dialog)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: mock_file_dialog)  # noqa: ARG005
 
-    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: None)
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: None)  # noqa: ARG005
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: None)  # noqa: ARG005
 
     qtbot.mouseClick(widget.save_button, Qt.MouseButton.LeftButton)
 
@@ -149,7 +153,9 @@ def test_export_graphics_success_formats(
 
 
 def test_export_graphics_filesystem_failure_displays_critical_dialog(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    qtbot: QtBot,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Verify that disk I/O errors are caught by the exception block and report via critical dialog."""
     widget: ZoomableSvgWidget = ZoomableSvgWidget()
@@ -160,14 +166,14 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     target_path = tmp_path / "test_output.svg"
 
     mock_file_dialog: tuple[str, str] = (str(target_path), "Scalable Vector Graphics (*.svg)")
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: mock_file_dialog)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: mock_file_dialog)  # noqa: ARG005
 
     # FORCE any file write attempt on Path objects to immediately raise an IOError
     def mock_write_bytes(self: Path, data: bytes) -> int:
         errmsg = "Simulated Disk I/O Failure"
         raise OSError(errmsg)
 
-    def mock_open_failed(self: Path, *args: Any, **kwargs: Any) -> Any:
+    def mock_open_failed(self: Path, *args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
         errmsg = "Simulated Disk Open Failure"
         raise OSError(errmsg)
 
@@ -176,7 +182,7 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
 
     critical_triggered: bool = False
 
-    def mock_critical(parent: Any, title: str, text: str) -> None:
+    def mock_critical(parent: Any, title: str, text: str) -> None:  # noqa: ANN401
         nonlocal critical_triggered
         # Check if "Export Failed" or "Error" is in either the title or text body
         if "Export" in title or "Error" in title or "Fail" in title:
@@ -185,7 +191,7 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     monkeypatch.setattr(QMessageBox, "critical", mock_critical)
 
     # Suppress the success dialogue just in case it's still called somewhere
-    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)
+    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)  # noqa: ARG005
 
     # Act
     qtbot.mouseClick(widget.save_button, Qt.MouseButton.LeftButton)
@@ -194,9 +200,11 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     assert critical_triggered is True, "The critical error dialog was never triggered during file write failure!"
 
 
-@pytest.mark.parametrize("delta, scale_multiplier", [(120, 1.15), (-120, 1.0 / 1.15)])
+@pytest.mark.parametrize(("delta", "scale_multiplier"), [(120, 1.15), (-120, 1.0 / 1.15)])
 def test_wheel_event_zoom_with_control_modifier(
-    scrollable_widget_setup: tuple[QScrollArea, ZoomableSvgWidget], delta: int, scale_multiplier: float
+    scrollable_widget_setup: tuple[QScrollArea, ZoomableSvgWidget],
+    delta: int,
+    scale_multiplier: float,
 ) -> None:
     """Verify that scrolling with the Ctrl modifier rescales the widget and adjusts scrollbars.
 
@@ -220,7 +228,7 @@ def test_wheel_event_zoom_with_control_modifier(
         Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.ControlModifier,
         Qt.ScrollPhase.NoScrollPhase,
-        False,
+        False,  # noqa: FBT003
     )
 
     # Calculate expected size transitions manually
@@ -242,7 +250,7 @@ def test_wheel_event_zoom_ignores_outside_scale_bounds(
 
     :param scrollable_widget_setup: The custom test environment nesting layout fixture.
     """
-    scroll_area, widget = scrollable_widget_setup
+    widget = scrollable_widget_setup[1]
 
     # Push width directly against the minimum dimension safety guard rail limit (100)
     widget.setFixedSize(105, 105)
@@ -256,17 +264,17 @@ def test_wheel_event_zoom_ignores_outside_scale_bounds(
         Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.ControlModifier,
         Qt.ScrollPhase.NoScrollPhase,
-        False,
+        False,  # noqa: FBT003
     )
     widget.wheelEvent(zoom_out_event)
 
     # Layout changes must be rejected and size configuration preserved intact
     # Ensure layout adjustments were rejected and size limits are preserved intact
-    assert widget.width() == 105
+    assert widget.width() == 105  # noqa: PLR2004
 
 
 def test_wheel_event_horizontal_pan_with_shift_modifier(
-    scrollable_widget_setup: tuple[QScrollArea, ZoomableSvgWidget]
+    scrollable_widget_setup: tuple[QScrollArea, ZoomableSvgWidget],
 ) -> None:
     """Verify that scrolling with the Shift modifier shifts the horizontal scrollbar.
 
@@ -285,7 +293,7 @@ def test_wheel_event_horizontal_pan_with_shift_modifier(
         Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.ShiftModifier,
         Qt.ScrollPhase.NoScrollPhase,
-        False
+        False,  # noqa: FBT003
     )
 
     widget.wheelEvent(pan_event)
@@ -296,7 +304,7 @@ def test_wheel_event_horizontal_pan_with_shift_modifier(
 
 def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
     scrollable_widget_setup: tuple[QScrollArea, ZoomableSvgWidget],
-    monkeypatch: MonkeyPatch
+    monkeypatch: MonkeyPatch,
 ) -> None:
     """Verify that normal un-modified scroll actions route up directly to the scroll viewport.
 
@@ -306,7 +314,8 @@ def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
     scroll_area, widget = scrollable_widget_setup
 
     event_forwarded: bool = False
-    def mock_send_event(receiver: Any, event: Any) -> bool:
+
+    def mock_send_event(receiver: Any, event: Any) -> bool:  # noqa: ANN401
         nonlocal event_forwarded
         if receiver == scroll_area.viewport():
             event_forwarded = True
@@ -323,7 +332,7 @@ def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
         Qt.MouseButton.NoButton,
         Qt.KeyboardModifier.NoModifier,
         Qt.ScrollPhase.NoScrollPhase,
-        False
+        False,  # noqa: FBT003
     )
 
     widget.wheelEvent(normal_scroll_event)

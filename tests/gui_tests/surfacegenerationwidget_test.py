@@ -1,7 +1,9 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the SurfaceGeneration class of the `gui.py` module."""
+
 import io
+from typing import ParamSpec
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,9 +15,11 @@ from pytestqt.qtbot import QtBot
 
 from src.adsorpy.gui import AppState, SurfaceGeneration, SurfaceParameters
 
+P = ParamSpec("P")
+
 
 @pytest.fixture
-def surface_tab(qtbot: QtBot):
+def surface_tab(qtbot: QtBot) -> SurfaceGeneration:
     """Instantiate the SurfaceGeneration tab using a real AppState context.
 
     :param qtbot: Qt instance to mock interaction.
@@ -36,7 +40,7 @@ def test_initial_structural_layout_states(surface_tab: SurfaceGeneration) -> Non
 
     :param surface_tab: SurfaceGeneration widget.
     """
-    assert surface_tab.main_splitter.count() == 2
+    assert surface_tab.main_splitter.count() == 2  # noqa: PLR2004
     assert surface_tab.main_splitter.orientation() == Qt.Orientation.Horizontal
 
     # Check default combo box configuration entries
@@ -51,8 +55,8 @@ def test_input_validators_range_boundaries(surface_tab: SurfaceGeneration) -> No
     :param surface_tab: SurfaceGeneration widget.
     """
     # Ensure bottom boundaries block zero or negative integer entries
-    assert surface_tab._gt_one_validator.bottom() == 1
-    assert surface_tab._pos_float_validator.bottom() == 0.0
+    assert surface_tab._gt_one_validator.bottom() == 1  # noqa: SLF001
+    assert surface_tab._pos_float_validator.bottom() == 0.0  # noqa: SLF001
 
 
 @pytest.mark.parametrize(
@@ -65,7 +69,11 @@ def test_input_validators_range_boundaries(surface_tab: SurfaceGeneration) -> No
     ],
 )
 def test_signal_loops_recalculate_real_site_count(
-    surface_tab: SurfaceGeneration, qtbot: QtBot, geometry_preset: str, typed_input: str, expected_label_output: str,
+    surface_tab: SurfaceGeneration,
+    qtbot: QtBot,
+    geometry_preset: str,
+    typed_input: str,
+    expected_label_output: str,
 ) -> None:
     """Verify that user interface modifications alter real-time node tracking text.
 
@@ -100,7 +108,7 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
     surface_tab.site_count_input.setText(f"{site_count}")  # Sets base count variable to 35
 
     # Force calculation to cache baseline count variables into self.surface_count
-    surface_tab._get_real_surface_site_count()
+    surface_tab._get_real_surface_site_count()  # noqa: SLF001
 
     # Mock out the plotting pipeline and core graphics widget loaders
     with (
@@ -114,9 +122,9 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
         mock_show_surface.assert_called_once()
         _, kwargs = mock_show_surface.call_args
 
-        assert kwargs["lattice_a"] == 2.45
+        assert kwargs["lattice_a"] == 2.45  # noqa: PLR2004
         assert kwargs["lattice_type"] == "hexagonal"
-        assert kwargs["seed"] == 119
+        assert kwargs["seed"] == 119  # noqa: PLR2004
         assert kwargs["site_count"] == site_count
         assert isinstance(kwargs["filepath"], io.BytesIO)
         assert kwargs["svg_flag"] is True
@@ -173,6 +181,7 @@ def test_generate_surface_respects_dark_mode_visibility_rules(surface_tab: Surfa
         _, kwargs = mock_show_surface.call_args
         assert kwargs["dark_mode_bool"] is True
 
+
 def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab: SurfaceGeneration) -> None:
     """Verify that generating a surface locks the aspect ratio and saves parameters.
 
@@ -198,7 +207,12 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
         mock_renderer_getter.return_value = mock_renderer
 
         # Inject our mock bytes payload when show_surface accesses the BytesIO stream
-        def mock_show_surface_impl(*args, **kwargs):
+        def mock_show_surface_impl(*args: P.args, **kwargs: P.kwargs) -> None:
+            """Mock function to implement the show surface function.
+
+            :param args: Positional arguments.
+            :param kwargs: Keyword arguments.
+            """
             kwargs["filepath"].write(fake_svg_bytes)
 
         mock_show_surface.set_defaults_or_side_effect = mock_show_surface_impl

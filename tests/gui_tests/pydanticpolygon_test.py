@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the PydanticPolygon class of the `gui.py` module."""
+
 import json
 from typing import Any
 
@@ -27,7 +28,7 @@ def valid_geojson_dict() -> dict[str, Any]:
     """
     return {
         "type": "Polygon",
-        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]]
+        "coordinates": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [0.0, 0.0]]],
     }
 
 

@@ -552,6 +552,7 @@ class ZoomableSvgWidget(QSvgWidget):
         y = self.height() - button_h - margin
 
         self.save_button.move(x, y)
+
     # Unfortunately, load() is an overloaded method. Overriding will always result in a signature error.
     @override
     def load(self, contents: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -2028,8 +2029,12 @@ class MoleculeGeneration(QWidget):
                 name_label.setToolTip(param_docs[name])
             param_grid.addWidget(name_label, idx, 0)
 
-            # Route type dispatching to dedicated factory helper method
-            widget = self._create_param_widget(param.annotation, default)
+            param_annotation: str | type = param.annotation
+            if not isinstance(param_annotation, str):
+                errmsg = "Parameter is not a string. Use ``from __future__ import annotations`` to ensure this."
+                self.error(errmsg)
+                return
+            widget = self._create_param_widget(param_annotation, default)
 
             if not (is_required or is_optional):
                 set_content(widget, default)
@@ -2052,7 +2057,7 @@ class MoleculeGeneration(QWidget):
             if is_valid_param(name) and widg_hint is not None and isinstance(widget, widg_hint):  # pyright: ignore[reportArgumentType]
                 self.param_widgets[name] = widget  # pyright: ignore[reportGeneralTypeIssues]
             else:
-                errmsg = "Parameter input widget mismatch."
+                errmsg = f"Parameter input widget mismatch: {name} and {type(widget).__name__}"
                 QMessageBox.critical(self, "Value Error", errmsg)
             param_grid.addLayout(row, idx, 1)
 

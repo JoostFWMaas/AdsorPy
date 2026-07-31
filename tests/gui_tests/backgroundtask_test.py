@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the BackgroundTask and BackgroundTaskSignals classes of the `gui.py` module."""
+
 from typing import Any
 
 import pytest
@@ -58,6 +59,7 @@ def test_background_task_unhandled_exception_bubbles() -> None:
     By calling task.run() synchronously, the internal try/except contract is tested
     without polluting or crashing the global Qt background thread pool worker.
     """
+
     def sample_runtime_crash() -> None:
         errmsg = "Unexpected dict failure mapping metrics"
         raise KeyError(errmsg)

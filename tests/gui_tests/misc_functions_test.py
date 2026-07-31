@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the functions of the `gui.py` module."""
+
 import json
 from collections.abc import Callable
 from typing import Any
@@ -30,36 +31,43 @@ def test_set_content_success_cases(qtbot: QtBot, subtests: pytest.Subtests) -> N
         qtbot.addWidget(w)
 
     with subtests.test(msg="QSpinBox integer assignment"):
-        set_content(spinbox, 42)
-        assert spinbox.value() == 42
+        val = 42
+        set_content(spinbox, val)
+        assert spinbox.value() == val
 
     with subtests.test(msg="QDoubleSpinBox float assignment"):
-        set_content(double_spinbox, 3.14)
-        assert double_spinbox.value() == pytest.approx(3.14)
+        val = 3.14
+        set_content(double_spinbox, val)
+        assert double_spinbox.value() == pytest.approx(val)
 
     with subtests.test(msg="QLineEdit string assignment"):
-        set_content(line_edit, "Hello World")
-        assert line_edit.text() == "Hello World"
+        text = "Hello World"
+        set_content(line_edit, text)
+        assert line_edit.text() == text
 
     with subtests.test(msg="FilePickerWidget string assignment"):
-        set_content(file_picker, "/path/to/file.xyz")
-        assert file_picker.text() == "/path/to/file.xyz"
+        file = "/path/to/file.xyz"
+        set_content(file_picker, file)
+        assert file_picker.text() == file
 
     with subtests.test(msg="QLineEdit list of strings assignment"):
-        set_content(line_edit, ["A", "B", "C"])
-        assert line_edit.text() == "A,B,C"
+        string_list = ["A", "B", "C"]
+        set_content(line_edit, string_list)
+        assert line_edit.text() == ",".join(string_list)
 
 
 @pytest.mark.parametrize(
-    "widget_factory, invalid_content",
+    ("widget_factory", "invalid_content"),
     [
-        (lambda: QSpinBox(), "not an int"),
-        (lambda: QDoubleSpinBox(), 12),  # Expects float, not an int
-        (lambda: FilePickerWidget(), ["list", "not", "string"]),
+        (QSpinBox, "not an int"),
+        (QDoubleSpinBox, 12),  # Expects float, not an int
+        (FilePickerWidget, ["list", "not", "string"]),
     ],
 )
 def test_set_content_mismatch_raises_value_error(
-    qtbot: QtBot, widget_factory: Callable[[], QWidget], invalid_content: str | list[str] | int,
+    qtbot: QtBot,
+    widget_factory: Callable[[], QWidget],
+    invalid_content: str | list[str] | int,
 ) -> None:
     """Verify that incompatible widget-content pairs throw a clear ValueError.
 
@@ -98,7 +106,7 @@ def test_extract_param_docs_raises_value_error_if_missing() -> None:
     def undocumented_func() -> None:
         pass
 
-    with pytest.raises(ValueError, match="Docstring of undocumented_func is not defined."):
+    with pytest.raises(ValueError, match=r"Docstring of undocumented_func is not defined."):
         extract_param_docs(undocumented_func)
 
 

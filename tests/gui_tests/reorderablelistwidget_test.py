@@ -1,6 +1,8 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the ReorderableListWidget class of the `gui.py` module."""
+
+from typing import ParamSpec
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +14,8 @@ from PySide6.QtWidgets import QListWidget, QListWidgetItem
 from pytestqt.qtbot import QtBot
 
 from src.adsorpy.gui import ReorderableListWidget
+
+P = ParamSpec("P")
 
 
 def test_reorderable_list_widget_initialisation(qtbot: QtBot) -> None:
@@ -46,7 +50,7 @@ def test_reorderable_list_hypothesis_shuffled_moves(
     qtbot.addWidget(widget)
 
     # Populate item entries
-    items: list[QListWidgetItem] = [QListWidgetItem(name, widget) for name in item_names]
+    # items: list[QListWidgetItem] = [QListWidgetItem(name, widget) for name in item_names]
     total_count: int = len(item_names)
 
     # Draw random row selection bounds
@@ -58,7 +62,12 @@ def test_reorderable_list_hypothesis_shuffled_moves(
     widget.setCurrentItem(target_item)
 
     # Use *args to catch the event parameter safely via PySide's runtime binding
-    def mock_super_drop(*args, **kwargs) -> None:
+    def mock_super_drop(*args: P.args, **kwargs: P.kwargs) -> None:
+        """Mock function for drag and drop.
+
+        :param args: Positional arguments.
+        :param kwargs: Keyword arguments.
+        """
         widget.takeItem(old_row)
         widget.insertItem(new_row, target_item)
         widget.setCurrentItem(target_item)  # Ensure item remains selected
@@ -68,7 +77,7 @@ def test_reorderable_list_hypothesis_shuffled_moves(
         Qt.DropAction.MoveAction,
         widget.mimeData([target_item]),
         Qt.MouseButton.LeftButton,
-        Qt.KeyboardModifier.NoModifier
+        Qt.KeyboardModifier.NoModifier,
     )
 
     # Track signal emissions synchronously

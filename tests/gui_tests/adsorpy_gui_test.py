@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the AdsorpyGUI class of the `gui.py` module."""
+
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -20,6 +21,7 @@ def gui_app(qtbot: pytestqt.qtbot.QtBot) -> AdsorpyGUI:
     qtbot.addWidget(window)
     return window
 
+
 def test_initial_window_properties(gui_app: AdsorpyGUI, subtests: pytest.Subtests) -> None:
     """Verify window title, central widget configuration, and state assignment."""
     with subtests.test(msg="Verify window title"):
@@ -32,13 +34,14 @@ def test_initial_window_properties(gui_app: AdsorpyGUI, subtests: pytest.Subtest
         assert gui_app.centralWidget() == gui_app.tabs
 
     with subtests.test(msg="Verify tab configuration"):
-        assert gui_app.tabs.count() == 3
+        assert gui_app.tabs.count() == 3  # noqa: PLR2004
         assert gui_app.tabs.tabText(0) == "General"
         assert gui_app.tabs.tabText(1) == "Surface"
         assert gui_app.tabs.tabText(2) == "Molecule(s)"
 
+
 @pytest.mark.parametrize(
-    "action_attr, expected_url",
+    ("action_attr", "expected_url"),
     [
         ("_doc_action", "https://joostfwmaas.github.io/AdsorPy/"),
         ("_wiki_action", "https://github.com/JoostFWMaas/AdsorPy/wiki"),
@@ -106,6 +109,7 @@ def test_help_menu_web_links(gui_app: AdsorpyGUI, action_attr: str, expected_url
 #     # Confirm text targets synchronized matching profile rules
 #     gui_app.state.seed_input.setText.assert_called_once_with(999)
 
+
 def test_load_settings_validation_failure(gui_app: AdsorpyGUI, tmp_path: Path) -> None:
     """Ensure malformed schemas show a critical QMessageBox warning dialog instead of crashing."""
     corrupted_file = tmp_path / "broken.json"
@@ -115,7 +119,7 @@ def test_load_settings_validation_failure(gui_app: AdsorpyGUI, tmp_path: Path) -
         patch.object(QFileDialog, "getOpenFileName", return_value=(str(corrupted_file), "JSON Files (*.json)")),
         patch.object(QMessageBox, "critical") as mock_critical,
     ):
-        gui_app._load_settings_json()
+        gui_app._load_settings_json()  # noqa: SLF001
 
         # Ensure QMessageBox.critical caught parsing failures safely
         mock_critical.assert_called_once()
@@ -124,35 +128,36 @@ def test_load_settings_validation_failure(gui_app: AdsorpyGUI, tmp_path: Path) -
 def test_fetch_setting_returns_stored_value(gui_app: AdsorpyGUI) -> None:
     """Verify that settings are fetched correctly from QSettings when they exist."""
     # Mock the internal QSettings object's value method
-    gui_app._settings.value = MagicMock(return_value="/home/user/simulations")
+    gui_app._settings.value = MagicMock(return_value="/home/user/simulations")  # noqa: SLF001
 
     # Run the method with a default fallback
-    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")
+    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")  # noqa: SLF001
 
     # Assertions
     assert result == "/home/user/simulations"
-    gui_app._settings.value.assert_called_once_with("last_visited_directory", defaultValue="/default/path", type=str)
+    gui_app._settings.value.assert_called_once_with("last_visited_directory", defaultValue="/default/path", type=str)  # noqa: SLF001
 
 
 def test_fetch_setting_falls_back_to_default(gui_app: AdsorpyGUI) -> None:
     """Verify that the default value is returned when a setting does not exist."""
     # Simulate a missing key by returning the fallback default
-    gui_app._settings.value = MagicMock(return_value="/default/path")
+    gui_app._settings.value = MagicMock(return_value="/default/path")  # noqa: SLF001
 
-    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")
+    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")  # noqa: SLF001
 
     assert result == "/default/path"
 
 
 def test_fetch_setting_explicit_return_type(gui_app: AdsorpyGUI) -> None:
     """Verify that explicit return_type parameters override the default type check logic."""
-    gui_app._settings.value = MagicMock(return_value=42)
+    val = 42
+    gui_app._settings.value = MagicMock(return_value=val)  # noqa: SLF001
 
     # Call using a default string but an explicit int target type override
-    result = gui_app._fetch_setting("sim_seed", default="0", return_type=int)
+    result = gui_app._fetch_setting("sim_seed", default="0", return_type=int)  # noqa: SLF001
 
-    assert result == 42
-    gui_app._settings.value.assert_called_once_with("sim_seed", defaultValue="0", type=int)
+    assert result == val
+    gui_app._settings.value.assert_called_once_with("sim_seed", defaultValue="0", type=int)  # noqa: SLF001
 
 
 def test_resize_event_emits_custom_signal(gui_app: AdsorpyGUI, qtbot: pytestqt.qtbot.QtBot) -> None:

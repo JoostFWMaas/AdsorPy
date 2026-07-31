@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the FilePickierWidget class of the `gui.py` module."""
+
 from collections.abc import Generator
 from pathlib import Path
 
@@ -79,7 +80,7 @@ def test_open_file_dialog_saves_file_and_directory(qtbot: QtBot, monkeypatch: Mo
 
     # Mock QFileDialog.getOpenFileName to bypass the native system window
     mock_response: tuple[str, str] = (str(fake_file), "XYZ File (*.xyz)")
-    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName", lambda *args, **kwargs: mock_response)
+    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName", lambda *args, **kwargs: mock_response)  # noqa: ARG005
 
     # Act: Simulate a click on the browse button
     with qtbot.waitSignal(widget.browse_button.clicked, timeout=1000):
@@ -89,7 +90,7 @@ def test_open_file_dialog_saves_file_and_directory(qtbot: QtBot, monkeypatch: Mo
     assert widget.text() == str(fake_file)
 
     # Assert 2: The parent directory was persistent into QSettings
-    saved_dir: str = widget._fetch_setting("last_visited_directory", default="")
+    saved_dir: str = widget._fetch_setting("last_visited_directory", default="")  # noqa: SLF001
     assert saved_dir == str(target_dir)
 
 
@@ -105,7 +106,7 @@ def test_open_file_dialog_cancelled(qtbot: QtBot, monkeypatch: MonkeyPatch) -> N
     widget.setText("/original/path.xyz")
 
     # Mock user pressing 'Cancel' (returns empty strings)
-    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName", lambda *args, **kwargs: ("", ""))
+    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName", lambda *args, **kwargs: ("", ""))  # noqa: ARG005
 
     qtbot.mouseClick(widget.browse_button, Qt.MouseButton.LeftButton)
 

@@ -91,6 +91,10 @@ test = [
     "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
+    "h5py>=3.16.0",
+    "pandas>=2.3.3",
+    "seaborn>=0.13.2",
+    "dask[distributed]>=2026.7.1",
 ]
 lint = [
     "mypy>=2.1.0",
