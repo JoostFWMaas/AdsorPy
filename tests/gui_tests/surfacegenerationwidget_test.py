@@ -136,8 +136,8 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
         adapter = TypeAdapter(SurfaceParameters)
         adapter.validate_python(surface_tab.state.surface_params)
         assert isinstance(surface_tab.state.surface_params, dict)
-        assert surface_tab.state.surface_params["lattice_type"] == "hexagonal"
-        assert surface_tab.state.surface_params["site_count"] == site_count
+        assert surface_tab.state.surface_params["lattice_type"] == "hexagonal"  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert surface_tab.state.surface_params["site_count"] == site_count  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
 def test_generate_surface_handles_malformed_seed_gracefully(surface_tab: SurfaceGeneration, qtbot: QtBot) -> None:
@@ -207,13 +207,13 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
         mock_renderer_getter.return_value = mock_renderer
 
         # Inject our mock bytes payload when show_surface accesses the BytesIO stream
-        def mock_show_surface_impl(*args: P.args, **kwargs: P.kwargs) -> None:  # type: ignore[valid-type]
+        def mock_show_surface_impl(*args: P.args, **kwargs: P.kwargs) -> None:  # type: ignore[valid-type] # pyright: ingore[reportUnnecessaryTypeIgnoreComment]
             """Mock function to implement the show surface function.
 
             :param args: Positional arguments.
             :param kwargs: Keyword arguments.
             """
-            kwargs["filepath"].write(fake_svg_bytes)
+            kwargs["filepath"].write(fake_svg_bytes)  # pyright: ignore[reportAttributeAccessIssue]
 
         mock_show_surface.set_defaults_or_side_effect = mock_show_surface_impl
         mock_show_surface.side_effect = mock_show_surface_impl
@@ -231,7 +231,7 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
         adapter = TypeAdapter(SurfaceParameters)
         adapter.validate_python(surface_tab.state.surface_params)
         assert surface_tab.state.surface_params == surface_tab.stored_params
-        assert surface_tab.stored_params["lattice_type"] == "square"
+        assert surface_tab.stored_params["lattice_type"] == "square"  # pyright: ignore[reportOptionalSubscript, reportTypedDictNotRequiredAccess]
 
 
 def test_error_method_displays_critical_message_box(surface_tab: SurfaceGeneration) -> None:

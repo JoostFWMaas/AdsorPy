@@ -71,6 +71,6 @@ def test_pydantic_polygon_serialisation(valid_geojson_dict: dict[str, str | list
     model: SimulationGeometryModel = SimulationGeometryModel(footprint=expected_shape)
 
     serialised_data: dict[str, str | list[list[list[float]]]] = model.model_dump()
-    reloaded_model = SimulationGeometryModel(**serialised_data)
+    reloaded_model = SimulationGeometryModel(**serialised_data)  # pyright: ignore[reportArgumentType]
 
     assert reloaded_model == model, "Polygon data changed by saving and loading."

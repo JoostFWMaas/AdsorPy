@@ -80,7 +80,7 @@ def test_reorderable_list_hypothesis_shuffled_moves(
 
     # Track signal emissions synchronously
     emitted_signals: list[tuple[int, int]] = []
-    widget.itemsMoved.connect(lambda old, new: emitted_signals.append((old, new)))
+    widget.itemsMoved.connect(lambda old, new: emitted_signals.append((old, new)))  # pyright: ignore[reportUnknownLambdaType]
 
     # Removed autospec=True to give the side_effect flexible argument mapping
     with patch.object(QListWidget, "dropEvent", side_effect=mock_super_drop):

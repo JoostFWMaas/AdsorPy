@@ -2241,7 +2241,7 @@ class MoleculeGeneration(QWidget):
         output = molecule_lib.first_time_loader(Path(self.param_widgets["file_name"].text()))
         first_time_key: ParamName
         first_time_value: str | float | list[str] | None
-        for first_time_key, first_time_value in output.items():
+        for first_time_key, first_time_value in output.items():  # pyright: ignore[reportAssignmentType]
             if not (is_valid_param(first_time_key) or first_time_key in self.param_widgets):
                 errmsg = f"Not a valid key: {first_time_key}"
                 QMessageBox.critical(self, "Key Error", errmsg)

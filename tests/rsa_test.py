@@ -389,7 +389,7 @@ def test_boundarytype_invalid_input() -> None:
     """An error is raised for invalid boundary types."""
     bad_type: int = 10
     with pytest.raises(TypeError, match=f"The boundary_type of type {type(bad_type).__name__} is not a string."):
-        rsarun.BoundaryParameters(bad_type)
+        rsarun.BoundaryParameters(bad_type)  # pyright: ignore[reportArgumentType]
 
     bad_name: str = "Dogbonium"
     with pytest.raises(ValueError, match=f"The boundary_type string {bad_name} is not 'soft', 'hard', or 'periodic'."):
@@ -402,7 +402,7 @@ def test_molecules_invalid_input() -> None:
     sim.set_configname("config_test_soft.json")
     sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
     with pytest.raises(ValueError, match=r"No molecules have been provided!"):
-        rsarun.Simulator(sim.rsa_config, None, None, [], None)
+        rsarun.Simulator(sim.rsa_config, None, None, [], None)  # pyright: ignore[reportArgumentType]
 
 
 @pytest.fixture(scope="class")

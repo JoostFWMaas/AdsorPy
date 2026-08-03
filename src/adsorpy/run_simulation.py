@@ -322,7 +322,7 @@ def _run_flux_fixedrotation(
     :param distribution: list of floats indicating the distribution of the molecules. Empty for uniform distribution.
     :return: list of indices during which adsorption takes place.
     """
-    all_flux: tuple[IdxArray, ...] = tuple(np.empty(0, dtype=np.long))
+    all_flux: tuple[IdxArray, ...] = tuple(np.empty(0, dtype=np.long))  # pyright: ignore[reportAssignmentType]
     all_phis: list[int] = []
     mol_array: GeoArray = np.array(molecules)
     all_phis = all_phis * mol_array.size

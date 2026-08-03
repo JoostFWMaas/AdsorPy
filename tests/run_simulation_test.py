@@ -229,12 +229,12 @@ def test_run_simulation_determinism(rsa_config: RsaConfig, default_polygon: Poly
         "molecules_list": [default_polygon],
         "seed": 42,
     }
-    results_1 = run_simulation(rsa_config, **kwargs)[:-1]
-    results_2 = run_simulation(rsa_config, **kwargs)[:-1]
+    results_1 = run_simulation(rsa_config, **kwargs)[:-1]  # pyright: ignore[reportArgumentType]
+    results_2 = run_simulation(rsa_config, **kwargs)[:-1]  # pyright: ignore[reportArgumentType]
     comparison_test_names = ("Mol count", "Gap size", "Seed", "Flux/dose", "ASF")
     for comparison_test_name, output_1, output_2 in zip(comparison_test_names, results_1, results_2, strict=True):
         with subtests.test(f"{comparison_test_name} equivalence"):
-            assert np.array_equal(output_1, output_2)
+            assert np.array_equal(output_1, output_2)  # pyright: ignore[reportArgumentType]
 
 
 @st.composite
@@ -335,7 +335,7 @@ class TestCustomGrid:
             ValueError,
             match=r"A custom grid will only be generated if 'site_x_coords', 'site_y_coords',*",
         ):
-            run_simulation(rsa_config=rsa_config, site_x_coords=[1.1])
+            run_simulation(rsa_config=rsa_config, site_x_coords=[1.1])  # pyright: ignore[reportArgumentType]
 
     def test_bad_xcoords(self) -> None:
         """Raise an error when the x coordinates are negative. Same effect as the y coordinates."""
@@ -343,8 +343,8 @@ class TestCustomGrid:
         with pytest.raises(ValueError, match=r"Site x coordinates must be positive.*"):
             run_simulation(
                 rsa_config=rsa_config,
-                site_x_coords=[-1.1],
-                site_y_coords=[-2.0, 1.1],
+                site_x_coords=[-1.1],  # pyright: ignore[reportArgumentType]
+                site_y_coords=[-2.0, 1.1],  # pyright: ignore[reportArgumentType]
                 bounding_x_coord=-10,
                 bounding_y_coord=-10,
             )
@@ -384,11 +384,11 @@ def test_select_and_run() -> None:
         ValueError,
         match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported.",
     ):
-        _select_and_run(None, None, None, bad_simulation_type, flux, None, None)
+        _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # pyright: ignore[reportArgumentType]
 
 
 def test_wrong_stickingprobability() -> None:
     """When the wrong sticking probability type is used, an error should be raised."""
     rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
     with pytest.raises(TypeError, match=r"sticking_probability must be a float, list, or np.ndarray"):
-        run_simulation(rsa_config=rsa_config, simulation_type="sequential", sticking_probability="one")
+        run_simulation(rsa_config=rsa_config, simulation_type="sequential", sticking_probability="one")  # pyright: ignore[reportArgumentType]

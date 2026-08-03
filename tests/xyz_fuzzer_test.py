@@ -135,7 +135,7 @@ def test_xyz_verifier_invalid(
     data: tuple[
         np.ndarray[tuple[int], np.dtype[np.str_]],
         np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.double]],
-        np.long,
+        np.long | None,
     ],
 ) -> None:
     """Test correct response to invalid input.
@@ -146,4 +146,4 @@ def test_xyz_verifier_invalid(
 
     # Most invalid combinations should raise
     with pytest.raises(ValueError):  # noqa: PT011
-        _xyz_verifier(atomkeys, atompos, count)
+        _xyz_verifier(atomkeys, atompos, count)  # pyright: ignore[reportArgumentType]
