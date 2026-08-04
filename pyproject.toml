@@ -67,6 +67,7 @@ dependencies = [
     "svg-py>=1.10.0",
     "defusedxml>=0.7.1",
     "PySide6>=6.11.1",
+    "typing-extensions>=4.16.0",
     # Everything after this line is included so uv also runs with the lowest dependency resolution.
     "html5lib>=1.1",
     "wcwidth>=0.7.0",
@@ -85,9 +86,9 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "pytest>=9.0.3",
+    "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.155.1",
+    "hypothesis>=6.163.0",
     "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
@@ -98,7 +99,7 @@ test = [
 ]
 lint = [
     "mypy>=2.1.0",
-    "ruff>=0.15.12",
+    "ruff>=0.16.1",
     "pyright>=1.1.410",
     "tach>=0.34.1",
     "slotscheck>=0.20.0",
@@ -114,6 +115,7 @@ docs = [
 envs = [
     "tox>=4.55.0",
     "tox-uv>=1.35.2",
+    "uv>=0.12.1",
 ]
 dev-misc = [
     "build>=1.5.0",
@@ -182,7 +184,7 @@ omit = [
 exclude_also = [
     "if __name__ == .__main__.:",
     "def main()",
-    "if False:",
+#    "if False:",
     "raise NotImplementedError",
     "if TYPE_CHECKING",
     "def plot_*",
@@ -192,12 +194,13 @@ exclude_also = [
     "if self.flux_flag:", # Experimental feature, not yet usable.
     "_run_flux_*", # See above.
     "if not self.simple_shape_flag", # Idem ditto.
-    "if version_info", # Is tested with Tox (between instances of Pytest). False negative.
+    "if (sys\\.)?version_info", # Is tested with Tox (between instances of Pytest). False negative.
     "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
     "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
     "def svg*",
     "def show_*",
     "def save_*",
+    "from typing",
 ]
 
 [tool.mypy]

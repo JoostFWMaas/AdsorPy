@@ -187,7 +187,6 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
 
     :param surface_tab: SurfaceGeneration widget.
     """
-    # 1. Arrange a mock return payload for show_surface
     fake_svg_bytes = b"<svg><rect width='10' height='10'/></svg>"
 
     # Pre-set variables to trigger the baseline collection branch
@@ -196,7 +195,6 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
     surface_tab.surface_dropdown.setCurrentText("square")
     surface_tab.surface_count = 50
 
-    # 2. Mock out the core rendering and widget loader interfaces
     with (
         patch("adsorpy.gui.show_surface") as mock_show_surface,
         patch.object(surface_tab.svg_widget, "load") as mock_svg_load,
@@ -206,8 +204,8 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
         mock_renderer = MagicMock()
         mock_renderer_getter.return_value = mock_renderer
 
-        # Inject our mock bytes payload when show_surface accesses the BytesIO stream
-        def mock_show_surface_impl(*args: P.args, **kwargs: P.kwargs) -> None:  # type: ignore[valid-type] # pyright: ingore[reportUnnecessaryTypeIgnoreComment]
+        # Inject mock bytes payload when show_surface accesses the BytesIO stream
+        def mock_show_surface_impl(*args: P.args, **kwargs: P.kwargs) -> None:  # type: ignore[valid-type] # pyright: ignore[reportUnnecessaryTypeIgnoreComment]
             """Mock function to implement the show surface function.
 
             :param args: Positional arguments.
@@ -218,10 +216,8 @@ def test_generate_surface_finalises_widget_renderer_and_caches_state(surface_tab
         mock_show_surface.set_defaults_or_side_effect = mock_show_surface_impl
         mock_show_surface.side_effect = mock_show_surface_impl
 
-        # 3. Act
         surface_tab.generate_surface()
 
-        # 4. Assert that the layout loaded the extracted byte payload
         mock_svg_load.assert_called_once_with(fake_svg_bytes)
 
         # Assert that the rendering framework explicitly enforced aspect ratios

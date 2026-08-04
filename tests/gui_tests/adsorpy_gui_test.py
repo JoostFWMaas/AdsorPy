@@ -154,10 +154,10 @@ def test_fetch_setting_explicit_return_type(gui_app: AdsorpyGUI) -> None:
     gui_app._settings.value = MagicMock(return_value=val)  # noqa: SLF001
 
     # Call using a default string but an explicit int target type override
-    result = gui_app._fetch_setting("sim_seed", default="0", return_type=int)  # noqa: SLF001
+    result = gui_app._fetch_setting("sim_seed", default=0, return_type=int)  # noqa: SLF001
 
     assert result == val
-    gui_app._settings.value.assert_called_once_with("sim_seed", defaultValue="0", type=int)  # noqa: SLF001
+    gui_app._settings.value.assert_called_once_with("sim_seed", defaultValue=0, type=int)  # noqa: SLF001
 
 
 def test_resize_event_emits_custom_signal(gui_app: AdsorpyGUI, qtbot: pytestqt.qtbot.QtBot) -> None:

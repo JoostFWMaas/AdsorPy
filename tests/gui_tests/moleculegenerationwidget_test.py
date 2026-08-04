@@ -149,7 +149,7 @@ def test_build_param_inputs_creates_labeled_grid_elements(molecule_tab: Molecule
         :returns: A polygon of some kind.
         """
 
-    molecule_tab.generators = {"custom_mol": temp_generator}
+    molecule_tab.generators = {"custom_mol": temp_generator}  # pyright: ignore[reportAttributeAccessIssue]
     molecule_tab.func_dropdown.addItems(["custom_mol"])
 
     # Inject mock parameter document descriptions and global layout helpers
@@ -201,7 +201,7 @@ def test_build_bad_param_inputs_raises_critical_dialogue(molecule_tab: MoleculeG
         :returns: A polygon of some kind.
         """
 
-    molecule_tab.generators = {"custom_mol": bad_generator}
+    molecule_tab.generators = {"custom_mol": bad_generator}  # pyright: ignore[reportAttributeAccessIssue]
     molecule_tab.func_dropdown.addItems(["custom_mol"])
 
     # Inject mock parameter document descriptions and global layout helpers
@@ -248,7 +248,7 @@ def test_build_bad_param_inputs_raises_error(molecule_tab: MoleculeGeneration, q
         :returns: A polygon of some kind.
         """
 
-    molecule_tab.generators = {"custom_mol": bad_generator}
+    molecule_tab.generators = {"custom_mol": bad_generator}  # pyright: ignore[reportAttributeAccessIssue]
     molecule_tab.func_dropdown.addItems(["custom_mol"])
 
     # Inject mock parameter document descriptions and global layout helpers

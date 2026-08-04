@@ -8,10 +8,9 @@ from collections.abc import Callable
 import pytest
 from PySide6.QtWidgets import QDoubleSpinBox, QLineEdit, QSpinBox, QWidget
 from pytestqt.qtbot import QtBot
-from shapely import from_geojson
 from shapely.geometry import Polygon
 
-from adsorpy.gui import FilePickerWidget, extract_param_docs, set_content, validate_polygon
+from adsorpy.gui import FilePickerWidget, extract_param_docs, from_geojson_str_to_polygon, set_content, validate_polygon
 
 
 def test_set_content_success_cases(qtbot: QtBot, subtests: pytest.Subtests) -> None:
@@ -78,7 +77,7 @@ def test_set_content_mismatch_raises_value_error(
     qtbot.addWidget(widget)
 
     with pytest.raises(ValueError, match="Widget and content mismatch"):
-        set_content(widget, invalid_content)
+        set_content(widget, invalid_content)  # pyright: ignore[reportArgumentType]
 
 
 def test_extract_param_docs_success() -> None:
@@ -127,7 +126,7 @@ def test_validate_polygon_success_cases(
     :param sample_geojson: A preconstructed geometric square template payload fixture.
     :param subtests: The pytest subtests context manager fixture.
     """
-    expected_poly: Polygon = from_geojson(json.dumps(sample_geojson))
+    expected_poly: Polygon = from_geojson_str_to_polygon(json.dumps(sample_geojson))
 
     with subtests.test(msg="Direct Polygon pass-through"):
         res: Polygon = validate_polygon(expected_poly)
@@ -148,4 +147,4 @@ def test_validate_polygon_raises_type_error_for_invalid_input() -> None:
     invalid_input: list[float] = [0.0, 0.0, 1.0, 1.0]
 
     with pytest.raises(TypeError, match="Cannot convert"):
-        validate_polygon(invalid_input)
+        validate_polygon(invalid_input)  # pyright: ignore[reportArgumentType]

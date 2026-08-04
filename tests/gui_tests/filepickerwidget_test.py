@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from PySide6.QtCore import QSettings, Qt
-from PySide6.QtWidgets import QLineEdit, QPushButton
+from PySide6.QtWidgets import QFileDialog, QLineEdit, QPushButton
 from pytestqt.qtbot import QtBot
 
 from adsorpy.gui import FilePickerWidget
@@ -80,7 +80,7 @@ def test_open_file_dialog_saves_file_and_directory(qtbot: QtBot, monkeypatch: Mo
 
     # Mock QFileDialog.getOpenFileName to bypass the native system window
     mock_response: tuple[str, str] = (str(fake_file), "XYZ File (*.xyz)")
-    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName", lambda *args, **kwargs: mock_response)  # noqa: ARG005
+    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName", lambda *_, **__: mock_response)  # pyright: ignore[reportUnknownLambdaType]
 
     # Act: Simulate a click on the browse button
     with qtbot.waitSignal(widget.browse_button.clicked, timeout=1000):
@@ -105,8 +105,8 @@ def test_open_file_dialog_cancelled(qtbot: QtBot, monkeypatch: MonkeyPatch) -> N
 
     widget.setText("/original/path.xyz")
 
-    # Mock user pressing 'Cancel' (returns empty strings)
-    monkeypatch.setattr("PySide6.QtWidgets.QFileDialog.getOpenFileName", lambda *args, **kwargs: ("", ""))  # noqa: ARG005
+    # Direct object mocking removes string errors and bypasses linting issues
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *_, **__: ("", ""))  # pyright: ignore[reportUnknownLambdaType]
 
     qtbot.mouseClick(widget.browse_button, Qt.MouseButton.LeftButton)
 

@@ -140,10 +140,10 @@ def test_export_graphics_success_formats(
     destination_file: Path = tmp_path / f"output_export{extension}"
 
     mock_file_dialog: tuple[str, str] = (str(destination_file), f"Format File (*{extension})")
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: mock_file_dialog)  # noqa: ARG005, # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_, **__: mock_file_dialog)  # pyright: ignore[reportUnknownLambdaType]
 
-    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: None)  # noqa: ARG005, # pyright: ignore[reportUnknownLambdaType]
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: None)  # noqa: ARG005, # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: None)  # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QMessageBox, "warning", lambda *_, **__: None)  # pyright: ignore[reportUnknownLambdaType]
 
     qtbot.mouseClick(widget.save_button, Qt.MouseButton.LeftButton)
 
@@ -165,7 +165,7 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     target_path = tmp_path / "test_output.svg"
 
     mock_file_dialog: tuple[str, str] = (str(target_path), "Scalable Vector Graphics (*.svg)")
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: mock_file_dialog)  # noqa: ARG005, # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_, **__: mock_file_dialog)  # pyright: ignore[reportUnknownLambdaType]
 
     # FORCE any file write attempt on Path objects to immediately raise an IOError
     def mock_write_bytes(self: Path, data: bytes) -> None:
@@ -190,7 +190,7 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     monkeypatch.setattr(QMessageBox, "critical", mock_critical)
 
     # Suppress the success dialogue just in case it's still called somewhere
-    monkeypatch.setattr(QMessageBox, "information", lambda *args, **kwargs: QMessageBox.StandardButton.Ok)  # noqa: ARG005, # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: QMessageBox.StandardButton.Ok)  # pyright: ignore[reportUnknownLambdaType]
 
     # Act
     qtbot.mouseClick(widget.save_button, Qt.MouseButton.LeftButton)

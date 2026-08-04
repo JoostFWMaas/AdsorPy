@@ -47,8 +47,11 @@ def test_background_task_error_catch_path(qtbot: QtBot) -> None:
     with qtbot.waitSignal(task.signals.error, timeout=2000) as blocker:
         QThreadPool.globalInstance().start(task)
 
-    # Corrected: Access the exception by extracting it out of the arguments list wrapper
-    captured_exception = blocker.args[0]
+    if blocker.args:
+        captured_exception = blocker.args[0]
+    else:
+        errmsg = "No error captured."
+        raise AssertionError(errmsg)
     assert isinstance(captured_exception, ValueError)
     assert str(captured_exception) == "Simulation payload misconfiguration"
 

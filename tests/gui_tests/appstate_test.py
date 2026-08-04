@@ -27,8 +27,8 @@ def test_app_state_initializes_private_fields_to_none() -> None:
     # Assert private fields are instantiated automatically
     assert hasattr(state, "_seed_input")
     assert hasattr(state, "_surface_params")
-    assert state._seed_input is None  # noqa: SLF001
-    assert state._surface_params is None  # noqa: SLF001
+    assert state._seed_input is None  # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    assert state._surface_params is None  # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_setting_property_emits_changed_signal(qtbot: QtBot) -> None:
@@ -42,7 +42,7 @@ def test_setting_property_emits_changed_signal(qtbot: QtBot) -> None:
     mock_surface_data = SurfaceParameters(lattice_type="square", site_count=100)
 
     # Set up a pytest-qt signal blocker to catch the dynamically generated signal
-    with qtbot.waitSignal(state.surface_paramsChanged, timeout=1000) as blocker:
+    with qtbot.waitSignal(state.surface_paramsChanged, timeout=1000) as blocker:  # pyright: ignore[reportAttributeAccessIssue]
         # Trigger the custom property setter
         state.surface_params = mock_surface_data
 
@@ -62,11 +62,12 @@ def test_widget_state_property_mutations(qtbot: QtBot) -> None:
     temp_line_edit = QLineEdit()
     qtbot.addWidget(temp_line_edit)
 
-    with qtbot.waitSignal(state.seed_inputChanged, timeout=1000) as blocker:
+    with qtbot.waitSignal(state.seed_inputChanged, timeout=1000) as blocker:  # pyright: ignore[reportAttributeAccessIssue]
         state.seed_input = temp_line_edit
 
     assert blocker.args == [temp_line_edit]
     assert state.seed_input == temp_line_edit
+    assert state.seed_input == state._seed_input  # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_general_settings_listens_to_real_app_state(qtbot: QtBot) -> None:
@@ -86,7 +87,7 @@ def test_general_settings_listens_to_real_app_state(qtbot: QtBot) -> None:
     # Mutate AppState directly from an external context (simulating another tab)
     temp_surf = SurfaceParameters(lattice_type="hexagonal", site_count=50)
 
-    with qtbot.waitSignal(state.surface_paramsChanged, timeout=1000):
+    with qtbot.waitSignal(state.surface_paramsChanged, timeout=1000):  # pyright: ignore[reportAttributeAccessIssue]
         state.surface_params = temp_surf
 
     # Assert that GeneralSettings reacted instantly to the event mutation hook

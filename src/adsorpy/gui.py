@@ -1,9 +1,10 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """GUI module of adsorpy."""  # TODO: Make a new repo for this!
-
 from __future__ import annotations
 
+# __lazy_modules__ = ["json", "multiprocessing", "pickle", "zipfile", "h5py", "matplotlib", "pandas", "seaborn", "dask"]
+# """Modules that are imported lazily (only when needed) for 3.15+, but regularly for older Python. Place at top."""
 import inspect
 import io
 import json
@@ -30,8 +31,16 @@ from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
 
 if sys.version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
+    from typing import Unpack
 else:
     from datetime import datetime
+
+    from typing_extensions import Unpack
+
+if sys.version_info >= (3, 12):
+    from typing import TypedDict, override
+else:
+    from typing_extensions import TypedDict, override
 
 from itertools import count
 from pathlib import Path
@@ -42,14 +51,11 @@ from typing import (
     Literal,
     ParamSpec,
     TypeAlias,
-    TypedDict,
     TypeGuard,
     TypeVar,
-    Unpack,
     cast,
     get_origin,
     get_type_hints,
-    override,
 )
 
 import numpy as np
@@ -318,7 +324,25 @@ def extract_param_docs(func: Callable[P, R]) -> dict[str, str]:
     return param_docs
 
 
-def validate_polygon(pol: Polygon | str | dict[str, str | list[tuple[float, float]]]) -> Polygon:
+def from_geojson_str_to_polygon(geojson_str: str) -> Polygon:
+    """Convert from GeoJSON string to Polygon and validate geometry.
+
+    :param geojson_str: GeoJSON string to convert to Polygon.
+    :returns: Shapely Polygon.
+    :raises TypeError: If the string does not generate a Polygon.
+    :raises ValueError: If the generated Polygon is invalid.
+    """
+    polygon = from_geojson(geojson_str)
+    if isinstance(polygon, Polygon):
+        if polygon.is_valid:
+            return polygon
+        errmsg = f"Polygon is invalid. Exterior coordinates: {polygon.exterior.coords}"
+        raise ValueError(errmsg)
+    errmsg = f"Geometry is of wrong type: {type(polygon).__name__}"
+    raise TypeError(errmsg)
+
+
+def validate_polygon(pol: Polygon | str | dict[str, str | list[list[list[float]]]]) -> Polygon:
     """Convert the GeoJSON dict data into a real Shapely Polygon or pass the data if it is already a Polygon.
 
     :param pol: Polygon or GeoJSON format.
@@ -331,11 +355,11 @@ def validate_polygon(pol: Polygon | str | dict[str, str | list[tuple[float, floa
     if isinstance(pol, dict):
         # Convert the python dictionary to a valid JSON string first
         json_str = json.dumps(pol)
-        return cast("Polygon", from_geojson(json_str))
+        return from_geojson_str_to_polygon(json_str)
 
     if isinstance(pol, str):
         # Turns {"type": "Polygon", "coordinates": ...} into a Shapely object
-        return cast("Polygon", from_geojson(pol))
+        return from_geojson_str_to_polygon(pol)
 
     errmsg = f"Cannot convert {type(pol)} to a Shapely Polygon"
     raise TypeError(errmsg)
@@ -357,9 +381,16 @@ class PydanticPolygon(Polygon):
         _source_type: object,
         _handler: Callable[[object], core_schema.CoreSchema],
     ) -> core_schema.CoreSchema:
-        """Tell Pydantic exactly how to validate and serialise a Shapely Polygon."""
+        """Tell Pydantic exactly how to validate and serialise a Shapely Polygon.
 
-        def validate(value: Polygon | str | dict[str, str | list[tuple[float, float]]]) -> Polygon:
+        Uses American spelling of 'serialize' to be compliant with most programming conventions.
+
+        :param _source_type: The source type to use for validation.
+        :param _handler: The handler function to use for validation.
+        :returns: The Pydantic core schema.
+        """
+
+        def validate(value: Polygon | str | dict[str, str | list[list[list[float]]]]) -> Polygon:
             return validate_polygon(value)
 
         def serialize(instance: Polygon) -> SimplePolygonDict:
@@ -1375,8 +1406,7 @@ class GeneralSettings(QWidget):
         key_to_fix = "polygon"
         if key_to_fix in defaultdict_of_lists:
             defaultdict_of_lists[key_to_fix] = [
-                validate_polygon(cast("Polygon | str | dict[str, str | list[tuple[float, float]]]", geo_item))
-                for geo_item in defaultdict_of_lists[key_to_fix]
+                validate_polygon(cast("Polygon", geo_item)) for geo_item in defaultdict_of_lists[key_to_fix]
             ]
 
         def replace_keys(
