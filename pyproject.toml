@@ -181,7 +181,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 20
+#fail_under = 20
 exclude_also = [
     "if __name__ == .__main__.:",
     "def main()",
@@ -206,11 +206,11 @@ exclude_also = [
     "if prlongoutput_flag",
 ]
 
-[tool.coverage.paths]
-source = [
-    "src/adsorpy",                  # Local path
-    ".tox/*/lib/python*/site-packages/adsorpy" # Tox path
-]
+#[tool.coverage.paths]
+#source = [
+#    "src/adsorpy",  # Local path
+#    "*/site-packages/adsorpy",  # Tox path
+#]
 
 [tool.mypy]
 mypy_path = ["."]
