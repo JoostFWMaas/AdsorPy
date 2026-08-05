@@ -96,6 +96,7 @@ test = [
     "pandas>=2.3.3",
     "seaborn>=0.13.2",
     "dask[distributed]>=2026.7.1",
+    "pytest-xvfb>=3.1.1",
 ]
 lint = [
     "mypy>=2.1.0",
