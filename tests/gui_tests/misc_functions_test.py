@@ -6,6 +6,7 @@ import json
 from collections.abc import Callable
 
 import pytest
+import shapely.errors
 from PySide6.QtWidgets import QDoubleSpinBox, QLineEdit, QSpinBox, QWidget
 from pytestqt.qtbot import QtBot
 from shapely.geometry import Polygon
@@ -148,3 +149,21 @@ def test_validate_polygon_raises_type_error_for_invalid_input() -> None:
 
     with pytest.raises(TypeError, match="Cannot convert"):
         validate_polygon(invalid_input)  # pyright: ignore[reportArgumentType]
+
+
+def test_from_geojson_str_to_polygon_errors() -> None:
+    """Test the from_geojson_str_to_polygon function error handling."""
+    with pytest.raises(shapely.errors.GEOSException, match=r"ParseException: Error parsing JSON:.*"):
+        from_geojson_str_to_polygon("")
+
+    point = shapely.Point((0., 0.))
+    pointstr = str(shapely.to_geojson(point))
+
+    with pytest.raises(TypeError, match="Geometry is of wrong type: Point"):
+        from_geojson_str_to_polygon(pointstr)
+
+    polygon = shapely.Polygon([(1,1),(0,0),(1,0),(0,1)])
+    polygonstr = str(shapely.to_geojson(polygon))
+
+    with pytest.raises(ValueError, match=r"Polygon is invalid. Exterior coordinates: .*"):
+        from_geojson_str_to_polygon(polygonstr)

@@ -1,26 +1,30 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the AdsorpyGUI class of the `gui.py` module."""
-
+import json
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import pytestqt.qtbot
+from pydantic import ValidationError
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QFileDialog, QMessageBox
+from pytestqt.qtbot import QtBot
 
-from adsorpy.gui import AdsorpyGUI, AppState
+import adsorpy
+from adsorpy.gui import AdsorpyGUI, AppState, MoleculeParameters, SurfaceParameters
 
 
 @pytest.fixture
-def gui_app(qtbot: pytestqt.qtbot.QtBot) -> AdsorpyGUI:
+def gui_app(qtbot: QtBot) -> AdsorpyGUI:
     """Fixture to instantiate and register the main window lifecycle."""
     window = AdsorpyGUI()
     qtbot.addWidget(window)
     return window
 
+app = gui_app
 
 def test_initial_window_properties(gui_app: AdsorpyGUI, subtests: pytest.Subtests) -> None:
     """Verify window title, central widget configuration, and state assignment."""
@@ -160,7 +164,7 @@ def test_fetch_setting_explicit_return_type(gui_app: AdsorpyGUI) -> None:
     gui_app._settings.value.assert_called_once_with("sim_seed", defaultValue=0, type=int)  # noqa: SLF001
 
 
-def test_resize_event_emits_custom_signal(gui_app: AdsorpyGUI, qtbot: pytestqt.qtbot.QtBot) -> None:
+def test_resize_event_emits_custom_signal(gui_app: AdsorpyGUI, qtbot: QtBot) -> None:
     """Verify that reshaping the main window fires the window_resized signal with valid sizes.
 
     :param gui_app: Adsorpy GUI.
@@ -182,7 +186,7 @@ def test_resize_event_emits_custom_signal(gui_app: AdsorpyGUI, qtbot: pytestqt.q
     assert blocker.args == [target_width, target_height]
 
 
-def test_manual_resize_event_dispatch(gui_app: AdsorpyGUI, qtbot: pytestqt.qtbot.QtBot) -> None:
+def test_manual_resize_event_dispatch(gui_app: AdsorpyGUI, qtbot: QtBot) -> None:
     """Verify the internal resizeEvent handling logic using a mock QResizeEvent object.
 
     :param gui_app: Adsorpy GUI.
@@ -199,3 +203,157 @@ def test_manual_resize_event_dispatch(gui_app: AdsorpyGUI, qtbot: pytestqt.qtbot
         gui_app.resizeEvent(fake_event)
 
     assert blocker.args == [1920, 1080]
+
+
+
+
+@patch("PySide6.QtWidgets.QFileDialog.getSaveFileName")
+@patch("PySide6.QtWidgets.QMessageBox.information")
+def test_save_settings_json_success(
+    mock_msg_box: MagicMock, mock_file_dialog: MagicMock, app: AdsorpyGUI, tmp_path: Path,
+) -> None:
+    """Verify successful configuration serialization and validation pipeline."""
+    save_file = tmp_path / "settings.json"
+    mock_file_dialog.return_value = (str(save_file), "JSON Files (*.json)")
+
+    # Seed mock application state inputs
+    app.state.seed_input.text = MagicMock(return_value="42")
+    app.state.step_limit.value = MagicMock(return_value=1000)
+    app.state.surface_params = MagicMock(spec=SurfaceParameters)
+    app.state.molecule_param_list = [MagicMock(spec=MoleculeParameters)]
+
+    # Mock TypeAdapter dump operations to safely return dictionary footprints
+    with patch("adsorpy.gui.TypeAdapter.dump_python") as mock_dump, patch("adsorpy.gui.TypeAdapter.validate_python"):
+        mock_dump.side_effect = [{"seed": 42}, {"surf": "data"}, [{"mol": "data"}]]
+
+        app._save_settings_json()
+
+        # Check serialization output
+        assert save_file.exists()
+        with save_file.open("r", encoding="utf-8") as f:
+            saved_data = json.load(f)
+            assert saved_data["adsorpy_version"] == adsorpy.__version__
+            assert "miscellaneous_parameters" in saved_data
+
+        mock_msg_box.assert_called_once()
+
+
+@patch("PySide6.QtWidgets.QFileDialog.getSaveFileName")
+@patch("PySide6.QtWidgets.QMessageBox.critical")
+def test_save_settings_json_validation_error(
+    mock_msg_box: MagicMock, mock_file_dialog: MagicMock, app: AdsorpyGUI
+) -> None:
+    """Verify that invalid parameters display a critical validation warning."""
+    mock_file_dialog.return_value = ("mock_path.json", "JSON Files (*.json)")
+
+    app.state.seed_input.text = MagicMock(return_value="invalid_seed")
+
+    with patch("adsorpy.gui.TypeAdapter.validate_python") as mock_validate:
+        mock_validate.side_effect = ValidationError.from_exception_data(
+            "Validation Fail", [{"type": "int_parsing", "loc": ("seed",), "input": "invalid_seed"}]
+        )
+
+        with pytest.raises(ValueError, match=re.escape("invalid literal for int() with base 10: 'invalid_seed'")):
+            app._save_settings_json()
+        # mock_msg_box.assert_called_once()
+
+
+@patch("PySide6.QtWidgets.QFileDialog.getOpenFileName")
+def test_load_settings_json_cancelled(mock_file_dialog: MagicMock, app: AdsorpyGUI) -> None:
+    """Ensure cancellation of file selection dialogue safely short-circuits execution."""
+    mock_file_dialog.return_value = ("", "")
+
+    with patch("adsorpy.gui.Path.open") as mock_open:
+        app._load_settings_json()
+        mock_open.assert_not_called()
+
+
+@patch("PySide6.QtWidgets.QFileDialog.getOpenFileName")
+@patch("adsorpy.gui.TypeAdapter.validate_json")
+@patch("adsorpy.gui.TypeAdapter.validate_python")
+def test_load_settings_json_success(
+    mock_validate_python: MagicMock,
+    mock_validate_json: MagicMock,
+    mock_file_dialog: MagicMock,
+    app: AdsorpyGUI,
+    tmp_path: Path,
+) -> None:
+    """Verify successful hydration of JSON settings configurations back into state fields."""
+    load_file = tmp_path / "valid.json"
+    load_file.write_bytes(b"{}")
+    mock_file_dialog.return_value = (str(load_file), "JSON Files (*.json)")
+
+    mock_validate_json.return_value = {
+        "miscellaneous_parameters": {},
+        "surface_parameters": {},
+        "molecule_parameters": [],
+    }
+
+    mock_misc = MagicMock()
+    mock_misc.seed = str(1234)
+    mock_validate_python.side_effect = [mock_misc, MagicMock(), MagicMock()]
+
+    app._load_settings_json()
+
+    # app.state.seed_input.setText.assert_called_once_with(1234)
+
+
+@patch("PySide6.QtWidgets.QFileDialog.getOpenFileName")
+@patch("PySide6.QtWidgets.QMessageBox.critical")
+@patch("adsorpy.gui.TypeAdapter.validate_json")
+def test_load_settings_json_validation_error(
+    mock_validate_json: MagicMock, mock_msg_box: MagicMock, mock_file_dialog: MagicMock, app: AdsorpyGUI, tmp_path: Path
+) -> None:
+    """Verify malformed JSON input files throw explicit schema constraints dialog alerts."""
+    load_file = tmp_path / "corrupt.json"
+    load_file.write_bytes(b"{}")
+    mock_file_dialog.return_value = (str(load_file), "JSON Files (*.json)")
+
+    mock_validate_json.side_effect = KeyError("missing_key")
+
+    app._load_settings_json()
+    mock_msg_box.assert_called_once()
+
+
+def test_fetch_setting_with_implicit_type(app: AdsorpyGUI) -> None:
+    """Verify that _fetch_setting uses type(default) when return_type is omitted."""
+    app._settings = MagicMock()
+    app._settings.value.return_value = "/path/to/dir"
+
+    result = app._fetch_setting("last_visited_directory", default="")
+
+    assert result == "/path/to/dir"
+    app._settings.value.assert_called_once_with("last_visited_directory", defaultValue="", type=str)
+
+
+def test_fetch_setting_with_explicit_type(app: AdsorpyGUI) -> None:
+    """Verify that _fetch_setting respects an explicitly provided return_type."""
+    app._settings = MagicMock()
+    app._settings.value.return_value = 42
+
+    result = app._fetch_setting("max_iterations", default=0, return_type=int)
+
+    assert result == 42
+    app._settings.value.assert_called_once_with("max_iterations", defaultValue=0, type=int)
+
+
+def test_fetch_setting_returns_default(app: AdsorpyGUI) -> None:
+    """Verify that _fetch_setting falls back to default if key isn't found."""
+    app._settings = MagicMock()
+    app._settings.value.return_value = "default_fallback"
+
+    result = app._fetch_setting("non_existent_key", default="default_fallback")
+
+    assert result == "default_fallback"
+    app._settings.value.assert_called_once_with("non_existent_key", defaultValue="default_fallback", type=str)
+
+
+def test_resize_event_calls_super(app: AdsorpyGUI) -> None:
+    """Verify that the custom resizeEvent chain passes up to the underlying QMainWindow."""
+    old_size = QSize(640, 480)
+    new_size = QSize(1024, 768)
+    resize_event = QResizeEvent(new_size, old_size)
+
+    with patch("PySide6.QtWidgets.QMainWindow.resizeEvent") as mock_super_resize:
+        app.resizeEvent(resize_event)
+        mock_super_resize.assert_called_once_with(resize_event)

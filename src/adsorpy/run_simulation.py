@@ -198,11 +198,11 @@ def run_simulation(  # noqa: PLR0913, PLR0917
         )
 
     dbl_max_rad: float = 2.0 * max(cule.max_radius for cule in molecules)
-    surf.bp.biggest_radius = dbl_max_rad
+    surf.bp.biggest_diameter = dbl_max_rad
 
     surf.bp.generate_boundary_conditions(surf)  # Generate the boundary conditions.
     for molec in molecules:  # Generate the BC and molecules.
-        molec.bp.biggest_radius = dbl_max_rad
+        molec.bp.biggest_diameter = dbl_max_rad
         molec.bp.generate_boundary_conditions(surf, molec)
         molec.generate_rotated_molecules(molec.bp, molecules)
     sim = Simulator(

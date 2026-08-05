@@ -41,19 +41,7 @@ def default_polygon() -> Polygon:
 
 def overlap_tester(simulator: Simulator) -> Literal[0]:
     """Test whether none of the molecules overlap. Solely for periodic boundary conditions."""
-    polygons: GeoArray
-    existing = simulator.mol_data.stored_mirr_data["exists"]
-    polygons = simulator.mol_data.stored_mirr_data["polygon"][existing]
-
-    ii: Polygon
-    overlap = False
-    for idx, ii in enumerate(polygons):
-        prepared_multipolygon = prep(unary_union(polygons[idx + 1 :]))
-        overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this test fails.
-        if overlap:
-            break
-
-    assert not overlap
+    assert not simulator.check_if_overlap()
 
     return 0
 
@@ -217,8 +205,8 @@ def test_run_simulation_randomness(
 
     results_2 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
 
-    assert results_1[2] != results_2[2]  # Seeds should be different
-    assert not np.array_equal(results_1[3], results_2[3])  # The dose timestamps are virtually guaranteed to be unequal.
+    assert results_1[2] != results_2[2], "Seeds should be different."
+    assert not np.array_equal(results_1[3], results_2[3]), "The dose timestamps are virtually guaranteed to be unequal."
 
 
 def test_run_simulation_determinism(rsa_config: RsaConfig, default_polygon: Polygon, subtests: pytest.Subtests) -> None:

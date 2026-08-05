@@ -331,6 +331,7 @@ def from_geojson_str_to_polygon(geojson_str: str) -> Polygon:
     :returns: Shapely Polygon.
     :raises TypeError: If the string does not generate a Polygon.
     :raises ValueError: If the generated Polygon is invalid.
+    :raises GEOSException: If the string cannot be parsed as a geojson.
     """
     polygon = from_geojson(geojson_str)
     if isinstance(polygon, Polygon):

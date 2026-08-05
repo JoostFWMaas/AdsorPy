@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np  # For vectorised computations (performed in C).
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
@@ -15,6 +16,7 @@ from hypothesis.strategies import SearchStrategy
 from numpy.random import PCG64DXSM, Generator  # New random generator.
 from scipy.spatial.distance import cdist
 from shapely import Polygon, unary_union
+from shapely.affinity import translate
 from shapely.prepared import prep
 
 import adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
@@ -179,10 +181,10 @@ class TestWithParameters:
     ) -> None:
         """The boundary parameters initialises correctly."""
         dbl_max_rad = 2.0 * max(ii.max_radius for ii in simulator.molecules)
-        simulator.surf.bp.biggest_radius = dbl_max_rad
+        simulator.surf.bp.biggest_diameter = dbl_max_rad
         simulator.surf.bp.generate_boundary_conditions(simulator.surf)
         for molec in simulator.molecules:
-            molec.bp.biggest_radius = dbl_max_rad
+            molec.bp.biggest_diameter = dbl_max_rad
             molec.bp.generate_boundary_conditions(simulator.surf, molec)
             molec.generate_rotated_molecules(molec.bp, simulator.molecules)
 
@@ -216,20 +218,25 @@ class TestWithParameters:
     ) -> None:
         """The first molecule is placed correctly."""
         succ, *_ = simulator.sim.attempt_place_molecule(simulator.surf, simulator.molecules[0])
-
+        any_test_performed = False
         if (
             succ or not simulator.sim.bp.hard_flag
         ):  # Adsorption cannot be guaranteed on the first step for a hard surface.
+            any_test_performed = True
             assert (
                 np.count_nonzero(simulator.sim.mol_data.stored_data["exists"]) == 1
             )  # One molecule exists on the surf!
 
         if simulator.sim.bp.periodic_flag:
+            any_test_performed = True
             assert np.count_nonzero(simulator.sim.mol_data.stored_mirr_data["exists"]) >= 1
             assert (
                 np.count_nonzero(simulator.sim.mol_data.stored_mirr_data["exists"])
                 == simulator.sim.molgroups[0].bp.mirror_counter
             )
+        if not any_test_performed:
+            pytest.skip("Neither test condition was met.")
+
 
     def test_buffer_trimming(
         self,
@@ -241,6 +248,8 @@ class TestWithParameters:
         """Multiple sites are removed during the buffer trimming (r neighbourhood clearance) step."""
         if simulator.sim.total_molecule_counter > 0:
             assert simulator.sim.surf.all_site_count - np.count_nonzero(simulator.sim.molgroups[0].vacant) > 1
+        else:
+            pytest.skip("No molecule was placed.")
 
     def test_random_placement(
         self,
@@ -250,7 +259,9 @@ class TestWithParameters:
         surf_type: str,
     ) -> None:
         """Placement works for the codosing scheme."""
-        simulator.sim.attempt_random_placement(simulator.surf, *simulator.molecules)
+        probabilities = np.identity(simulator.sim.molgrcount)
+        for probability in probabilities:
+            simulator.sim.attempt_random_placement(simulator.surf, *simulator.molecules, weights=probability)
 
     def test_try_placement(
         self,
@@ -273,7 +284,15 @@ class TestWithParameters:
         while np.any(simulator.sim.molgroups[0].vacant):
             simulator.sim.attempt_place_molecule(simulator.surf, simulator.molecules[0])
 
+        coverage = simulator.sim.coverage
+        fraction_of_covered_area = simulator.sim.fraction_of_covered_area
+
         assert not np.any(simulator.sim.molgroups[0].vacant)
+        assert np.sum(coverage > 0), "Total coverage > 0."
+        assert np.sum(fraction_of_covered_area > 0), "Total fraction_of_covered_area > 0."
+        assert np.sum(coverage < 1), "Total coverage < 1."
+        assert np.sum(fraction_of_covered_area < 1), "Total fraction_of_covered_area < 1."
+
 
     def test_no_overlap(
         self,
@@ -286,23 +305,7 @@ class TestWithParameters:
 
         Test periodic molecules as well for periodic boundary conditions.
         """
-        polygons: GeoArray
-        if simulator.sim.bp.periodic_flag:
-            existing = simulator.sim.mol_data.stored_mirr_data["exists"]
-            polygons = simulator.sim.mol_data.stored_mirr_data["polygon"][existing]
-        else:
-            existing = simulator.sim.mol_data.stored_data["exists"]
-            polygons = simulator.sim.mol_data.stored_data["polygon"][existing]
-
-        ii: Polygon
-        overlap = False
-        for idx, ii in enumerate(polygons):  # TODO: Add STRtree to speed up?
-            prepared_multipolygon = prep(unary_union(polygons[idx + 1 :]))
-            overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this test fails.
-            if overlap:
-                break
-
-        assert not overlap
+        assert not simulator.sim.check_if_overlap()
 
     def test_no_large_gaps(
         self,
@@ -438,10 +441,10 @@ def simple_simulator() -> ExampleSimulation:
         )
 
     dbl_max_rad = 2.0 * max([ii.max_radius for ii in sim.molecules])
-    sim.surf.bp.biggest_radius = dbl_max_rad
+    sim.surf.bp.biggest_diameter = dbl_max_rad
     sim.surf.bp.generate_boundary_conditions(sim.surf)
     for molec in sim.molecules:
-        molec.bp.biggest_radius = dbl_max_rad
+        molec.bp.biggest_diameter = dbl_max_rad
         molec.bp.generate_boundary_conditions(sim.surf, molec)
         molec.generate_rotated_molecules(molec.bp, sim.molecules)
 
@@ -627,10 +630,10 @@ def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[i
         )
 
     dbl_max_rad = 2.0 * max([ii.max_radius for ii in simrad.molecules])
-    simrad.surf.bp.biggest_radius = dbl_max_rad
+    simrad.surf.bp.biggest_diameter = dbl_max_rad
     simrad.surf.bp.generate_boundary_conditions(simrad.surf)
     for molec in simrad.molecules:
-        molec.bp.biggest_radius = dbl_max_rad
+        molec.bp.biggest_diameter = dbl_max_rad
         molec.bp.generate_boundary_conditions(simrad.surf, molec)
         molec.generate_rotated_molecules(molec.bp, simrad.molecules)
 
@@ -661,3 +664,46 @@ def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[i
 
     assert np.all(out_gaps <= gaps + tolerance), "The outradius gaps do not fall within tolerance."
     assert np.all(gaps <= in_gaps + tolerance), "The inradius gaps do not fall within tolerance."
+
+
+@pytest.fixture
+def mock_simulator() -> rsarun.Simulator:
+    """Make fixture to initialise a minimal instance of the class."""
+    # Create a dummy instance without running a heavy __init__
+    obj = object.__new__(rsarun.Simulator)
+
+    # Mock basic attributes required to bypass initial attribute errors
+    obj.bp = type("MockBP", (), {"periodic_flag": False})()
+    obj.mol_data = type("MockMolData", (), {"stored_data": {}})()
+    return obj
+
+
+def test_check_if_overlap_succeeds_no_overlap(mock_simulator: rsarun.Simulator, monkeypatch: MonkeyPatch) -> None:
+    """Test that check_if_overlap returns False when polygons are completely disjoint."""
+    # Create two separate, non-overlapping squares
+    poly1 = Polygon([(0, 0), (0, 1), (1, 1), (1, 0)])
+    poly2 = Polygon([(2, 2), (2, 3), (3, 3), (3, 2)])
+
+    mock_polygons = [poly1, poly2]
+
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)
+
+    result = mock_simulator.check_if_overlap()
+
+    assert result is False
+
+
+def test_check_if_overlap_fails_with_overlap(mock_simulator: rsarun.Simulator, monkeypatch: MonkeyPatch) -> None:
+    """Test that check_if_overlap returns True when polygons intersect/overlap."""
+    poly1 = Polygon([(0, 0), (0, 2), (2, 2), (2, 0)])
+    poly2 = Polygon([(1, 1), (1, 3), (3, 3), (3, 1)])  # Overlaps poly1 at (1,1) to (2,2)
+
+    mock_polygons = [poly1, poly2]
+
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)
+
+    result = mock_simulator.check_if_overlap()
+
+    assert result is True

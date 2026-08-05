@@ -24,7 +24,8 @@ from matplotlib.collections import PatchCollection, PolyCollection  # To make po
 from matplotlib.patches import CirclePolygon, Rectangle
 from pydantic import Field, NonNegativeFloat, PositiveFloat, PositiveInt
 from rtree.index import Index, Property  # RTree, helps lookups!
-from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare
+from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare, unary_union
+from shapely.prepared import prep
 
 import adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
 
@@ -144,7 +145,7 @@ class BoundaryParameters:
     :ivar edge_flag: Flag indicating closeness to the edge. Reset this for every placement attempt.
     :ivar mirror_counter: A counter for the molecules + mirror molecules.
     :ivar mirrors: Mirror indices.
-    :ivar biggest_radius: The biggest radius between the two largest molecules in the simulation.
+    :ivar biggest_diameter: The biggest radius between the two largest molecules in the simulation.
     :ivar tree: STRtree, currently unused.
     """
 
@@ -152,7 +153,7 @@ class BoundaryParameters:
     __slots__ = (
         "allowed_bools",
         "allowed_idx",
-        "biggest_radius",
+        "biggest_diameter",
         "boundary_type",
         "close_to_edge",
         "edge_flag",
@@ -211,7 +212,7 @@ class BoundaryParameters:
         self.edge_flag: bool = False
         self.mirror_counter: int = 0
         self.mirrors: IdxArray = np.empty(0, dtype=np.long)
-        self.biggest_radius: float = dbl_max_radius
+        self.biggest_diameter: float = dbl_max_radius
         self.tree: STRtree = STRtree([Point()])
 
     @staticmethod
@@ -261,6 +262,7 @@ class BoundaryParameters:
         )
 
         if self.hard_flag and molgr is not None:
+
             # Check whether the molecule is guaranteed to always touch the edge.
             hard_outer: BoolArray = calc.make_rectangular_filter(
                 centre,
@@ -276,7 +278,7 @@ class BoundaryParameters:
             molgr.vacant &= hard_outer  # The outer sites are no longer vacant.
 
         elif self.periodic_flag:
-            dbl_rad: float = 2.0 * molgr.max_radius if molgr is not None else 0.0
+            dbl_rad: float = molgr.max_radius + self.biggest_diameter * .5 if molgr is not None else 0.0
             extended_grid: CoordsArray = calc.create_periodic_images(
                 surf.grid_coordinates,
                 surf.x_max,
@@ -294,7 +296,7 @@ class BoundaryParameters:
             extended_grid_boolsout: BoolArray = calc.make_rectangular_filter(
                 centre,
                 extended_grid,
-                *centre + self.biggest_radius,
+                *centre + self.biggest_diameter,
             )
             extended_idx: IdxArray = np.tile(surf.grid_index, reps=9).ravel()
             # The filter leaves the original indices and the indices of nearby mirror images.
@@ -308,6 +310,7 @@ class BoundaryParameters:
             if self.molecules_flag:
                 self.extended_vacant = cast("BoolArray", np.ones_like(temp_idx, dtype=np.bool_))
                 self.close_to_edge = ~grid_boolsin  # Array of sites that have mirrors.
+                # self.close_to_edge[:] = True
 
 
 class MoleculeGroup:
@@ -734,12 +737,8 @@ class Simulator:
         # Checks whether there is anything near the molecule.
         # If there are no molecules within potential touching distance, no further checks need to be performed.
         # Otherwise, more checks are needed to see whether a molecule is allowed to be positioned.
-        outer_radius_empty, neighbour_index, dists_squared = calc.check_outer_radius(
-            dists_squared,
-            mol_group_idx,
-            nearby_index,
-            pmg.gap_dists,
-        )
+        outer_radius_empty, neighbour_index, dists_squared = calc.check_outer_radius(dists_squared, mol_group_idx,
+                                                                                     nearby_index, pmg.gap_dists)
 
         # In case of a hard boundary condition, check whether the molecule can be positioned.
         if self.bp.hard_flag:  # Check whether the site conditionally intersects.
@@ -1273,6 +1272,33 @@ class Simulator:
             distance_to_grid = distance_to_grid[np.nonzero(distance_to_grid)]
 
         return distance_to_grid
+
+    def check_if_overlap(self) -> bool:
+        """Check if any of the polygons overlap.
+
+        Slow function. It should always return False. Feel free to use to rigorously check a filled surface.
+        If the simulator has a periodic surface, periodic molecules will be checked as well.
+
+        :returns: True if there is overlap. False if all molecules are disjoint.
+        """
+        polygons: GeoArray
+        if self.bp.periodic_flag:
+            existing = self.mol_data.stored_mirr_data["exists"]
+            polygons = self.mol_data.stored_mirr_data["polygon"][existing]
+        else:
+            existing = self.mol_data.stored_data["exists"]
+            polygons = self.mol_data.stored_data["polygon"][existing]
+
+        ii: Polygon
+        overlap = False
+        for idx, ii in enumerate(polygons):  # TODO: Add STRtree to speed up?
+            prepared_multipolygon = prep(unary_union(polygons[idx + 1 :]))
+            overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this becomes True.
+            if overlap:
+                break
+
+        return overlap
+
 
     @property
     def coverage(self) -> DistArray:

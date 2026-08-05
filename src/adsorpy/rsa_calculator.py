@@ -100,7 +100,7 @@ def check_outer_radius(
     distance_squared: DistArray,
     mol_gr_idx: IdxArray,
     near_index: IdxArray,
-    gap_dists: DistArray,
+    circumradii: DistArray,
 ) -> tuple[np.bool_, IdxArray, FloatArray]:
     """Check whether the outer radius is clear.
 
@@ -110,13 +110,13 @@ def check_outer_radius(
     :param distance_squared: 2xN array of the neighbouring molecule coordinates.
     :param mol_gr_idx: N array of the molecule group index.
     :param near_index: N array of the indices of the neighbouring molecules.
-    :param gap_dists: Array of the compound radii of all molecule groups.
+    :param circumradii: Array of the compound radii of all molecule groups.
 
     :returns: Bool whether the outer radius is clear, index of values that are not clear, and array of nearby distances.
     """
     # The first step makes a boolean array, trimming values that are too far away.
     # Molecules cannot touch under any orientation if the distance between them is more than twice the minimum
-    radvals: DistArray = gap_dists[mol_gr_idx]
+    radvals: DistArray = circumradii[mol_gr_idx]
     outer_clearflag_array: BoolArray = distance_squared < np.square(radvals)
 
     neighbour_index: IdxArray = near_index[outer_clearflag_array]

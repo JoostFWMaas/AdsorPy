@@ -187,20 +187,22 @@ exclude_also = [
 #    "if False:",
     "raise NotImplementedError",
     "if TYPE_CHECKING",
-    "def plot_*",
-    "if print_*",
-    "if plot_*",
+    "def plot_",
+    "if print_",
+    "if plot_",
     "while temp_results_folder.is_dir()", # Checks for collision in saving folders. Nothing is saved for tests.
     "if self.flux_flag:", # Experimental feature, not yet usable.
-    "_run_flux_*", # See above.
+    "_run_flux_", # See above.
     "if not self.simple_shape_flag", # Idem ditto.
     "if (sys\\.)?version_info", # Is tested with Tox (between instances of Pytest). False negative.
     "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
     "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
-    "def svg*",
-    "def show_*",
-    "def save_*",
+    "svg",
+    "css",
+    "def show_",
+    "def save_",
     "from typing",
+    "if prlongoutput_flag",
 ]
 
 [tool.mypy]
