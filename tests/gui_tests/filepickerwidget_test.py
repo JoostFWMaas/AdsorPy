@@ -90,7 +90,7 @@ def test_open_file_dialog_saves_file_and_directory(qtbot: QtBot, monkeypatch: Mo
     assert widget.text() == str(fake_file)
 
     # Assert 2: The parent directory was persistent into QSettings
-    saved_dir: str = widget._fetch_setting("last_visited_directory", default="")  # noqa: SLF001
+    saved_dir: str = widget._fetch_setting("last_visited_directory", default="")
     assert saved_dir == str(target_dir)
 
 

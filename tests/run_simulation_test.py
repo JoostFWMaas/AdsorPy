@@ -12,16 +12,15 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import SearchStrategy
-from shapely import Polygon, unary_union
+from shapely import Polygon
 from shapely.ops import orient
-from shapely.prepared import prep
 
 from adsorpy.randomsequentialadsorption import Simulator
 from adsorpy.rsa_config import RsaConfig
 from adsorpy.run_simulation import _select_and_run, run_simulation
 
 if TYPE_CHECKING:
-    from adsorpy.types import GeoArray
+    pass
 
 SEED = 123654789
 

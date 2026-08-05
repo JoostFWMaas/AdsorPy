@@ -55,8 +55,8 @@ def test_input_validators_range_boundaries(surface_tab: SurfaceGeneration) -> No
     :param surface_tab: SurfaceGeneration widget.
     """
     # Ensure bottom boundaries block zero or negative integer entries
-    assert surface_tab._gt_one_validator.bottom() == 1  # noqa: SLF001
-    assert surface_tab._pos_float_validator.bottom() == 0.0  # noqa: SLF001
+    assert surface_tab._gt_one_validator.bottom() == 1
+    assert surface_tab._pos_float_validator.bottom() == 0.0
 
 
 @pytest.mark.parametrize(
@@ -108,7 +108,7 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
     surface_tab.site_count_input.setText(f"{site_count}")  # Sets base count variable to 35
 
     # Force calculation to cache baseline count variables into self.surface_count
-    surface_tab._get_real_surface_site_count()  # noqa: SLF001
+    surface_tab._get_real_surface_site_count()
 
     # Mock out the plotting pipeline and core graphics widget loaders
     with (

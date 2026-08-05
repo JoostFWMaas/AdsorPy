@@ -262,7 +262,6 @@ class BoundaryParameters:
         )
 
         if self.hard_flag and molgr is not None:
-
             # Check whether the molecule is guaranteed to always touch the edge.
             hard_outer: BoolArray = calc.make_rectangular_filter(
                 centre,
@@ -278,7 +277,7 @@ class BoundaryParameters:
             molgr.vacant &= hard_outer  # The outer sites are no longer vacant.
 
         elif self.periodic_flag:
-            dbl_rad: float = molgr.max_radius + self.biggest_diameter * .5 if molgr is not None else 0.0
+            dbl_rad: float = molgr.max_radius + self.biggest_diameter * 0.5 if molgr is not None else 0.0
             extended_grid: CoordsArray = calc.create_periodic_images(
                 surf.grid_coordinates,
                 surf.x_max,
@@ -737,8 +736,12 @@ class Simulator:
         # Checks whether there is anything near the molecule.
         # If there are no molecules within potential touching distance, no further checks need to be performed.
         # Otherwise, more checks are needed to see whether a molecule is allowed to be positioned.
-        outer_radius_empty, neighbour_index, dists_squared = calc.check_outer_radius(dists_squared, mol_group_idx,
-                                                                                     nearby_index, pmg.gap_dists)
+        outer_radius_empty, neighbour_index, dists_squared = calc.check_outer_radius(
+            dists_squared,
+            mol_group_idx,
+            nearby_index,
+            pmg.gap_dists,
+        )
 
         # In case of a hard boundary condition, check whether the molecule can be positioned.
         if self.bp.hard_flag:  # Check whether the site conditionally intersects.
@@ -1298,7 +1301,6 @@ class Simulator:
                 break
 
         return overlap
-
 
     @property
     def coverage(self) -> DistArray:

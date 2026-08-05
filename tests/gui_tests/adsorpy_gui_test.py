@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the AdsorpyGUI class of the `gui.py` module."""
+
 import json
 import re
 from pathlib import Path
@@ -24,7 +25,9 @@ def gui_app(qtbot: QtBot) -> AdsorpyGUI:
     qtbot.addWidget(window)
     return window
 
+
 app = gui_app
+
 
 def test_initial_window_properties(gui_app: AdsorpyGUI, subtests: pytest.Subtests) -> None:
     """Verify window title, central widget configuration, and state assignment."""
@@ -123,7 +126,7 @@ def test_load_settings_validation_failure(gui_app: AdsorpyGUI, tmp_path: Path) -
         patch.object(QFileDialog, "getOpenFileName", return_value=(str(corrupted_file), "JSON Files (*.json)")),
         patch.object(QMessageBox, "critical") as mock_critical,
     ):
-        gui_app._load_settings_json()  # noqa: SLF001
+        gui_app._load_settings_json()
 
         # Ensure QMessageBox.critical caught parsing failures safely
         mock_critical.assert_called_once()
@@ -132,22 +135,22 @@ def test_load_settings_validation_failure(gui_app: AdsorpyGUI, tmp_path: Path) -
 def test_fetch_setting_returns_stored_value(gui_app: AdsorpyGUI) -> None:
     """Verify that settings are fetched correctly from QSettings when they exist."""
     # Mock the internal QSettings object's value method
-    gui_app._settings.value = MagicMock(return_value="/home/user/simulations")  # noqa: SLF001
+    gui_app._settings.value = MagicMock(return_value="/home/user/simulations")
 
     # Run the method with a default fallback
-    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")  # noqa: SLF001
+    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")
 
     # Assertions
     assert result == "/home/user/simulations"
-    gui_app._settings.value.assert_called_once_with("last_visited_directory", defaultValue="/default/path", type=str)  # noqa: SLF001
+    gui_app._settings.value.assert_called_once_with("last_visited_directory", defaultValue="/default/path", type=str)
 
 
 def test_fetch_setting_falls_back_to_default(gui_app: AdsorpyGUI) -> None:
     """Verify that the default value is returned when a setting does not exist."""
     # Simulate a missing key by returning the fallback default
-    gui_app._settings.value = MagicMock(return_value="/default/path")  # noqa: SLF001
+    gui_app._settings.value = MagicMock(return_value="/default/path")
 
-    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")  # noqa: SLF001
+    result = gui_app._fetch_setting("last_visited_directory", default="/default/path")
 
     assert result == "/default/path"
 
@@ -155,13 +158,13 @@ def test_fetch_setting_falls_back_to_default(gui_app: AdsorpyGUI) -> None:
 def test_fetch_setting_explicit_return_type(gui_app: AdsorpyGUI) -> None:
     """Verify that explicit return_type parameters override the default type check logic."""
     val = 42
-    gui_app._settings.value = MagicMock(return_value=val)  # noqa: SLF001
+    gui_app._settings.value = MagicMock(return_value=val)
 
     # Call using a default string but an explicit int target type override
-    result = gui_app._fetch_setting("sim_seed", default=0, return_type=int)  # noqa: SLF001
+    result = gui_app._fetch_setting("sim_seed", default=0, return_type=int)
 
     assert result == val
-    gui_app._settings.value.assert_called_once_with("sim_seed", defaultValue=0, type=int)  # noqa: SLF001
+    gui_app._settings.value.assert_called_once_with("sim_seed", defaultValue=0, type=int)
 
 
 def test_resize_event_emits_custom_signal(gui_app: AdsorpyGUI, qtbot: QtBot) -> None:
@@ -205,12 +208,13 @@ def test_manual_resize_event_dispatch(gui_app: AdsorpyGUI, qtbot: QtBot) -> None
     assert blocker.args == [1920, 1080]
 
 
-
-
 @patch("PySide6.QtWidgets.QFileDialog.getSaveFileName")
 @patch("PySide6.QtWidgets.QMessageBox.information")
 def test_save_settings_json_success(
-    mock_msg_box: MagicMock, mock_file_dialog: MagicMock, app: AdsorpyGUI, tmp_path: Path,
+    mock_msg_box: MagicMock,
+    mock_file_dialog: MagicMock,
+    app: AdsorpyGUI,
+    tmp_path: Path,
 ) -> None:
     """Verify successful configuration serialization and validation pipeline."""
     save_file = tmp_path / "settings.json"
@@ -241,7 +245,9 @@ def test_save_settings_json_success(
 @patch("PySide6.QtWidgets.QFileDialog.getSaveFileName")
 @patch("PySide6.QtWidgets.QMessageBox.critical")
 def test_save_settings_json_validation_error(
-    mock_msg_box: MagicMock, mock_file_dialog: MagicMock, app: AdsorpyGUI
+    mock_msg_box: MagicMock,
+    mock_file_dialog: MagicMock,
+    app: AdsorpyGUI,
 ) -> None:
     """Verify that invalid parameters display a critical validation warning."""
     mock_file_dialog.return_value = ("mock_path.json", "JSON Files (*.json)")
@@ -250,7 +256,8 @@ def test_save_settings_json_validation_error(
 
     with patch("adsorpy.gui.TypeAdapter.validate_python") as mock_validate:
         mock_validate.side_effect = ValidationError.from_exception_data(
-            "Validation Fail", [{"type": "int_parsing", "loc": ("seed",), "input": "invalid_seed"}]
+            "Validation Fail",
+            [{"type": "int_parsing", "loc": ("seed",), "input": "invalid_seed"}],
         )
 
         with pytest.raises(ValueError, match=re.escape("invalid literal for int() with base 10: 'invalid_seed'")):
@@ -302,7 +309,11 @@ def test_load_settings_json_success(
 @patch("PySide6.QtWidgets.QMessageBox.critical")
 @patch("adsorpy.gui.TypeAdapter.validate_json")
 def test_load_settings_json_validation_error(
-    mock_validate_json: MagicMock, mock_msg_box: MagicMock, mock_file_dialog: MagicMock, app: AdsorpyGUI, tmp_path: Path
+    mock_validate_json: MagicMock,
+    mock_msg_box: MagicMock,
+    mock_file_dialog: MagicMock,
+    app: AdsorpyGUI,
+    tmp_path: Path,
 ) -> None:
     """Verify malformed JSON input files throw explicit schema constraints dialog alerts."""
     load_file = tmp_path / "corrupt.json"
@@ -329,11 +340,12 @@ def test_fetch_setting_with_implicit_type(app: AdsorpyGUI) -> None:
 def test_fetch_setting_with_explicit_type(app: AdsorpyGUI) -> None:
     """Verify that _fetch_setting respects an explicitly provided return_type."""
     app._settings = MagicMock()
-    app._settings.value.return_value = 42
+    value = 42
+    app._settings.value.return_value = value
 
     result = app._fetch_setting("max_iterations", default=0, return_type=int)
 
-    assert result == 42
+    assert result == value
     app._settings.value.assert_called_once_with("max_iterations", defaultValue=0, type=int)
 
 

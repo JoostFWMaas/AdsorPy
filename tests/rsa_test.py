@@ -15,9 +15,7 @@ from hypothesis.extra.numpy import arrays
 from hypothesis.strategies import SearchStrategy
 from numpy.random import PCG64DXSM, Generator  # New random generator.
 from scipy.spatial.distance import cdist
-from shapely import Polygon, unary_union
-from shapely.affinity import translate
-from shapely.prepared import prep
+from shapely import Polygon
 
 import adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
 import adsorpy.randomsequentialadsorption as rsarun
@@ -237,7 +235,6 @@ class TestWithParameters:
         if not any_test_performed:
             pytest.skip("Neither test condition was met.")
 
-
     def test_buffer_trimming(
         self,
         simulator: AbstractExampleSimulation,
@@ -292,7 +289,6 @@ class TestWithParameters:
         assert np.sum(fraction_of_covered_area > 0), "Total fraction_of_covered_area > 0."
         assert np.sum(coverage < 1), "Total coverage < 1."
         assert np.sum(fraction_of_covered_area < 1), "Total fraction_of_covered_area < 1."
-
 
     def test_no_overlap(
         self,
@@ -673,8 +669,8 @@ def mock_simulator() -> rsarun.Simulator:
     obj = object.__new__(rsarun.Simulator)
 
     # Mock basic attributes required to bypass initial attribute errors
-    obj.bp = type("MockBP", (), {"periodic_flag": False})()
-    obj.mol_data = type("MockMolData", (), {"stored_data": {}})()
+    obj.bp = type("MockBP", (), {"periodic_flag": False})()  # pyright: ignore[reportAttributeAccessIssue]
+    obj.mol_data = type("MockMolData", (), {"stored_data": {}})()  # pyright: ignore[reportAttributeAccessIssue]
     return obj
 
 
@@ -686,8 +682,8 @@ def test_check_if_overlap_succeeds_no_overlap(mock_simulator: rsarun.Simulator, 
 
     mock_polygons = [poly1, poly2]
 
-    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))
-    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))  # pyright: ignore[reportArgumentType]
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)  # pyright: ignore[reportArgumentType]
 
     result = mock_simulator.check_if_overlap()
 
@@ -701,8 +697,8 @@ def test_check_if_overlap_fails_with_overlap(mock_simulator: rsarun.Simulator, m
 
     mock_polygons = [poly1, poly2]
 
-    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))
-    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))  # pyright: ignore[reportArgumentType]
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)  # pyright: ignore[reportArgumentType]
 
     result = mock_simulator.check_if_overlap()
 

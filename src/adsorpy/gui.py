@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """GUI module of adsorpy."""  # TODO: Make a new repo for this!
+
 from __future__ import annotations
 
 # __lazy_modules__ = ["json", "multiprocessing", "pickle", "zipfile", "h5py", "matplotlib", "pandas", "seaborn", "dask"]

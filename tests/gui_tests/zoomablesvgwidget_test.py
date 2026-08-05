@@ -62,7 +62,7 @@ def test_widget_initialisation_state(qtbot: QtBot) -> None:
 
     assert widget.zoom_factor == pytest.approx(1.15)
     assert widget.current_svg_path is None
-    assert widget._current_svg_bytes is None  # noqa: SLF001
+    assert widget._current_svg_bytes is None
     assert widget.save_button.isVisible() is False
     assert widget.save_button.size() == QSize(40, 40)
 
@@ -102,7 +102,7 @@ def test_load_caches_bytes_and_toggles_visibility(qtbot: QtBot, sample_svg_file:
 
     assert blocker.args == [True]
     assert widget.current_svg_path == str(sample_svg_file)
-    assert widget._current_svg_bytes == VALID_SVG_BYTES  # noqa: SLF001
+    assert widget._current_svg_bytes == VALID_SVG_BYTES
     assert widget.save_button.isVisibleTo(widget) is True
 
 
@@ -117,7 +117,7 @@ def test_load_handles_raw_bytes_directly(qtbot: QtBot) -> None:
     widget.load(VALID_SVG_BYTES)
 
     assert widget.current_svg_path is None
-    assert widget._current_svg_bytes == VALID_SVG_BYTES  # noqa: SLF001
+    assert widget._current_svg_bytes == VALID_SVG_BYTES
     assert widget.save_button.isVisibleTo(widget) is True
 
 

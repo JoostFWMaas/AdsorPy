@@ -27,8 +27,8 @@ def test_app_state_initializes_private_fields_to_none() -> None:
     # Assert private fields are instantiated automatically
     assert hasattr(state, "_seed_input")
     assert hasattr(state, "_surface_params")
-    assert state._seed_input is None  # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
-    assert state._surface_params is None  # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    assert state._seed_input is None  # pyright: ignore[reportAttributeAccessIssue]
+    assert state._surface_params is None  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_setting_property_emits_changed_signal(qtbot: QtBot) -> None:
@@ -67,7 +67,7 @@ def test_widget_state_property_mutations(qtbot: QtBot) -> None:
 
     assert blocker.args == [temp_line_edit]
     assert state.seed_input == temp_line_edit
-    assert state.seed_input == state._seed_input  # noqa: SLF001 # pyright: ignore[reportAttributeAccessIssue]
+    assert state.seed_input == state._seed_input  # pyright: ignore[reportAttributeAccessIssue]
 
 
 def test_general_settings_listens_to_real_app_state(qtbot: QtBot) -> None:

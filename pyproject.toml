@@ -58,7 +58,7 @@ keywords = [
 
 dependencies = [
     "numpy>=2.2.6",
-    "numba>=0.65.1",
+    "numba>=0.66.0",
     "matplotlib>=3.10.9",
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
@@ -113,8 +113,8 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.55.0",
-    "tox-uv>=1.35.2",
+    "tox>=4.58.0",
+    "tox-uv>=1.36.0",
     "uv>=0.12.1",
 ]
 dev-misc = [
@@ -181,6 +181,7 @@ omit = [
 ]
 
 [tool.coverage.report]
+fail_under = 20
 exclude_also = [
     "if __name__ == .__main__.:",
     "def main()",
@@ -203,6 +204,12 @@ exclude_also = [
     "def save_",
     "from typing",
     "if prlongoutput_flag",
+]
+
+[tool.coverage.paths]
+source = [
+    "src/adsorpy",                  # Local path
+    ".tox/*/lib/python*/site-packages/adsorpy" # Tox path
 ]
 
 [tool.mypy]
@@ -288,7 +295,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]  # Missing docstring in public package. Not needed, package is empty.
-"test*.py" = ["S101", "TC"]  # Assert should not be used in production code! But this is test code, so here it is expected.
+"tests/*" = ["S101", "TC", "SLF001"]  # Assert should not be used in production code! But this is test code, so here it is expected.
 
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass"]

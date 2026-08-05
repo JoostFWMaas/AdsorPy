@@ -86,7 +86,7 @@ def test_discover_molecule_generators_filters_library_signatures(
     subtests: pytest.Subtests,
 ) -> None:
     """Verify reflection lookup scans module keys, ignoring hidden files and invalid types."""
-    generators = molecule_tab._discover_molecule_generators()  # noqa: SLF001
+    generators = molecule_tab._discover_molecule_generators()
 
     temp_generators = {
         name: func
@@ -129,7 +129,7 @@ def test_delete_previous_layout_clears_widgets_and_nested_layouts(
     # Assert widgets are added and valid
     assert molecule_tab.param_layout.count(), "The molecule parameter layout is empty!"
     # Act: Trigger the deep layout demolition pass
-    molecule_tab._delete_previous_layout()  # noqa: SLF001
+    molecule_tab._delete_previous_layout()
     # Assert: The outer layout framework should be completely flushed clean
     assert molecule_tab.param_layout.count() == 0
 

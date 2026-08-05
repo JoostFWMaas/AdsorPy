@@ -156,13 +156,13 @@ def test_from_geojson_str_to_polygon_errors() -> None:
     with pytest.raises(shapely.errors.GEOSException, match=r"ParseException: Error parsing JSON:.*"):
         from_geojson_str_to_polygon("")
 
-    point = shapely.Point((0., 0.))
+    point = shapely.Point((0.0, 0.0))
     pointstr = str(shapely.to_geojson(point))
 
     with pytest.raises(TypeError, match="Geometry is of wrong type: Point"):
         from_geojson_str_to_polygon(pointstr)
 
-    polygon = shapely.Polygon([(1,1),(0,0),(1,0),(0,1)])
+    polygon = shapely.Polygon([(1, 1), (0, 0), (1, 0), (0, 1)])
     polygonstr = str(shapely.to_geojson(polygon))
 
     with pytest.raises(ValueError, match=r"Polygon is invalid. Exterior coordinates: .*"):
