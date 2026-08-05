@@ -97,6 +97,8 @@ test = [
     "seaborn>=0.13.2",
     "dask[distributed]>=2026.7.1",
     "pytest-xvfb>=3.1.1",
+    "pyvirtualdisplay>=1.3",
+    "easyprocess>=1.1",
 ]
 lint = [
     "mypy>=2.1.0",
