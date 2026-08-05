@@ -5,7 +5,7 @@ recreate = true
 labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "pyright", "tach", "slotscheck"] }
 
 [env_run_base]
-pass_env = ["CI", "GITHUB_*", "CODECOV_*", "DISPLAY", "XAUTHORITY"]
+pass_env = ["CI", "GITHUB_*", "CODECOV_*"]
 deps = ["-e .[test]"]
 commands = [["pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
     ["codecov"],
