@@ -85,6 +85,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+
+
 test = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
@@ -92,10 +94,7 @@ test = [
     "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
-    "h5py>=3.16.0",
-    "pandas>=2.3.3",
-    "seaborn>=0.13.2",
-    "dask[distributed]>=2026.7.1",
+    "adsorpy[gui-deps]",
 ]
 lint = [
     "mypy>=2.1.0",
@@ -104,6 +103,7 @@ lint = [
     "tach>=0.34.1",
     "slotscheck>=0.20.0",
     "pyside6-stubs>=6.7.3.0",
+    "gitpython>=3.1.58",
 ]
 docs = [
     "sphinx>=8.0",
@@ -206,11 +206,11 @@ exclude_also = [
     "if prlongoutput_flag",
 ]
 
-#[tool.coverage.paths]
-#source = [
-#    "src/adsorpy",  # Local path
-#    "*/site-packages/adsorpy",  # Tox path
-#]
+[tool.coverage.paths]
+source = [
+    "src/",  # Local path
+    ".tox/*lib//site-packages/",  # Tox path
+]
 
 [tool.mypy]
 mypy_path = ["."]
