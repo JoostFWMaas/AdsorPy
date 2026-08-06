@@ -13,7 +13,7 @@ pass_env = [
     "QT_XCB_GL_INTEGRATION",
 ]
 deps = ["-e .[test]"]
-commands = [["pytest", "--xvfb", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
+commands = [["pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
     ["codecov"],
 ]
 
