@@ -605,6 +605,8 @@ class ZoomableSvgWidget(QSvgWidget):
             except (OSError, FileNotFoundError) as e:
                 self._current_svg_bytes = None
                 QMessageBox.warning(self, "Error", f"Data could not be loaded:\n{e}")
+                self.graphics_changed.emit(False)
+                return
             super().load(path_str)
 
         is_valid = self.renderer().isValid()

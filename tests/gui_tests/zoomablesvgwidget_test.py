@@ -2,19 +2,23 @@
 # SPDX-License-Identifier: MIT
 """Test the ZoomableSvgWidget class of the `gui.py` module."""
 
+import uuid
 from pathlib import Path
+from typing import Literal, ParamSpec
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
-from PySide6.QtCore import QEvent, QPoint, QPointF, QSize, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QResizeEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QScrollArea
 from pytestqt.qtbot import QtBot, QWidget
 
 from adsorpy.gui import ZoomableSvgWidget
 
+P = ParamSpec("P")
+
 VALID_SVG_BYTES: bytes = (
-    b'<svg xmlns="http://w3.org" viewBox="0 0 20 20" width="20" height="20">'
+    b'<svg xmlns="https://w3.org" viewBox="0 0 20 20" width="20" height="20">'
     b'<rect width="20" height="20" fill="blue"/></svg>'
 )
 
@@ -121,6 +125,34 @@ def test_load_handles_raw_bytes_directly(qtbot: QtBot) -> None:
     assert widget.save_button.isVisibleTo(widget) is True
 
 
+def test_load_handles_error_correctly(qtbot: QtBot, monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    """Verify that the overloaded load function handles direct memory byte packages.
+
+    :param qtbot: The pytest-qt robot fixture managing UI lifecycles.
+    """
+    widget: ZoomableSvgWidget = ZoomableSvgWidget()
+    qtbot.addWidget(widget)
+
+    unique_filename = f"missing_{uuid.uuid4()}.svg"
+    fake_file_path = tmp_path / unique_filename
+
+    warning_triggered = False
+
+    def mock_warning(parent, title, text, *args, **kwargs) -> Literal[QMessageBox.StandardButton.Ok]:
+        nonlocal warning_triggered
+        warning_triggered = True
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", mock_warning)
+
+    with qtbot.waitSignal(widget.graphics_changed, timeout=1000) as blocker:
+        widget.load(fake_file_path)
+
+    assert warning_triggered is True, "The warning dialog was never opened."
+    assert blocker.args[0] is False, "The graphics_changed signal should have emitted False."
+    assert widget._current_svg_bytes is None, "The byte cache was not cleared."
+
+
 @pytest.mark.parametrize("extension", [".svg", ".png", ".jpg", ".pdf"])
 def test_export_graphics_success_formats(
     qtbot: QtBot,
@@ -213,12 +245,12 @@ def test_wheel_event_zoom_with_control_modifier(
     """
     scroll_area, widget = scrollable_widget_setup
 
-    # Initialize baseline coordinates and assign default positioning benchmarks
+    # Initialise baseline coordinates and assign default positioning benchmarks
     widget.setFixedSize(400, 400)
     scroll_area.horizontalScrollBar().setValue(100)
     scroll_area.verticalScrollBar().setValue(100)
 
-    # Create a wheel event focused at the center of the widget with the Control modifier
+    # Create a wheel event focused at the centre of the widget with the Control modifier
     wheel_event = QWheelEvent(
         QPointF(200.0, 200.0),  # Position inside the widget
         QPointF(200.0, 200.0),  # Global position coordinate footprint
@@ -336,3 +368,153 @@ def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
 
     widget.wheelEvent(normal_scroll_event)
     assert event_forwarded is True
+
+
+def test_export_graphics_invalid_renderer(qtbot, monkeypatch):
+    widget = ZoomableSvgWidget()
+    qtbot.addWidget(widget)
+
+    # 1. Force renderer to be invalid by mocking it
+    class MockRenderer:
+        def isValid(self):
+            return False
+
+    monkeypatch.setattr(widget, "renderer", MockRenderer)
+
+    # 2. Intercept the warning box
+    warning_triggered = False
+
+    def mock_warning(parent, title, text, *args, **kwargs):
+        nonlocal warning_triggered
+        warning_triggered = True
+        assert title == "Export Error"
+        assert "No valid SVG data loaded." in text
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", mock_warning)
+
+    # 3. Execute
+    widget.export_graphics()
+    assert warning_triggered is True
+
+
+# Test Case 2: User Cancels File Dialoge
+def test_export_graphics_user_cancels(qtbot, monkeypatch):
+    widget = ZoomableSvgWidget()
+    qtbot.addWidget(widget)
+
+    # Force renderer to be valid
+    class MockRenderer:
+        def isValid(self) -> Literal[True]:
+            return True
+
+    monkeypatch.setattr(widget, "renderer", MockRenderer)
+
+    # Simulate user clicking "Cancel" in QFileDialog (returns empty string)
+    file_dialog_called = False
+
+    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:
+        nonlocal file_dialog_called
+        file_dialog_called = True
+        return "", ""  # empty path means cancelled.
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
+
+    widget.export_graphics()
+    assert file_dialog_called is True
+
+
+# Test Case 3: Extension Automatically Added Based on Filter
+def test_export_graphics_svg_fallback_generation(qtbot: QtBot, monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    widget = ZoomableSvgWidget()
+    qtbot.addWidget(widget)
+
+    class MockRenderer:
+        def isValid(self) -> Literal[True]:
+            return True
+
+        def viewBoxF(self) -> QRectF:
+            return QRectF(0.0, 0.0, 100.0, 100.0)
+
+        def viewBox(self) -> QRect:
+            return QRectF(0.0, 0.0, 100.0, 100.0).toRect()
+
+        def render(self, painter, bounds=None) -> Literal[True]:
+            return True
+
+    monkeypatch.setattr(widget, "renderer", MockRenderer)
+
+    # Force cache clearance to test your fallback logic branch
+    widget._current_svg_bytes = None
+    output_file = tmp_path / "fallback.svg"
+
+    def mock_get_save_filename(*_, **__) -> str:
+        return str(output_file), "Scalable Vector Graphics (*.svg)"
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
+
+    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: QMessageBox.StandardButton.Ok)
+
+    widget.export_graphics()
+
+    assert output_file.exists() is True
+    assert output_file.stat().st_size > 0
+
+
+# Test Case 4: Fallthrough Invalid Extension Handling
+def test_export_graphics_invalid_filter_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
+    widget = ZoomableSvgWidget()
+    qtbot.addWidget(widget)
+
+    class MockRenderer:
+        def isValid(self) -> Literal[True]:
+            return True
+
+    monkeypatch.setattr(widget, "renderer", MockRenderer)
+
+    # Simulate an unexpected filter string slipping through
+    def mock_get_save_filename(*_, **__) -> tuple[str, str]:
+        return str(Path("/mock/path/my_drawing")), "Unknown Filter Type (*.xyz)"
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
+
+    # Check for the invalid extension warning dialogue box
+    warning_triggered = False
+
+    def mock_warning(
+        parent, title: str, text: str, *_: P.args, **__: P.kwargs,
+    ) -> Literal[QMessageBox.StandardButton.Ok]:
+        nonlocal warning_triggered
+        warning_triggered = True
+        assert title == "Export Error"
+        assert "Invalid file extension." in text
+        return QMessageBox.StandardButton.Ok
+
+    monkeypatch.setattr(QMessageBox, "warning", mock_warning)
+
+    widget.export_graphics()
+    assert warning_triggered is True
+
+
+def test_wheel_event_ignores_unhandled_scroll_without_parent(qtbot: QtBot) -> None:
+    """Test that a standard wheel scroll event is ignored if there is no parent QScrollArea."""
+    widget = ZoomableSvgWidget(parent=None)
+    qtbot.addWidget(widget)
+
+    wheel_event = QWheelEvent(
+        QPointF(50.0, 50.0),  # position relative to widget
+        QPointF(50.0, 50.0),  # global position
+        QPoint(0, 0),  # pixelDelta
+        QPoint(0, 120),  # angleDelta (120 = 1 scroll notch up)
+        Qt.MouseButton.NoButton,  # buttons held
+        Qt.KeyboardModifier.NoModifier,  # modifiers (Crucial: none pressed)
+        Qt.ScrollPhase.NoScrollPhase,  # scroll phase
+        False,  # inverted orientation tracking
+    )
+
+    wheel_event.accept()
+    assert wheel_event.isAccepted() is True
+
+    widget.wheelEvent(wheel_event)
+
+    assert wheel_event.isAccepted() is False, "The event should have called event.ignore()"

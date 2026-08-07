@@ -155,15 +155,15 @@ def test_build_param_inputs_creates_labeled_grid_elements(molecule_tab: Molecule
     # Inject mock parameter document descriptions and global layout helpers
     mock_docs = {"distance": "The spatial span boundary metric."}
     with (
-        patch("src.adsorpy.gui.extract_param_docs", return_value=mock_docs),
+        patch("adsorpy.gui.extract_param_docs", return_value=mock_docs),
         patch(
-            "src.adsorpy.gui.get_type_hints",
+            "adsorpy.gui.get_type_hints",
             return_value={
                 "distance": QDoubleSpinBox,
                 "ignore_atoms": QLineEdit,
             },
         ),
-        patch("src.adsorpy.gui._make_horizontal_line", return_value=QWidget()),
+        patch("adsorpy.gui._make_horizontal_line", return_value=QWidget()),
         patch.object(molecule_tab, "_build_symmetry_controls") as mock_sym,
         patch.object(molecule_tab, "_build_action_buttons") as mock_act,
     ):
@@ -207,14 +207,14 @@ def test_build_bad_param_inputs_raises_critical_dialogue(molecule_tab: MoleculeG
     # Inject mock parameter document descriptions and global layout helpers
     mock_docs = {"distance": "The spatial span boundary metric."}
     with (
-        patch("src.adsorpy.gui.extract_param_docs", return_value=mock_docs),
+        patch("adsorpy.gui.extract_param_docs", return_value=mock_docs),
         patch(
-            "src.adsorpy.gui.get_type_hints",
+            "adsorpy.gui.get_type_hints",
             return_value={
                 "distance": QDoubleSpinBox,
             },
         ),
-        patch("src.adsorpy.gui._make_horizontal_line", return_value=QWidget()),
+        patch("adsorpy.gui._make_horizontal_line", return_value=QWidget()),
         patch.object(molecule_tab, "_build_symmetry_controls") as mock_sym,
         patch.object(molecule_tab, "_build_action_buttons") as mock_act,
     ):
@@ -254,14 +254,14 @@ def test_build_bad_param_inputs_raises_error(molecule_tab: MoleculeGeneration, q
     # Inject mock parameter document descriptions and global layout helpers
     mock_docs = {"distance": "The spatial span boundary metric."}
     with (
-        patch("src.adsorpy.gui.extract_param_docs", return_value=mock_docs),
+        patch("adsorpy.gui.extract_param_docs", return_value=mock_docs),
         patch(
-            "src.adsorpy.gui.get_type_hints",
+            "adsorpy.gui.get_type_hints",
             return_value={
                 "ignore_atoms": QLineEdit,
             },
         ),
-        patch("src.adsorpy.gui._make_horizontal_line", return_value=QWidget()),
+        patch("adsorpy.gui._make_horizontal_line", return_value=QWidget()),
         # patch.object(molecule_tab, "_build_symmetry_controls") as mock_sym,
         # patch.object(molecule_tab, "_build_action_buttons") as mock_act,
     ):

@@ -29,7 +29,7 @@ commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-exp
 ]
 
 [env.pyright]
-deps = ["pyright", "[test]", "[gui-deps]"]
+deps = ["pyright", "[test]"]
 commands = [["pyright"]]
 
 [env.slotscheck]

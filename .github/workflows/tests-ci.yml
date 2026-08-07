@@ -60,10 +60,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
-        with:
-          version: "0.12.1"
 
-      # --- Dependency Resolution Customizations ---
+      # --- Dependency Resolution Customisations ---
 
       - name: Force Lowest Resolution Bounds
         if: matrix.resolution-strategy == 'lowest'
