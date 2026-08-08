@@ -2,14 +2,21 @@
 # SPDX-License-Identifier: MIT
 """Test the ZoomableSvgWidget class of the `gui.py` module."""
 
+import sys
 import uuid
 from pathlib import Path
 from typing import Literal, ParamSpec
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QResizeEvent, QWheelEvent
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QScrollArea
 from pytestqt.qtbot import QtBot, QWidget
 
@@ -138,7 +145,10 @@ def test_load_handles_error_correctly(qtbot: QtBot, monkeypatch: MonkeyPatch, tm
 
     warning_triggered = False
 
-    def mock_warning(parent, title, text, *args, **kwargs) -> Literal[QMessageBox.StandardButton.Ok]:
+    def mock_warning(
+        *_: P.args,  # type: ignore[valid-type]
+        **__: P.kwargs,  # type: ignore[valid-type]
+    ) -> Literal[QMessageBox.StandardButton.Ok]:  # type: ignore[valid-type]
         nonlocal warning_triggered
         warning_triggered = True
         return QMessageBox.StandardButton.Ok
@@ -149,7 +159,7 @@ def test_load_handles_error_correctly(qtbot: QtBot, monkeypatch: MonkeyPatch, tm
         widget.load(fake_file_path)
 
     assert warning_triggered is True, "The warning dialog was never opened."
-    assert blocker.args[0] is False, "The graphics_changed signal should have emitted False."
+    assert blocker.args[0] is False, "The graphics_changed signal should have emitted False."  # pyright: ignore[reportOptionalSubscript]
     assert widget._current_svg_bytes is None, "The byte cache was not cleared."
 
 
@@ -370,21 +380,34 @@ def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
     assert event_forwarded is True
 
 
-def test_export_graphics_invalid_renderer(qtbot, monkeypatch):
+def test_export_graphics_invalid_renderer(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
+    """Test whether invalid exports trigger a warning.
+
+    :param qtbot: Simulates user input.
+    :param monkeypatch: The pytest mock engine handling runtime dependency injection.
+    """
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
-    # 1. Force renderer to be invalid by mocking it
-    class MockRenderer:
-        def isValid(self):
+    class MockRenderer(QSvgRenderer):
+        def __init__(self) -> None:
+            super().__init__()
+
+        @override
+        def isValid(self) -> Literal[False]:
             return False
 
     monkeypatch.setattr(widget, "renderer", MockRenderer)
 
-    # 2. Intercept the warning box
     warning_triggered = False
 
-    def mock_warning(parent, title, text, *args, **kwargs):
+    def mock_warning(
+        parent: object,
+        title: str,
+        text: str,
+        *_: P.args,  # type: ignore[valid-type]
+        **__: P.kwargs,  # type: ignore[valid-type]
+    ) -> Literal[QMessageBox.StandardButton.Ok]:  # type: ignore[valid-type]
         nonlocal warning_triggered
         warning_triggered = True
         assert title == "Export Error"
@@ -393,27 +416,32 @@ def test_export_graphics_invalid_renderer(qtbot, monkeypatch):
 
     monkeypatch.setattr(QMessageBox, "warning", mock_warning)
 
-    # 3. Execute
     widget.export_graphics()
     assert warning_triggered is True
 
 
-# Test Case 2: User Cancels File Dialoge
-def test_export_graphics_user_cancels(qtbot, monkeypatch):
+def test_export_graphics_user_cancels(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
+    """Test whether cancelling export is handled correctly.
+
+    :param qtbot: Simulates user input.
+    :param monkeypatch: The pytest mock engine handling runtime dependency injection.
+    """
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
-    # Force renderer to be valid
-    class MockRenderer:
+    class MockRenderer(QSvgRenderer):
+        def __init__(self) -> None:
+            super().__init__()
+
+        @override
         def isValid(self) -> Literal[True]:
             return True
 
     monkeypatch.setattr(widget, "renderer", MockRenderer)
 
-    # Simulate user clicking "Cancel" in QFileDialog (returns empty string)
     file_dialog_called = False
 
-    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:
+    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
         nonlocal file_dialog_called
         file_dialog_called = True
         return "", ""  # empty path means cancelled.
@@ -424,36 +452,45 @@ def test_export_graphics_user_cancels(qtbot, monkeypatch):
     assert file_dialog_called is True
 
 
-# Test Case 3: Extension Automatically Added Based on Filter
 def test_export_graphics_svg_fallback_generation(qtbot: QtBot, monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
+    """Test whether exporting graphics results in file generation.
+
+    :param qtbot: Simulates user input.
+    :param monkeypatch: The pytest mock engine handling runtime dependency injection.
+    """
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
-    class MockRenderer:
+    class MockRenderer(QSvgRenderer):
+        def __init__(self) -> None:
+            super().__init__()
+
+        @override
         def isValid(self) -> Literal[True]:
             return True
 
+        @override
         def viewBoxF(self) -> QRectF:
             return QRectF(0.0, 0.0, 100.0, 100.0)
 
+        @override
         def viewBox(self) -> QRect:
             return QRectF(0.0, 0.0, 100.0, 100.0).toRect()
 
-        def render(self, painter, bounds=None) -> Literal[True]:
+        def render(self, *_: P.args, **__: P.kwargs) -> Literal[True]:  # type: ignore[valid-type]
             return True
 
     monkeypatch.setattr(widget, "renderer", MockRenderer)
 
-    # Force cache clearance to test your fallback logic branch
     widget._current_svg_bytes = None
     output_file = tmp_path / "fallback.svg"
 
-    def mock_get_save_filename(*_, **__) -> str:
+    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
         return str(output_file), "Scalable Vector Graphics (*.svg)"
 
     monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
 
-    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: QMessageBox.StandardButton.Ok)
+    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: QMessageBox.StandardButton.Ok)  # pyright: ignore[reportUnknownLambdaType]
 
     widget.export_graphics()
 
@@ -461,29 +498,35 @@ def test_export_graphics_svg_fallback_generation(qtbot: QtBot, monkeypatch: Monk
     assert output_file.stat().st_size > 0
 
 
-# Test Case 4: Fallthrough Invalid Extension Handling
 def test_export_graphics_invalid_filter_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
+    """Test whether invalid filters trigger a warning.
+
+    :param qtbot: Simulates user input.
+    :param monkeypatch: The pytest mock engine handling runtime dependency injection.
+    """
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
     class MockRenderer:
-        def isValid(self) -> Literal[True]:
+        def isValid(self) -> Literal[True]:  # noqa: N802
             return True
 
     monkeypatch.setattr(widget, "renderer", MockRenderer)
 
-    # Simulate an unexpected filter string slipping through
-    def mock_get_save_filename(*_, **__) -> tuple[str, str]:
+    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
         return str(Path("/mock/path/my_drawing")), "Unknown Filter Type (*.xyz)"
 
     monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
 
-    # Check for the invalid extension warning dialogue box
     warning_triggered = False
 
     def mock_warning(
-        parent, title: str, text: str, *_: P.args, **__: P.kwargs,
-    ) -> Literal[QMessageBox.StandardButton.Ok]:
+        parent: object,
+        title: str,
+        text: str,
+        *_: P.args,  # type: ignore[valid-type]
+        **__: P.kwargs,  # type: ignore[valid-type]
+    ) -> Literal[QMessageBox.StandardButton.Ok]:  # type: ignore[valid-type]
         nonlocal warning_triggered
         warning_triggered = True
         assert title == "Export Error"
@@ -509,7 +552,7 @@ def test_wheel_event_ignores_unhandled_scroll_without_parent(qtbot: QtBot) -> No
         Qt.MouseButton.NoButton,  # buttons held
         Qt.KeyboardModifier.NoModifier,  # modifiers (Crucial: none pressed)
         Qt.ScrollPhase.NoScrollPhase,  # scroll phase
-        False,  # inverted orientation tracking
+        False,  # noqa: FBT003, inverted orientation tracking
     )
 
     wheel_event.accept()

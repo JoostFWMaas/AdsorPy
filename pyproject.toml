@@ -99,7 +99,7 @@ test = [
 ]
 lint = [
     "mypy==2.3.0",
-    "ruff==0.16.1",
+    "ruff==0.16.2",
     "pyright==1.1.411",
     "tach==0.35.0",
     "slotscheck==0.20.1",
@@ -165,7 +165,7 @@ include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = ["--cov=src/adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
+addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
 qt_api = "pyside6"
 
 [tool.coverage.run]
@@ -204,6 +204,7 @@ exclude_also = [
     "def save_",
     "from typing",
     "if prlongoutput_flag",
+    "batch_simulation",
 ]
 
 [tool.coverage.paths]
@@ -260,7 +261,7 @@ known_local_folder = ["molcule_lib", "RSA_Calculator", "rsa_config"]
 line-length = 88
 
 [tool.uv]
-required-version = "0.12.2"
+required-version = "0.12.3"
 
 [tool.ruff]
 line-length = 120

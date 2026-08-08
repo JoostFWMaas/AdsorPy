@@ -14,6 +14,6 @@ repos:
   - id: check-yaml
   - id: name-tests-test
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: e805244dd1bc999f2b4d716f5fa21ee87189b084 # frozen: v0.12.2
+  rev: 8d582f54b8e4cc5a61a85eeed1f54bbdb1e294fc # frozen: v0.12.3
   hooks:
   - id: uv-lock

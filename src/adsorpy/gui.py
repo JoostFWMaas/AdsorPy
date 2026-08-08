@@ -29,6 +29,7 @@ from pydantic_core import core_schema
 from PySide6.QtCore import QByteArray, QMarginsF
 from PySide6.QtGui import QPageLayout
 from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
+from shiboken6 import Shiboken
 
 if sys.version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
@@ -605,7 +606,7 @@ class ZoomableSvgWidget(QSvgWidget):
             except (OSError, FileNotFoundError) as e:
                 self._current_svg_bytes = None
                 QMessageBox.warning(self, "Error", f"Data could not be loaded:\n{e}")
-                self.graphics_changed.emit(False)
+                self.graphics_changed.emit(False)  # noqa: FBT003
                 return
             super().load(path_str)
 
@@ -1133,6 +1134,9 @@ class GeneralSettings(QWidget):
         self.state = state
         """App state object for communication between tab widgets."""
 
+        self.bg_signals = BackgroundTaskSignals()
+        """Signals for the simulation background tasks."""
+
         # Run UI Initialisation steps
         self._init_validators()
 
@@ -1447,6 +1451,8 @@ class GeneralSettings(QWidget):
         inputs = self._prepare_simulation_inputs()
         self.input_metadata = inputs
         if inputs is None:
+            errmsg = "Simulation input is empty."
+            QMessageBox.critical(self, "Input Error", errmsg)
             return
 
         self.run_group.setEnabled(False)
@@ -1455,8 +1461,7 @@ class GeneralSettings(QWidget):
         # self.run_group.setText("Computing...")
 
         sim_input = RunSimulationInput(**{key: value for key, value in inputs.items() if key != "repeats"})  # type: ignore[typeddict-item]
-
-        task = BackgroundTask(run_simulation, **sim_input)
+        task = BackgroundTask(run_simulation, self.bg_signals, **sim_input)
         task.signals.finished.connect(self._on_simulation_complete)
         task.signals.error.connect(self._on_simulation_error)
         QThreadPool.globalInstance().start(task)
@@ -1511,14 +1516,20 @@ class GeneralSettings(QWidget):
         # Instantiate task and pass 'task' itself into the execution function so it can access signals
         task = BackgroundTask(
             execute_dask_batch,
+            self.bg_signals,
             base_inputs=inputs,
             total_runs=n_instances,
         )  # typing: ignore[arg-type]
         task.kwargs["task_ref"] = task  # Dynamically inject the task reference into kwargs
 
-        # Connect signals
-        if hasattr(self, "progress_bar"):
-            task.signals.progress.connect(self.progress_bar.setValue)
+        if hasattr(self, "progress_bar") and self.progress_bar is not None:
+
+            def set_bar(val: int) -> None:
+                self.progress_bar.setValue(val)
+
+            task.signals.progress.connect(
+                set_bar if Shiboken.isValid(self.progress_bar) else None,
+            )
 
         task.signals.finished.connect(self._on_batch_simulation_complete)
         task.signals.error.connect(self._on_simulation_error)
@@ -2636,10 +2647,17 @@ class BackgroundTaskSignals(QObject):
 class BackgroundTask(QRunnable, Generic[P, R]):
     """Executes a single blocking function call in the background thread pool."""
 
-    def __init__(self, func: Callable[P, R], *args: P.args, **kwargs: P.kwargs) -> None:
+    def __init__(
+        self,
+        func: Callable[P, R],
+        signals: BackgroundTaskSignals | None = None,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> None:
         """Initialise the BackgroundTask.
 
         :param func: Function to be executed.
+        :param signals: Signals object to emit when done/encountering an error.
         :param args: Positional arguments to be passed to the function.
         :param kwargs: Keyword arguments to be passed to the function.
         """
@@ -2647,7 +2665,7 @@ class BackgroundTask(QRunnable, Generic[P, R]):
         self.func: Callable[P, R] = func
         self.args = args
         self.kwargs = kwargs
-        self.signals = BackgroundTaskSignals()
+        self.signals = BackgroundTaskSignals() if signals is None else signals
 
     @override
     def run(self) -> None:
