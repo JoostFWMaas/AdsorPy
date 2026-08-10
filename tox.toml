@@ -30,7 +30,7 @@ commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-exp
 
 [env.basedpyright]
 deps = ["basedpyright", "[test]", "[gui-deps]"]
-commands = [["basedpyright"]]
+commands = [["basedpyright", "--venv-path", "{envdir}"]]
 
 [env.slotscheck]
 deps = ["slotscheck", "[gui-deps]"]
