@@ -90,10 +90,8 @@ jobs:
 
       - name: Run tests with tox
         uses: coactions/setup-xvfb@b6b4fcfb9f5a895edadc3bc76318fae0ac17c8b3 # v1.0.1
-        env:
-          TOX_ENV: py$(echo "${{ matrix.python-version }}" | tr -d '.')
         with:
-          run: uv run tox -e $TOX_ENV
+          run: uv run tox -e py$(python3 -c "print('${{ matrix.python-version }}'.replace('.', ''))")
 
       - name: Upload test results
         if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
