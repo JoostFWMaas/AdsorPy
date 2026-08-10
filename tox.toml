@@ -29,7 +29,7 @@ commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-exp
 ]
 
 [env.basedpyright]
-deps = ["basedpyright", "[test]"]
+deps = ["basedpyright", "[test], [gui-deps]"]
 commands = [["basedpyright"]]
 
 [env.slotscheck]
