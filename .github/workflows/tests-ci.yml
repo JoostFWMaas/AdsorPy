@@ -24,14 +24,10 @@ jobs:
       contents: read
     runs-on: ${{ matrix.os }}
 
-    env:
-      QT_QPA_PLATFORM: offscreen
-      QT_XCB_GL_INTEGRATION: none
-
     strategy:
       matrix:
         os: [
-#          ubuntu-latest,
+          ubuntu-latest,
           macos-latest,
           windows-latest,
         ]
@@ -47,11 +43,11 @@ jobs:
 
         include:
           # Test absolute lowest bounds (Ubuntu, standard Python version)
-          - os: windows-latest
+          - os: ubuntu-latest
             python-version: '3.13'
             resolution-strategy: lowest
           # Test latest available package upgrades on PyPI
-          - os: windows-latest
+          - os: ubuntu-latest
             python-version: '3.13'
             resolution-strategy: latest
 
@@ -93,12 +89,16 @@ jobs:
           fi
         shell: bash
 
+      # Static checks still run under normal conditions
       - name: Run static checks
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
         run: uv run tox -m static
 
+      # REPLACED STEP: Uses coactions/setup-xvfb to execute the test suite safely across platforms
       - name: Run tests with tox
-        run: uv run tox -e py$(echo ${{ matrix.python-version }} | tr -d '.')
+        uses: coactions/setup-xvfb@b6b4fcfb9f5a895edadc3bc76318fae0ac17c8b3 # v1.0.1
+        with:
+          run: uv run tox -e py$(echo ${{ matrix.python-version }} | tr -d '.')
 
       - name: Upload test results
         if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
