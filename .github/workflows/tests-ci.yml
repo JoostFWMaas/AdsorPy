@@ -85,7 +85,7 @@ jobs:
         shell: bash
 
       - name: Run static checks
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.resolution-strategy == 'default'
         run: uv run tox -m static
 
       - name: Install System Headless Graphics Libraries
