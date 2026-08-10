@@ -8,28 +8,35 @@ This module contains the lowest level methods for the library. run_simulation is
 
 from __future__ import annotations  # This allows for delayed hinting of classes.
 
+import io
 from dataclasses import dataclass, field  # Used to define the config.
 from itertools import count, cycle
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal, ParamSpec, cast
 
 import numpy as np  # For vectorised computations (performed in C).
+import pydantic
 import shapely.affinity as aff
+import svg
+from defusedxml.minidom import parseString
 from matplotlib import pyplot as plt  # Plotting.
 from matplotlib.collections import PatchCollection, PolyCollection  # To make pointers.
 from matplotlib.patches import CirclePolygon, Rectangle
-from pydantic import Field, PositiveFloat, PositiveInt, dataclasses
+from pydantic import Field, NonNegativeFloat, PositiveFloat, PositiveInt
 from rtree.index import Index, Property  # RTree, helps lookups!
-from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare
+from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepare, unary_union
+from shapely.prepared import prep
 
-import src.adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
+import adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-    from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-    from src.adsorpy.types import (
+    from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+    from adsorpy.types import (
         BoolArray,
         BufferArray,
         CoordPair,
@@ -43,9 +50,17 @@ if TYPE_CHECKING:
     P = ParamSpec("P")  # Helps with static type checkers.
 
 
+def _create_empty_coords() -> CoordPair:
+    """Optimised localised function for dataclass factory.
+
+    :returns: Empty coordinates.
+    """
+    return cast("CoordPair", np.empty((2, 1), dtype=np.double))
+
+
 plt.rcParams.update(
     {
-        "font.size": 20,
+        "font.size": 15,
         "xtick.top": True,
         "xtick.direction": "in",
         "xtick.major.width": 3,
@@ -61,28 +76,28 @@ plt.rcParams.update(
 )
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
+@pydantic.dataclasses.dataclass(frozen=True, slots=True)
 class Config:
-    """Dataclass containing the config variables read from data/config."""
+    """Dataclass containing the config variables read from data/config.
 
-    # rsa_config: RsaConfig
-    # "The RSA config."
-    sites: PositiveInt | None  # Site count in the x-direction.
-    "The number of sites in the x-direction."
-    xsize: PositiveFloat | None  # The sizes are not yet properly implemented for this.
-    "Under construction, do not use."
+    :ivar sites: The number of sites in the x-direction.
+    :ivar xsize: Under construction, do not use.
+    :ivar ysize: Under construction, do not use.
+    :ivar zsize: Under construction, do not use.
+    :ivar max_molecule_count: The maximum amount of molecule placements to attempt.
+    :ivar lattice_a: The lattice spacing in Angstrom.
+    :ivar boundary_type: The boundary type. 'soft', 'hard', or 'periodic'.
+    :ivar sticking_probability: The sticking probability of the molecules, between 0 and 1.
+    """
+
+    sites: PositiveInt | None
+    xsize: PositiveFloat | None
     ysize: PositiveFloat | None
-    "Under construction, do not use."
     zsize: PositiveFloat | None
-    "Under construction, do not use."
-    max_molecule_count: PositiveInt  # Maximum amount of molecules to attempt.
-    "The maximum amount of molecule placements to attempt."
-    lattice_a: PositiveFloat  # The lattice constant. Spacing between nearest points.
-    "The lattice spacing in Angstrom."
-    boundary_type: Literal["soft", "hard", "periodic"]  # Boundary condition: soft, hard, or periodic.
-    "The boundary type. 'soft', 'hard', or 'periodic'."
-    sticking_probability: PositiveFloat = Field(le=1.)  # Lower probability means more rejection.
-    "The sticking probability of the molecules, between 0 and 1."
+    max_molecule_count: PositiveInt
+    lattice_a: PositiveFloat
+    boundary_type: Literal["soft", "hard", "periodic"]
+    sticking_probability: NonNegativeFloat = Field(le=1.0)
 
 
 def _config_loader(rsa_config: RsaConfig) -> Config:
@@ -92,15 +107,15 @@ def _config_loader(rsa_config: RsaConfig) -> Config:
     :returns: The Config.
     """
     return Config(
-        # rsa_config=rsa_config,
-        sites=rsa_config.get_value("sites", required=False),  # type: ignore[arg-type]
-        xsize=rsa_config.get_value("xsize", required=False),  # type: ignore[arg-type]
-        ysize=rsa_config.get_value("ysize", required=False),  # type: ignore[arg-type]
-        zsize=rsa_config.get_value("zsize", required=False),  # type: ignore[arg-type]
-        max_molecule_count=rsa_config.get_value("max_molecule_count"),  # type: ignore[arg-type]
-        lattice_a=rsa_config.get_value("lattice_a"),  # type: ignore[arg-type]
-        boundary_type=rsa_config.get_value("boundary_type"),  # type: ignore[arg-type]
-        sticking_probability=rsa_config.get_value("sticking_probability"),  # type: ignore[arg-type]
+        # rsa_config=rsa_config,  TODO: Maybe use cast("int | None", ...)?
+        sites=rsa_config.get_value("sites", required=False),  # pyright: ignore[reportArgumentType]
+        xsize=rsa_config.get_value("xsize", required=False),  # pyright: ignore[reportArgumentType]
+        ysize=rsa_config.get_value("ysize", required=False),  # pyright: ignore[reportArgumentType]
+        zsize=rsa_config.get_value("zsize", required=False),  # pyright: ignore[reportArgumentType]
+        max_molecule_count=rsa_config.get_value("max_molecule_count"),  # pyright: ignore[reportArgumentType]
+        lattice_a=rsa_config.get_value("lattice_a"),  # pyright: ignore[reportArgumentType]
+        boundary_type=rsa_config.get_value("boundary_type"),  # pyright: ignore[reportArgumentType]
+        sticking_probability=rsa_config.get_value("sticking_probability"),  # pyright: ignore[reportArgumentType]
     )
 
 
@@ -108,13 +123,37 @@ class BoundaryParameters:
     """Store the boundary parameters for the surface and the molecule groups.
 
     Mostly empty for 'soft' boundaries, utilises different parameters for 'hard' and 'periodic' boundaries.
+
+    :ivar molecules_flag: True if this is the boundary parameter class for molecules, False if it used for a surface.
+    :ivar boundary_type: The boundary type.
+    :ivar soft_flag: True if used for a soft boundary condition. Only one flag can be True.
+    :ivar hard_flag: True if used for a hard boundary condition. Only one flag can be True.
+    :ivar periodic_flag: True if used for a periodic boundary condition. Only one flag can be True.
+    :ivar hard_inner: All sites close to the edge of the hard boundary. These sites are True, others False.
+    :ivar molecules_bounding_coords: Molecule bounding box coordinates: min/max x/y values.
+    :ivar allowed_idx: Index of allowed rotations. When close to a hard boundary, some rotations are no longer possible.
+    :ivar allowed_bools: Booleans belonging to the allowed rotations.
+        When near the hard boundary, some rotations are impossible.
+    :ivar extended_grid: The surface site coordinates of the extended (periodic) grid.
+    :ivar extended_occupied_by: The occupancy of the extended (periodic) grid.
+        Filled with the indices of the molecules on the grid.
+    :ivar extended_idx: Index of the extended (periodic) grid.
+    :ivar close_to_edge: Boolean array denoting closeness to the edge.
+        If close to the edge, periodicity must be taken into account.
+    :ivar extended_vacant: Boolean array denoting vacantness of the extended (periodic) grid.
+        True if a site is vacant, False otherwise.
+    :ivar edge_flag: Flag indicating closeness to the edge. Reset this for every placement attempt.
+    :ivar mirror_counter: A counter for the molecules + mirror molecules.
+    :ivar mirrors: Mirror indices.
+    :ivar biggest_diameter: The biggest radius between the two largest molecules in the simulation.
+    :ivar tree: STRtree, currently unused.
     """
 
     # Memory is reserved in slots for all variables. This increases speed and memory efficiency.
     __slots__ = (
         "allowed_bools",
         "allowed_idx",
-        "biggest_radius",
+        "biggest_diameter",
         "boundary_type",
         "close_to_edge",
         "edge_flag",
@@ -145,56 +184,36 @@ class BoundaryParameters:
         :param rot_cnt: Count of allowed rotations. 0 for non-molecules.
         :param dbl_max_radius: double the maximum radius of the molecule.
         """
-        self.molecules_flag: Final[bool] = bool(rot_cnt)  # True if for molecules, else False.
-        "True if this is the boundary parameter class for molecules, False if it used for a surface."
+        self.molecules_flag: Final[bool] = bool(rot_cnt)
         self.boundary_type: Final[str] = boundary_type
-        "The boundary type."
-        self.soft_flag: bool = False  # Only one of these three (this line, the next, and the one after) can be True.
-        "True if used for a soft boundary condition."
+
+        self.soft_flag: bool = False
         self.hard_flag: bool = False
-        "True if used for a hard boundary condition."
         self.periodic_flag: bool = False
-        "True if used for a periodic boundary condition."
         self.soft_flag, self.hard_flag, self.periodic_flag = self.set_boundary_flags(
             self.boundary_type,
         )
 
         # Hard boundary parameters:
         self.hard_inner: BoolArray = np.empty(0, dtype=np.bool_)
-        "All sites close to the edge of the hard boundary. These sites are True, others False."
-        self.molecules_bounding_coords: np.ndarray[tuple[int, Literal[4]], np.dtype[np.float64]] = cast(
-            "np.ndarray[tuple[int, Literal[4]], np.dtype[np.float64]]",
-            np.empty((rot_cnt, 4), dtype=np.float64),
+        self.molecules_bounding_coords: np.ndarray[tuple[int, Literal[4]], np.dtype[np.double]] = cast(
+            "np.ndarray[tuple[int, Literal[4]], np.dtype[np.double]]",
+            np.empty((rot_cnt, 4), dtype=np.double),
         )
-        "Molecule bounding box coordinates: min/max x/y values."
-        # Index of allowed rotations.
-        self.allowed_idx: IdxArray = np.arange(rot_cnt, dtype=np.int_)
-        "Index of allowed rotations. When close to a hard boundary, some rotations are no longer possible."
-        # Boolean array of allowed rotations.
+        self.allowed_idx: IdxArray = np.arange(rot_cnt, dtype=np.long)
         self.allowed_bools: BoolArray = np.ones(rot_cnt, dtype=np.bool_)
-        "Booleans belonging to the allowed rotations. When near the hard boundary, some rotations are impossible."
 
         # Periodic boundary parameters:
-        self.extended_grid: CoordsArray = cast("CoordPair", np.empty((2, 0), dtype=np.float64))
-        "The surface site coordinates of the extended (periodic) grid."
-        self.extended_occupied_by: IdxArray = np.empty(0, dtype=np.int_)
-        "The occupancy of the extended (periodic) grid. Filled with the indices of the molecules on the grid."
-        self.extended_idx: IdxArray = np.empty(0, dtype=np.int_)
-        "Index of the extended (periodic) grid."
+        self.extended_grid: CoordsArray = cast("CoordPair", np.empty((2, 0), dtype=np.double))
+        self.extended_occupied_by: IdxArray = np.empty(0, dtype=np.long)
+        self.extended_idx: IdxArray = np.empty(0, dtype=np.long)
         self.close_to_edge: BoolArray = np.empty(0, dtype=np.bool_)
-        "Boolean array denoting closeness to the edge. If close to the edge, periodicity must be taken into account."
         self.extended_vacant: BoolArray = np.empty(0, dtype=np.bool_)
-        "Boolean array denoting vacantness of the extended (periodic) grid. True if a site is vacant, False otherwise."
-        self.edge_flag: bool = False  # Flag to indicate closeness to edge.
-        "Flag indicating closeness to the edge. Reset this for every placement attempt."
-        self.mirror_counter: int = 0  # Count of total amount of molecules + mirrors.
-        "A counter for the molecules + mirror molecules."
-        self.mirrors: IdxArray = np.empty(0, dtype=np.int_)
-        "Mirror indices."
-        self.biggest_radius: float = dbl_max_radius
-        "The biggest radius between the two largest molecules in the simulation."
-        self.tree: STRtree = STRtree([Point()])  # TODO: Figure out whether faster.
-        "STRtree, currently unused."
+        self.edge_flag: bool = False
+        self.mirror_counter: int = 0
+        self.mirrors: IdxArray = np.empty(0, dtype=np.long)
+        self.biggest_diameter: float = dbl_max_radius
+        self.tree: STRtree = STRtree([Point()])
 
     @staticmethod
     def set_boundary_flags(boundary_type: str) -> tuple[bool, bool, bool]:
@@ -237,9 +256,9 @@ class BoundaryParameters:
         :param molgr: The molecule group for which the boundary conditions are defined. Optional.
         """
         # This is the centre of the grid.
-        centre: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]] = cast(
-            "np.ndarray[tuple[Literal[2]], np.dtype[np.float64]]",
-            np.array([0.5 * surf.x_max, 0.5 * surf.y_max], dtype=np.float64),
+        centre: np.ndarray[tuple[Literal[2]], np.dtype[np.double]] = cast(
+            "np.ndarray[tuple[Literal[2]], np.dtype[np.double]]",
+            np.array([0.5 * surf.x_max, 0.5 * surf.y_max], dtype=np.double),
         )
 
         if self.hard_flag and molgr is not None:
@@ -258,7 +277,7 @@ class BoundaryParameters:
             molgr.vacant &= hard_outer  # The outer sites are no longer vacant.
 
         elif self.periodic_flag:
-            dbl_rad: float = 2.0 * molgr.max_radius if molgr is not None else 0.0
+            dbl_rad: float = molgr.max_radius + self.biggest_diameter * 0.5 if molgr is not None else 0.0
             extended_grid: CoordsArray = calc.create_periodic_images(
                 surf.grid_coordinates,
                 surf.x_max,
@@ -276,20 +295,21 @@ class BoundaryParameters:
             extended_grid_boolsout: BoolArray = calc.make_rectangular_filter(
                 centre,
                 extended_grid,
-                *centre + self.biggest_radius,
+                *centre + self.biggest_diameter,
             )
             extended_idx: IdxArray = np.tile(surf.grid_index, reps=9).ravel()
             # The filter leaves the original indices and the indices of nearby mirror images.
             # Images have the same index number as the original site, which makes mirror lookup easy.
             temp_idx: IdxArray = extended_idx[extended_grid_boolsout].ravel()
             self.extended_idx = temp_idx
-            self.extended_occupied_by = np.zeros_like(self.extended_idx, dtype=np.int_).ravel()
+            self.extended_occupied_by = np.zeros_like(self.extended_idx, dtype=np.long).ravel()
             # This grid has duplicate indices at mirrors.
             self.extended_grid = extended_grid[:, extended_grid_boolsout]
             self.tree = STRtree([Point(coord) for coord in self.extended_grid.T])
             if self.molecules_flag:
                 self.extended_vacant = cast("BoolArray", np.ones_like(temp_idx, dtype=np.bool_))
                 self.close_to_edge = ~grid_boolsin  # Array of sites that have mirrors.
+                # self.close_to_edge[:] = True
 
 
 class MoleculeGroup:
@@ -297,6 +317,33 @@ class MoleculeGroup:
 
     It stores the basic shapes of rotated molecules such that they can be translated later.
     It also keeps track of several other values such as radius.
+
+    :ivar group_id: ID value of the molecule group. Automatically iterates when making new molecule groups.
+    :ivar config: Config values.
+    :ivar molecule: Molecule polygon.
+    :ivar rotation_symmetry: Rotation symmetry. 0 for no symmetry, 1 for circle, n (int >= 2) for n-fold.
+    :ivar reflection_symmetry: Reflection symmetry. True for reflection symmetry over the y-axis,
+        False for no reflection symmetry.
+    :ivar area: Area of the molecule.
+    :ivar min_radius: Inradius of the molecule.
+    :ivar max_radius: Circumradius of the molecule.
+    :ivar rotation_count: Rotation count of the molecule. How many rotations are to be considered?
+    :ivar __max_rotation: Molecules can only rotate between 0 and 360 degrees (excluding the endpoint). Do not touch.
+    :ivar rot_refl_count: Rotation + reflection count. If the molecule has no reflection symmetry,
+        all rotations must also be attempted while reflected.
+    :ivar allowed_rotations: Rotations for the molecule.
+    :ivar rotated_molecules: Array of rotated molecules. Used as templates,
+        only translation is needed to get into position.
+    :ivar rotated_buffer_molecules: Buffer molecules are a special type of polygon used for vectorised calculations.
+    :ivar molecule_counter: Molecule counter for this molecule type.
+    :ivar occupied_by: Which molecule hinders what? Defaults to -1 (invalid). Special value -2 indicates unreachable.
+    :ivar sticking_probability: Sticking probability of the molecule.
+    :ivar vacant: Vacancy array for the molecule.
+        Shows which sites are guaranteed to be unreachable (False) and which are free.
+    :ivar vacancy_count: Counts the vacant sites. Updates per placement.
+    :ivar bp: Boundary parameter class.
+    :ivar gap_dists: Distances for the molecules, measured as the sum of the circumradii.
+    :ivar minmax_gaps: Distance as the sum between the circumradius and inradius of two molecules.
     """
 
     # Slots are faster by reserving memory for variables upon class creation (C optimisation).
@@ -348,86 +395,53 @@ class MoleculeGroup:
         :param mgc: Molecule group counter.
         :param rotation_count: The amount of allowed rotations. If not provided, assumes 360.
         """
-        self.group_id: Final[int] = next(mgc)  # Automatically assigns next mol number.
-        "ID value of the molecule group. Automatically iterates when making new molecule groups."
-
+        self.group_id: Final[int] = next(mgc)
         self.config: Final[Config] = _config_loader(rsa_config)
-        "Config values."
-
-        self.molecule: Final[Polygon] = molecule  # The molecule polygon data.
-        "Molecule polygon."
+        self.molecule: Final[Polygon] = molecule
         self.rotation_symmetry: Final[int] = rotation_symmetry
-        "Rotation symmetry. 0 for no symmetry, 1 for circle, n (int >= 2) for n-fold."
         self.reflection_symmetry: Final[bool] = reflection_symmetry
-        "Reflection symmetry. True for reflection symmetry over the y-axis, False for no reflection symmetry."
         self.area: Final[float] = self.molecule.area
-        "Area of the molecule."
-        centre: Point = Point((0, 0))  # Point needed to compute distance.
-        self.min_radius: Final[float] = self.molecule.exterior.distance(centre)
-        "Inradius of the molecule."
-        self.max_radius: Final[float] = self.molecule.exterior.hausdorff_distance(centre)
-        "Circumradius of the molecule."
-        self.rotation_count: int = rotation_count
-        "Rotation count of the molecule. How many rotations are to be considered?"
-        if not rotation_symmetry:  # 0 is circle symmetry, infinite rotation:
-            self.rotation_count = 1  # Only one rotation has to be attempted.
-        elif not (div_modulo := np.divmod(self.rotation_count, rotation_symmetry))[1]:
-            self.rotation_count = div_modulo[0]  # Divide by symmetry.
-        self.__max_rotation: Final[int] = 360
-        "Molecules can only rotate between 0 and 360 degrees (excluding the endpoint). Do not touch."
 
-        # Twice as many rotations and reflections are needed if there is no reflection symmetry.
+        centre: Point = Point((0, 0))
+        self.min_radius: Final[float] = self.molecule.exterior.distance(centre)
+        self.max_radius: Final[float] = self.molecule.exterior.hausdorff_distance(centre)
+
+        self.rotation_count: int = rotation_count
+        if not rotation_symmetry:
+            self.rotation_count = 1
+        elif not (div_modulo := np.divmod(self.rotation_count, rotation_symmetry))[1]:
+            self.rotation_count = div_modulo[0]
+
+        self.__max_rotation: Final[int] = 360
         self.rot_refl_count: Final[int] = self.rotation_count * (1 if self.reflection_symmetry else 2)
-        """Rotation + reflection count. If the molecule has no reflection symmetry,
-        all rotations must also be attempted while reflected. 360 rotations without reflection symmetry: 720 counts.
-         """
+
         self.allowed_rotations: FloatArray = np.linspace(
             start=0,
             stop=self.__max_rotation,
-            dtype=np.float64,
+            dtype=np.double,
             num=self.rotation_count,
             endpoint=False,
         )
-        "Rotations for the molecule."
         if not self.reflection_symmetry:
             self.allowed_rotations = np.tile(self.allowed_rotations, 2)
+
         self.rotated_molecules: GeoArray = np.empty_like(self.allowed_rotations, dtype=Polygon)
-        "Array of rotated molecules. Used as templates, only translation is needed to get into position."
         self.rotated_buffer_molecules: BufferArray = np.empty_like((0, 0), dtype=Polygon)
-        """Buffer molecules are a special type of polygon used for vectorised calculations.
-        They are used to determine whether surface sites are covered by these polygons."""
-
         self.molecule_counter: int = 0
-        "Molecule counter for this molecule type."
+        self.occupied_by: IdxArray = np.full(site_count, -1, dtype=np.long)
 
-        # Which molecule hinders what. -1 means unoccupied, -2 means unavailable.
-        self.occupied_by: IdxArray = np.full(site_count, -1, dtype=np.int_)
-        """Which molecule hinders what? This shows whic molecule occupies which site.
-        Defaults to -1, an invalid molecule index.
-        Special value -2: unoccupied by a particular molecule but still unreachable.
-        """
         stickprob = sticking_probability
         self.sticking_probability: float = self.config.sticking_probability if stickprob is None else stickprob
-        "Sticking probability of the molecule."
 
-        # Initially, everything is vacant.
         self.vacant: BoolArray = np.ones(site_count, dtype=np.bool_)
-        "Vacancy array for the molecule. Shows which sites are guaranteed to be unreachable (False) and which are free."
-
         self.vacancy_count: int = site_count
-        "Counts the vacant sites. Updates per placement."
 
         self.bp: BoundaryParameters = BoundaryParameters(
             self.config.boundary_type,
             self.rot_refl_count,
         )
-        "Boundary parameter class."
-        # The list of compound max radii.
-        self.gap_dists: FloatArray = np.empty(0, dtype=np.float64)
-        "Distances for the molecules, measured as the sum of the circumradii.."
-        # List of compound max + min radii.
-        self.minmax_gaps: FloatArray = np.empty(0, dtype=np.float64)
-        "Distance as the sum between the circumradius and inradius of two molecules."
+        self.gap_dists: FloatArray = np.empty(0, dtype=np.double)
+        self.minmax_gaps: FloatArray = np.empty(0, dtype=np.double)
 
     def generate_rotated_molecules(
         self,
@@ -449,11 +463,11 @@ class MoleculeGroup:
         )
 
         mirror_repeat: int = (not self.reflection_symmetry) + 1
-        for kk in range(mirror_repeat):  # Loop twice if not symmetric, else loop once.
-            for idx in np.arange(kk, self.rot_refl_count, step=mirror_repeat):
-                temp_rotation: np.float64 = self.allowed_rotations[idx]
+        for reflected in range(mirror_repeat):  # Loop twice if not symmetric, else loop once.
+            for idx in np.arange(reflected, self.rot_refl_count, step=mirror_repeat):
+                temp_rotation: np.double = self.allowed_rotations[idx]
                 # Define the rotated molecules. Faster than rotating them every time they are called.
-                if not kk:  # On first pass, rotate the molecule.
+                if not reflected:  # On first pass, rotate the molecule.
                     self.rotated_molecules[idx] = aff.rotate(self.molecule, angle=temp_rotation, origin=(0, 0))  # pyright: ignore[reportArgumentType]
 
                 else:  # On second pass, mirror the rotated molecule.
@@ -481,24 +495,25 @@ class CandidateMolecule:  # Molecule is mistaken for Any by mypy.
     All relevant data for a candidate molecule. The molecule group index, grid index, coordinates, molecules, rotation
     index, molecule number, bool to denote closeness to the border, and existence.
     Re-used every time. All index values are illegal by default for easier debugging.
+
+    :ivar molecule_group_idx: Molecule group index value. Defaults to -1, an invalid value.
+    :ivar grid_index: Grid index value. Defaults to -1, an invalid value.
+    :ivar coordinates: Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.double).
+    :ivar molecule: Candidate molecule. Initially empty.
+    :ivar rot_idx: Rotation index value. Defaults to -1, an invalid value.
+    :ivar molecule_number: Molecule number value. Defaults to -1, an invalid value.
+    :ivar close_to_border: Flag denoting closeness to the border. Defaults to False.
+    :ivar exists: Flag denoting existence of this molecule. Defaults to True.
     """
 
     molecule_group_idx: int = -1
-    "Molecule group index value. Defaults to -1, an invalid value."
     grid_index: int = -1
-    "Grid index value. Defaults to -1, an invalid value."
-    coordinates: CoordPair = field(default_factory=lambda: np.empty((2, 1), dtype=np.float64))  # pyright: ignore[reportAssignmentType]
-    "Coordinates of the molecule. Defaults to np.empty((2, 1), dtype=np.float64)."
+    coordinates: CoordPair = field(default_factory=_create_empty_coords)
     molecule: Polygon = field(default_factory=Polygon)
-    "Candidate molecule. Initially empty."
     rot_idx: int = -1
-    "Rotation index value. Defaults to -1, an invalid value."
     molecule_number: int = -1
-    "Molecule number value. Defaults to -1, an invalid value."
     close_to_border: bool = False
-    "Flag denoting closeness to the border. Defaults to False."
     exists: bool = True
-    "Flag denoting existence of this molecule. Defaults to True."
 
     def get_canddata(
         self,
@@ -529,6 +544,19 @@ class Simulator:
     The class that brings it all together.
     Places/(re)moves the molecules, updates positioning, keeps track of a lot of things.
     Allows for plotting as well, as well as gap size analysis.
+
+    :ivar config: Config values.
+    :ivar rng: Random number generator.
+    :ivar surf: Surface class.
+    :ivar molgroups: List of the molecule group classes.
+    :ivar molgrcount: Count of the molecule group classes.
+    :ivar bp: Boundary parameter class.
+    :ivar flux_flag: Flag denoting whether occupied sites can be re-attempted for placement.
+    :ivar total_molecule_counter: Counter for all molecules on the surface.
+    :ivar outer_rads: Circumradii of all molecules. (Value of two max radii added together).
+    :ivar minmax_rads: Sums of inradii and circumradii. (Value of one max and one min radius added together).
+    :ivar mol_data: Molecule data. This is where the values of the placed molecules and mirror molecules are stored.
+    :ivar __unclaimed: ID value for unreachable sites: sites that are not covered by a molecule but still not reachable.
     """
 
     __slots__ = (
@@ -566,50 +594,32 @@ class Simulator:
         :raises ValueError: if no molecules are provided.
         """
         self.config: Final[Config] = _config_loader(rsa_config)
-        "Config values."
-
         self.rng: np.random.Generator = rng
-        "Random number generator."
         self.surf: Surface = surf
-        "Surface class."
         self.molgroups: list[MoleculeGroup] = mol_groups
-        "List of the molecule group classes."
-        self.molgrcount: int = len(self.molgroups)  # How many mol groups are there?
-        "Count of the molecule group classes."
+        self.molgrcount: int = len(self.molgroups)
         self.bp: BoundaryParameters = BoundaryParameters(self.config.boundary_type)
-        "Boundary parameter class."
 
-        if not self.molgroups:  # If no molecules have been provided:
+        if not self.molgroups:
             errmsg = "No molecules have been provided!"
             raise ValueError(errmsg)
 
         self.flux_flag: bool = include_rejected_flux
-        "Flag denoting whether occupied sites can be re-attempted for placement. False fails, but adds a stepcount."
-        self.total_molecule_counter: np.int_ = np.int_(0)
-        "Counter for all of the molecules on the surface."
+        self.total_molecule_counter: np.long = np.long(0)
 
-        # Outer is the value of two max RADII added together. This can be of the same molecule or between molecules.
-        # Minmax is the value of one max and one min radius added together, for all molecule group combinations.
         self.outer_rads: FloatArray = np.zeros(
             (self.molgrcount, self.molgrcount),
-            dtype=np.float64,
+            dtype=np.double,
         )
-        "Circumradii of all of the molecules."
         self.minmax_rads: FloatArray = np.zeros(
             (self.molgrcount, self.molgrcount),
-            dtype=np.float64,
+            dtype=np.double,
         )
-        "Sums of inradii and circumradii of all of the molecules."
 
         self._calculate_radii()
 
         self.mol_data: MoleculeData = MoleculeData()
-        "Molecule data. This is where the values of the placed molecules and mirror molecules are stored."
-
-        self.__unclaimed: Final[int] = -2  # Value for unreachable but __unclaimed sites.
-        """Value for unreachable but unclaimed sites: sites that are not covered by a molecule but still not reachable.
-         Do not change.
-         """
+        self.__unclaimed: Final[int] = -2
 
     def _calculate_radii(self) -> None:
         """Calculate the min and max radii for the gap arrays."""
@@ -629,8 +639,8 @@ class Simulator:
         self: Simulator,
         surf: Surface,
         pmg: MoleculeGroup,
-        grid_idx: int | np.int_ | None = None,
-        first_rot_idx: int | np.int_ | None = None,
+        grid_idx: int | np.long | None = None,
+        first_rot_idx: int | np.long | None = None,
     ) -> tuple[bool, int, int, int, int, list[int]]:
         """Try to place a molecule.
 
@@ -756,8 +766,8 @@ class Simulator:
             if first_rot_idx is None:
                 cand.rot_idx = int(
                     self.rng.choice(
-                    np.arange(pmg.rot_refl_count)[pmg.bp.allowed_bools],
-                ),  # Set random angle.
+                        np.arange(pmg.rot_refl_count)[pmg.bp.allowed_bools],
+                    ),  # Set random angle.
                 )
             else:
                 cand.rot_idx = int(first_rot_idx)
@@ -800,7 +810,7 @@ class Simulator:
         surf: Surface,
         pmg: MoleculeGroup,
         amgs: list[MoleculeGroup],
-    ) -> np.int_:
+    ) -> np.long:
         """Update the stored molecules, coordinates, and index arrays.
 
         Add a new molecule.
@@ -816,7 +826,7 @@ class Simulator:
         basic_data = cand.get_canddata()
         self.mol_data.add_entry(*basic_data)  # TODO: Make this a lot less ugly.
         cand.molecule_number = self.mol_data.last_accessed_idx
-        new_data: tuple[int, int, bool, int, int, int, np.float64, np.float64, Polygon]
+        new_data: tuple[int, int, bool, int, int, int, np.double, np.double, Polygon]
 
         for grp in amgs:
             grp.vacant[cand.grid_index] = False  # The chosen site is occupied.
@@ -829,7 +839,7 @@ class Simulator:
             "IdxArray",
             np.flatnonzero(cand.grid_index == pmg.bp.extended_idx)
             if pmg.bp.edge_flag
-            else np.array([cand.grid_index], dtype=np.int_),
+            else np.array([cand.grid_index], dtype=np.long),
         )
 
         if pmg.bp.periodic_flag:
@@ -844,12 +854,12 @@ class Simulator:
                         *mirr_coords.ravel(),
                     ),
                 )
-                new_data = (  # type: ignore[assignment]
+                new_data = (
                     mdx,
                     *cast("tuple[int, bool, int]", basic_data[:3]),  # type: ignore[redundant-cast]
                     mirror,
                     basic_data[4],
-                    *cast("tuple[np.float64, np.float64]", mirr_coords.ravel()),
+                    *cast("tuple[np.double, np.double]", mirr_coords.ravel()),
                     mirror_molecule,
                 )
                 self.mol_data.add_mirror(*new_data)
@@ -918,7 +928,8 @@ class Simulator:
         plt_flag: bool = False,
         timestr: str = "",
         results_folder: str | Path = "",
-    ) -> None:
+        use_ax: Axes | None = None,
+    ) -> Axes:
         """Plot the molecules with the grid and save it as a figure.
 
         :param surf: The surface.
@@ -927,10 +938,14 @@ class Simulator:
         :param plt_flag: True: plot the figure.
         :param timestr: The timestring, can be used for saving the name.
         :param results_folder: The folder in which the results will be saved.
+        :param use_ax: The plt.Axes object of the figure. Optional.
+        :returns: The updated plt.Axes object.
         """
         fig: Figure  # Type hinting this makes it much easier to tab-complete commands.
         ax: Axes
         fig, ax = plt.subplots(dpi=1200)
+        if use_ax is not None:
+            ax = use_ax
         ax.set_aspect("equal", "box")
         coords = surf.grid_coordinates
         xmax = np.max(coords[0])
@@ -993,11 +1008,182 @@ class Simulator:
             results_path = Path(results_folder) / f"{timestr}_covered_surface"
             fig.savefig(f"{results_path}.png", transparent=True)
             fig.savefig(f"{results_path}.pdf", transparent=True)
+            self.svgplot_covered_grid(surf, amgs, results_path)
 
         if plt_flag:
             plt.show()
 
-        plt.close(fig)
+        if use_ax is None:
+            plt.close(fig)
+
+        return ax
+
+    def svgplot_covered_grid(
+        self,
+        surf: Surface | None = None,
+        amgs: list[MoleculeGroup] | None = None,
+        filename: str | Path | io.BytesIO = "",
+        rounding: int = 4,
+        dark_mode_bool: bool = False,
+    ) -> None:
+        """Plot the covered grid as an SVG.
+
+        :param surf: The surface object.
+        :param amgs: A list of the molecule groups.
+        :param filename: The file name as string or path.
+        :param rounding: How many digits to round all values to.
+        :param dark_mode_bool: Boolean denoting dark mode. If False, assume light mode.
+        """
+        if surf is None:
+            surf = self.surf
+        if amgs is None:
+            amgs = self.molgroups
+
+        def _idx_to_transform(
+            idx: IdxArray,
+            allowed_rotations: FloatArray,
+            reflection_symmetry: bool,
+        ) -> tuple[FloatArray, BoolArray]:
+            """Transform the molecule array indices to rotations.
+
+            :param idx: The molecule array indices.
+            :param allowed_rotations: The allowed rotations array.
+            :param reflection_symmetry: Whether the molecule has reflection symmetry.
+
+            :returns:
+                1) The angles of the molecules.
+                2) Whether the molecules are reflected.
+            """
+            angle: FloatArray
+            reflect_x: BoolArray
+            if reflection_symmetry:
+                angle = allowed_rotations[idx]
+                reflect_x = np.zeros_like(idx, dtype=np.bool_)
+            else:
+                base_idx = 2 * (idx // 2)
+                angle = allowed_rotations[base_idx]
+                reflect_x_if_no_symmetry = (idx % 2) == 1
+                reflect_x = reflect_x_if_no_symmetry
+
+            return angle, reflect_x
+
+        filepath: Path | io.BytesIO = (
+            Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
+        )
+
+        # tab10_colors: cycle[str] = cycle(
+        #     [
+        #         "#4e79a7",
+        #         "#f28e2b",
+        #         "#e15759",
+        #         "#76b7b2",
+        #         "#59a14f",
+        #         "#edc948",
+        #         "#b07aa1",
+        #         "#ff9da7",
+        #         "#9c755f",
+        #         "#bab0ac",
+        #     ],
+        # )
+        # """New Tableau color map."""  # TODO: Leave toggle for legacy?
+
+        tab10_colors_old = cycle(
+            [
+                "#1f77b4",
+                "#ff7f0e",
+                "#2ca02c",
+                "#d62728",
+                "#9467bd",
+                "#8c564b",
+                "#e377c2",
+                "#7f7f7f",
+                "#bcbd22",
+                "#17becf",
+            ],
+        )
+        """Old Tableau color map."""
+
+        # Define the svg elements for all different levels.
+        defs_elements: list[svg.Polygon] = []
+        root_group_elements: list[svg.G | svg.Rect | svg.Point] = []
+
+        # -----------------------------------
+        # BASE SHAPES
+        # -----------------------------------
+        shape_registry: dict[int, str] = {}
+
+        for mol_gr in amgs:
+            coords = np.round(
+                np.asarray(
+                    mol_gr.rotated_molecules[0].exterior.coords,
+                    dtype=float,
+                ),
+                rounding,
+            )
+
+            shape_id = f"mol_{mol_gr.group_id}"
+
+            poly = svg.Polygon(
+                points=[svg.Point(x=pts[0], y=pts[1]) for pts in coords],
+                id=shape_id,
+                fill=getattr(mol_gr, "color", next(tab10_colors_old)),
+                stroke="none",
+            )
+
+            defs_elements.append(poly)
+            shape_registry[mol_gr.group_id] = shape_id
+
+            mask = self.mol_data.stored_data["exists"] & (self.mol_data.stored_data["mol_group"] == mol_gr.group_id)
+
+            subset = self.mol_data.stored_data[mask]
+            if len(subset) == 0:
+                continue
+
+            angles, reflects_x = _idx_to_transform(
+                idx=subset["rot_idx"],
+                allowed_rotations=mol_gr.allowed_rotations,
+                reflection_symmetry=mol_gr.reflection_symmetry,
+            )
+
+            x_coords = np.round(subset["x_coord"], rounding).astype(str)
+            y_coords = np.round(subset["y_coord"], rounding).astype(str)
+            translate_strs = np.char.add(
+                np.char.add("translate(", x_coords),
+                np.char.add(",", np.char.add(y_coords, ")")),
+            )
+
+            href_target = f"#{shape_registry[mol_gr.group_id]}"
+
+            has_reflection = reflects_x
+            has_rotation = angles != 0.0
+
+            cond_both = has_reflection & has_rotation
+            val_both = np.char.add(np.char.add(translate_strs, " scale(-1,1) rotate("), angles.astype(str))
+            val_both = np.char.add(val_both, ")")
+
+            cond_reflect = has_reflection & ~has_rotation
+            val_reflect = np.char.add(translate_strs, " scale(-1,1)")
+
+            cond_rotate = ~has_reflection & has_rotation
+            val_rotate = np.char.add(np.char.add(translate_strs, " rotate("), angles.astype(str))
+            val_rotate = np.char.add(val_rotate, ")")
+
+            conditions = [cond_both, cond_reflect, cond_rotate]
+            choices = [val_both, val_reflect, val_rotate]
+
+            final_transforms = np.select(conditions, choices, default=translate_strs)
+
+            root_group_elements.append(
+                svg.G(elements=[svg.Use(href=href_target, transform=[tx]) for tx in final_transforms]),
+            )
+
+        site_template, site_group, width, height = surf.make_surface_svg_elements(rounding=rounding)
+        definitions = svg.Defs(elements=[*defs_elements, site_template])
+        style = surf.create_dark_css_style(dark_mode_bool)
+
+        root_group_elements.extend(site_group)
+
+        surf.create_and_write_svg(filepath, root_group_elements, width, height, definitions, style)
 
     def attempt_cascading_placement(
         self,
@@ -1022,7 +1208,7 @@ class Simulator:
                 grid_idx=output[3],
             )  # Try to place a molecule.
             if output[0]:
-                break  # Stop when the first one has been placed.
+                break  # Stop when a molecule has been placed.
 
         return output
 
@@ -1047,14 +1233,16 @@ class Simulator:
             self.rng.choice(np.asarray(molgrs), p=distribution),
         )
 
-    def analyse_gap_size(self, surf: Surface, keepzero: bool = False) -> FloatArray:
+    def analyse_gap_size(self, surf: Surface | None = None, keepzero: bool = False) -> DistArray:
         """Analyse the gap distance based on the distance from surface sites to the nearest molecule.
 
         :param surf: The surface.
-        :param keepzero: Flag denoting whether to keep zero distances (inside of polygon).
+        :param keepzero: Flag denoting whether to keep distances of zero (inside of polygon).
 
         :return: The gap size distribution.
         """
+        surf = self.surf if surf is None else surf
+
         temp_molecules: GeoArray = cast(
             "GeoArray",
             self.mol_data.stored_mirr_data["polygon"][self.mol_data.stored_mirr_data["exists"]]
@@ -1076,7 +1264,7 @@ class Simulator:
 
         mol_tree = STRtree(temp_molecules)
 
-        distance_to_grid: DistArray = np.empty(surf.grid_coordinates.shape[1], dtype=np.float64)
+        distance_to_grid: DistArray = np.empty(surf.grid_coordinates.shape[1], dtype=np.double)
         grid_points = MultiPoint(surf.grid_coordinates.T)
 
         for grd_idx, grd_pnt in enumerate(grid_points.geoms):  # Queries tree. [1] is the distance.
@@ -1088,9 +1276,79 @@ class Simulator:
 
         return distance_to_grid
 
+    def check_if_overlap(self) -> bool:
+        """Check if any of the polygons overlap.
+
+        Slow function. It should always return False. Feel free to use to rigorously check a filled surface.
+        If the simulator has a periodic surface, periodic molecules will be checked as well.
+
+        :returns: True if there is overlap. False if all molecules are disjoint.
+        """
+        polygons: GeoArray
+        if self.bp.periodic_flag:
+            existing = self.mol_data.stored_mirr_data["exists"]
+            polygons = self.mol_data.stored_mirr_data["polygon"][existing]
+        else:
+            existing = self.mol_data.stored_data["exists"]
+            polygons = self.mol_data.stored_data["polygon"][existing]
+
+        ii: Polygon
+        overlap = False
+        for idx, ii in enumerate(polygons):  # TODO: Add STRtree to speed up?
+            prepared_multipolygon = prep(unary_union(polygons[idx + 1 :]))
+            overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this becomes True.
+            if overlap:
+                break
+
+        return overlap
+
+    @property
+    def coverage(self) -> DistArray:
+        """Calculate the coverage per molecule group.
+
+        The total coverage is the sum of the list.
+
+        :returns: Array of coverages per molecule group.
+        """
+        return np.array([mol.molecule_counter for mol in self.molgroups], dtype=np.double) / self.surf.all_site_count
+
+    @property
+    def fraction_of_covered_area(self) -> DistArray:
+        """Calculate the fraction of covered area per molecule group.
+
+        The total fraction of covered area is the sum of the list.
+
+        :returns: Array of the fraction of covered area per molecule group.
+        """
+        return (
+            self.coverage
+            * np.array([mol.area for mol in self.molgroups], dtype=np.double)
+            * self.surf.all_site_count
+            / self.surf.area
+        )
+
 
 class Surface:
-    """Store coordinates and occupation data."""
+    """Store coordinates and occupation data.
+
+    :ivar config: Config values.
+    :ivar lattice_type: Lattice type of the surface. Can be 'triangular'/'hexagonal', 'square' or 'honeycomb'.
+    :ivar sites: Site count of the surface in the x-direction.
+    :ivar simple_shape_flag: Currently unused. Leave True for now.
+    :ivar xsize: Under construction, currently unused.
+    :ivar ysize: Under construction, currently unused.
+    :ivar zsize: Under construction, currently unused.
+    :ivar all_site_count: Total site count for all molecules.
+    :ivar lattice_a: Lattice spacing of the surface in Angstrom.
+    :ivar sticking_probability: Sticking probability of the molecules.
+    :ivar x_max: Maximum x value of the surface. Adjusted properly for periodic surfaces.
+    :ivar y_max: Maximum y value of the surface. Adjusted properly for periodic surfaces.
+    :ivar area: Area of the surface. Adjusted properly for periodic surfaces.
+    :ivar grid_index: Grid index array.
+    :ivar grid_coordinates: Array of the grid coordinates.
+    :ivar bp: Boundary parameters of the surface.
+    :ivar tree: STRtree, currently unused.
+    """
 
     __slots__ = (
         "all_site_count",
@@ -1132,57 +1390,36 @@ class Surface:
         :raise ValueError: If only x or y is provided for a custom surface. Currently unusable.
         """
         self.config: Final[Config] = _config_loader(rsa_config)
-        "Config values."
-
-        # Constants:
         self.lattice_type: Final[str] = lattice_type
-        "Lattice type of the surface. Can be 'triangular'/'hexagonal', 'square' or 'honeycomb'."
 
         self.sites: int = site_count if site_count is not None else 0
-        "Site count of the surface in the x-direction."
         if not self.sites:
             self.sites = self.config.sites if self.config.sites is not None else 0
+
         self.simple_shape_flag: Final[bool] = self.config.sites is not None
-        "Currently unused. Leave True for now."
         self.xsize: float | None = self.config.xsize
-        "Under construction, currently unused."
         self.ysize: float | None = self.config.ysize
-        "Under construction, currently unused."
         self.zsize: float | None = self.config.zsize
-        "Under construction, currently unused."
 
         if not self.simple_shape_flag and (self.xsize is None or self.ysize is None):
             errmsg = "When setting custom sizes, set both x and y."
             raise ValueError(errmsg)
 
         self.all_site_count: int = self._estimate_site_count()
-        "Total site count for all molecules."
-
         self.lattice_a: Final[float] = self.config.lattice_a if lattice_a is None else lattice_a
-        "Lattice spacing of the surface in Angstrom."
+
         stickprob = sticking_probability
         self.sticking_probability: Final[float] = self.config.sticking_probability if stickprob is None else stickprob
-        "Sticking probability of the molecules."
-        self.x_max = 0.0  # Proper value added when grid is generated.
-        "Maximum x value of the surface. Adjusted properly for periodic surfaces."
-        self.y_max = 0.0  # Idem ditto.
-        "Maximum y value of the surface. Adjusted properly for periodic surfaces."
-        self.area = 0.0  # Idem ditto.
-        "Area of the surface. Adjusted properly for periodic surfaces."
 
-        self.grid_index: IdxArray = np.arange(self.all_site_count, dtype=np.int_)
-        "Grid index array."
+        self.x_max = 0.0
+        self.y_max = 0.0
+        self.area = 0.0
 
-        # Instantiated with the right size/shape:
-        self.grid_coordinates: CoordsArray = cast("CoordsArray", np.empty((2, self.all_site_count), dtype=np.float64))
-        "Array of the grid coordinates."
+        self.grid_index: IdxArray = np.arange(self.all_site_count, dtype=np.long)
+        self.grid_coordinates: CoordsArray = cast("CoordsArray", np.empty((2, self.all_site_count), dtype=np.double))
 
-        # Class for the boundary conditions:
-        self.bp = BoundaryParameters(self.config.boundary_type)
-        "Boundary parameters of the surface."
-
-        self.tree: STRtree = STRtree([Point([0, 0])])  # TODO: remove?
-        "STRtree, currently unused."
+        self.bp = BoundaryParameters(self.config.boundary_type if boundary_type is None else boundary_type)
+        self.tree: STRtree = STRtree([Point([0, 0])])
 
     def _estimate_site_count(self) -> int:
         """Estimates the total site count.
@@ -1205,7 +1442,7 @@ class Surface:
         """
         sqrt3: float = np.sqrt(3.0)
 
-        x1: DistArray = np.arange(self.sites, dtype=np.float64)
+        x1: DistArray = np.arange(self.sites, dtype=np.double)
         x1 *= self.lattice_a  # Scale the range by the lattice constant.
         y1: DistArray = x1 * sqrt3  # Scale the y grid.
 
@@ -1246,7 +1483,7 @@ class Surface:
 
         self.grid_index = np.arange(
             self.all_site_count,
-            dtype=np.int_,
+            dtype=np.long,
         )  # Index for gridpoints.
         self.tree = STRtree(
             [Point(coord) for coord in self.grid_coordinates.T],
@@ -1310,21 +1547,30 @@ class Surface:
 
         self.grid_index = np.arange(
             self.all_site_count,
-            dtype=np.int_,
+            dtype=np.long,
         )  # Index for gridpoints.
         self.tree = STRtree(
             [Point(coord) for coord in self.grid_coordinates.T],
         )  # TODO: Never used?
 
-    def plot_surface_sites(self, timestr: str, directory: str | Path = "") -> None:
+    def plot_surface_sites(
+        self,
+        timestr: str = "",
+        directory: str | Path = "",
+        axes_object: Axes | None = None,
+    ) -> Axes:
         """Plot the surface sites (for verification/validation).
 
-        :param timestr: The timestring, can be used for saving.
-        :param directory: The directory in which results are stored.
+        :param timestr: The timestring, can be used for saving. Leave empty to not save.
+        :param directory: The directory in which results are stored. Leave empty to not save.
+        :param axes_object: The plt.Axes object to update, if given.
+        :returns: The plt.Axes object.
         """
         fig: Figure
         ax: Axes
         fig, ax = plt.subplots()
+        if axes_object is not None:
+            ax = axes_object
         plt.figure(dpi=1200)
         ax.set_aspect("equal", "box")
         gridpoints = [
@@ -1340,28 +1586,189 @@ class Surface:
                 *[[0, 0, self.x_max, self.x_max, 0], [0, self.y_max, self.y_max, 0, 0]],
             )
         surfacename = Path(directory) / (timestr + "_surface")
-        fig.savefig(f"{surfacename}.png", transparent=True)
-        fig.savefig(f"{surfacename}.pdf", transparent=True)
-        plt.show()
-        plt.close(fig)
+        if axes_object is None and timestr and directory:
+            fig.savefig(f"{surfacename}.png", transparent=True)
+            fig.savefig(f"{surfacename}.pdf", transparent=True)
+            plt.show()
+            plt.close(fig)
+
+        return ax
+
+    def svgplot_surface_sites(self, filename: str | Path | io.BytesIO = "", dark_mode_bool: bool = False) -> None:
+        """Plot the surface sites as an SVG file.
+
+        :param filename: The filepath of the SVG file. If io.BytesIO is provided, the file will be written to bytes.
+        :param dark_mode_bool: True if dark mode, False if light mode.
+        """
+        filepath: Path | io.BytesIO = (
+            Path(filename).with_suffix(".svg") if not isinstance(filename, io.BytesIO) else filename
+        )
+        site_template, site_group, width, height = self.make_surface_svg_elements()
+        definitions = svg.Defs(elements=[site_template])
+        style = self.create_dark_css_style(dark_mode_bool)
+
+        self.create_and_write_svg(filepath, site_group, width, height, definitions, style)
+
+    def make_surface_svg_elements(self, rounding: int = 4) -> tuple[svg.Circle, list[svg.G | svg.Rect], float, float]:
+        """Make the SVG elements of the surface.
+
+        :param rounding: The number of decimal places to round the coordinates.
+        :returns:
+            1) The surface site template
+            2) The surface sites as svg.G. If a hard boundary is used, also adds that as svg.Rect.
+            3) The width.
+            4) The height.
+        """
+        width = round(self.x_max, rounding)
+        height = round(self.y_max, rounding)
+
+        # Define the svg elements for all different levels.
+        root_group_elements: list[svg.G | svg.Rect] = []
+
+        # -----------------------------------
+        # GRID POINT TEMPLATE
+        # -----------------------------------
+        polongradius = self.lattice_a * 0.1
+
+        grid_polongid = "site"
+        # site_template = svg.Circle(id=grid_polongid, r=polongradius, fill="black", stroke="none")
+        site_template = svg.Circle(id=grid_polongid, r=polongradius)
+
+        rounded_coords: CoordsArray = np.round(self.grid_coordinates, rounding)
+
+        root_group_elements.append(
+            svg.G(elements=[svg.Use(href=f"#{grid_polongid}", x=x, y=y) for x, y in rounded_coords.T]),
+        )
+
+        # -----------------------------------
+        # BORDER
+        # -----------------------------------
+        if self.bp.hard_flag:
+            root_group_elements.append(
+                svg.Rect(
+                    x=0.0,
+                    y=0.0,
+                    width=width,
+                    height=height,
+                    # stroke="black",
+                    fill="none",
+                    stroke_width=2,
+                ),
+            )
+
+        return site_template, root_group_elements, width, height
+
+    @staticmethod
+    def create_dark_css_style(dark_mode_bool: bool = False) -> svg.Style:
+        """Create an option to use dark colours for the SVG.
+
+        :param dark_mode_bool: True if dark mode, False otherwise.
+        :returns: The Style element containing the dark mode CSS toggle.
+        """
+        if dark_mode_bool:
+            css_styles = """
+                use { fill: white; }
+                rect { stroke: white; }
+            """
+
+        else:
+            css_styles = """
+                use { fill: black; }
+                rect { stroke: black; }
+            """
+        return svg.Style(text=css_styles)
+
+    @staticmethod
+    def create_and_write_svg(
+        filename: Path | io.BytesIO,
+        root_group_elements: Sequence[svg.Rect | svg.G | svg.Point],
+        width: float,
+        height: float,
+        definitions: svg.Defs,
+        style: svg.Style,
+    ) -> None:
+        """Create the SVG.
+
+        :param filename: Name of the file to write to, or io.BytesIO object.
+        :param root_group_elements: The root elements to add to the SVG.
+        :param width: The width of the SVG.
+        :param height: The height of the SVG.
+        :param definitions: The definitions (templates) to add to the SVG.
+        """
+        root_elements: list[svg.Defs | svg.G | svg.Style] = [definitions, style]
+        root_group = svg.G(
+            transform=[
+                svg.Scale(x=1, y=-1),
+                svg.Translate(x=0, y=-height),
+            ],
+            elements=cast("list[svg.Element]", root_group_elements),
+        )
+        root_elements.append(root_group)
+
+        root = svg.SVG(
+            width=svg.Length(width, "cm"),
+            height=svg.Length(height, "cm"),
+            viewBox=svg.ViewBoxSpec(0, 0, width, height),
+            elements=root_elements,  # pyright: ignore[reportArgumentType]
+        )
+
+        raw_xml = root.as_str()
+        parsed_xml = parseString(raw_xml)
+        pretty_xml = parsed_xml.toprettyxml(indent="    ", encoding="UTF-8")
+
+        if isinstance(filename, io.BytesIO):
+            filename.write(pretty_xml)
+        else:
+            with filename.open("wb") as f:
+                f.write(pretty_xml)
+
+
+def _create_rtree_index() -> Index:
+    """Optimised localised helper to instantiate a 2D RTree Index without runtime closures.
+
+    :returns: RTree index.
+    """
+    return Index(properties=Property(dimension=2))
 
 
 @dataclass(slots=True)
 class MoleculeData:
-    """Stores the data associated with all the molecules on the surface, as well as periodic molecules."""
+    """Stores the data associated with all the molecules on the surface, as well as periodic molecules.
+
+    :ivar max_array_length: Maximum length of all arrays. Extends by this amount when the maximum is reached.
+    :ivar mol_counter: Molecule counter.
+    :ivar current_mol_id: Current molecule index.
+    :ivar mirr_counter: Mirror counter. Takes steps of 4.
+    :ivar current_mirror_num: Current mirror index number.
+    :ivar last_accessed_idx: Last accessed molecule index.
+    :ivar _header_names: Names of the headers.
+    :ivar _column_datatypes: Datatypes of the columns of the molecule struct array.
+    :ivar _heads_dtypes: Data types + names for the molecule struct array.
+    :ivar _fill_vals: Fill value for the new molecule. Defaults to strictly invalid values.
+    :ivar stored_data: Molecule struct array. Here, all data for the molecules is stored.
+    :ivar mol_tree: Molecules RTree.
+    :ivar _mirr_names: Names of the columns in the mirror molecule struct array.
+    :ivar _mirr_datatypes: Datatypes of the mirror molecule struct array.
+    :ivar _mirr_heads_dtypes: Data types + names for the mirror molecules struct array.
+    :ivar _mirr_fill_vals: Fill values for the new mirror molecule. Defaults to strictly invalid values.
+    :ivar stored_mirr_data: Mirror molecule struct array. Here, all data for the mirror molecules is stored.
+    :ivar mirr_tree: Mirror molecules RTree.
+    :ivar _otomir_names: Names for the origin to mirror array.
+    :ivar _otomir_types: Types of the origin to mirror array.
+    :ivar _otomir_heads_dtypes: Data types for the original molecule to mirror (otomir) struct array.
+    :ivar _otomir_fill_vals: Fill values for the origin to mirror array. Defaults to strictly invalid values.
+    :ivar orig_to_mirrors: Origin to mirror struct array. Stores indices linking mirror molecules to original molecules.
+    :ivar coords: Coordinates of the molecules.
+    :ivar mirror_coords: Mirror coordinates of the molecules.
+    """
 
     max_array_length: int = 100
-    "Maximum length of all arrays. Extends by this amount when the maximum is reached."
     mol_counter: count[int] = field(init=False)
-    "Molecule counter."
     current_mol_id: count[int] = field(init=False)
-    "Current molecule index."
     mirr_counter: count[int] = field(init=False)
-    "Mirror counter. Takes steps of 4."
     current_mirror_num: int = -1
-    "Current mirror index number."
     last_accessed_idx: int = -1
-    "Last accessed molecule index."
+
     _header_names = (
         "self_id",
         "exists",
@@ -1373,17 +1780,14 @@ class MoleculeData:
         "y_coord",
         "polygon",
     )
-    "Names of the headers."
     _column_datatypes = (int, bool, int, int, int, bool, float, float, Polygon)
-    "Datatypes of the columns of the molecule struct array."
     _heads_dtypes: list[tuple[str, type]] = field(init=False)
-    "Data types + names for the molecule struct array."
     _fill_vals = (-1, False, -1, -1, -1, False, 0.0, 0.0, Polygon())
-    "Fill value for the new molecule. Defaults to strictly invalid values."
     stored_data: np.ndarray[tuple[int], np.dtype[np.void]] = field(init=False)
-    "Molecule struct array. Here, all data for the molecules is stored."
-    mol_tree: Index = field(default_factory=lambda: Index(properties=Property(dimension=2)))
-    "Molecules RTree."
+
+    # Optimized factory bypasses anonymous lambda closures for high-speed loops
+    mol_tree: Index = field(default_factory=_create_rtree_index)
+
     _mirr_names = (
         "orig_id",
         "exists",
@@ -1395,32 +1799,20 @@ class MoleculeData:
         "y_coord",
         "polygon",
     )
-    "Names of the columns in the mirror molecule struct array."
     _mirr_datatypes = (int, bool, int, int, int, int, float, float, Polygon)
-    "Datatypes of the mirror molecule struct array."
     _mirr_heads_dtypes: list[tuple[str, type]] = field(init=False)
-    "Data types + names for the mirror molecules struct array."
     _mirr_fill_vals = (-1, False, -1, -1, -1, -1, 0.0, 0.0, Polygon())
-    "Fill values for the new mirror molecule. Defaults to strictly invalid values."
     stored_mirr_data: np.ndarray[tuple[int], np.dtype[np.void]] = field(init=False)
-    "Mirror molecule struct array. Here, all data for the mirror molecules is stored."
-    mirr_tree: Index = field(default_factory=lambda: Index(properties=Property(dimension=2)))
-    "Mirror molecules RTree."
+    mirr_tree: Index = field(default_factory=_create_rtree_index)
+
     _otomir_names = ("exists", "mirr_ids")
-    "Names for the origin to mirror array."
     _otomir_types = (bool, object)
-    "Types of the origin to mirror array."
     _otomir_heads_dtypes: list[tuple[str, type]] = field(init=False)
-    "Data types for the original molecule to mirror (otomir) struct array."
     _otomir_fill_vals: Final[tuple[bool, list[int]]] = False, []
-    "fill values for the origin to mirror array. Defaults to strictly invalid values."
     orig_to_mirrors: np.ndarray[tuple[int], np.dtype[np.void]] = field(init=False)
-    "Origin to mirror struct array. Stores which mirror indices are associated with which original molecule."
 
     coords: CoordsArray = field(init=False)
-    "Coordinates of the molecules."
     mirror_coords: CoordsArray = field(init=False)
-    "Mirror coordinates of the molecules."
 
     def __post_init__(self) -> None:
         """Initialise the counters and the arrays after sizes are known."""
@@ -1454,8 +1846,8 @@ class MoleculeData:
             self._otomir_fill_vals,
         )
 
-        self.coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
-        self.mirror_coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
+        self.coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.double))
+        self.mirror_coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.double))
 
     @staticmethod
     def make_struct_array(

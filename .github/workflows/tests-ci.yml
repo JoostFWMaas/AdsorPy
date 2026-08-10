@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-  # Added weekly schedule to automatically catch upstream breaking changes
+  # Weekly schedule to automatically catch upstream breaking changes
   schedule:
     - cron: '0 0 * * 1' # Runs every Monday at 00:00 UTC
 
@@ -23,10 +23,21 @@ jobs:
     permissions:
       contents: read
     runs-on: ${{ matrix.os }}
+
     strategy:
       matrix:
-        os: [ ubuntu-latest, macos-latest, windows-latest ]
-        python-version: [ '3.10', '3.11', '3.12', '3.13', '3.14' ]
+        os: [
+          ubuntu-latest,
+          macos-latest,
+          windows-latest,
+        ]
+        python-version: [
+          '3.10',
+          '3.11',
+          '3.12',
+          '3.13',
+          '3.14',
+        ]
         # Default behaviour uses the standard frozen lockfile
         resolution-strategy: [ default ]
 
@@ -54,11 +65,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-        with:
-          version: "0.11.26"
-
-      # --- Dependency Resolution Customizations ---
+        uses: astral-sh/setup-uv@f98e06938123ccabd21905ea5d0069192241f9f1 # v8.3.1
 
       - name: Force Lowest Resolution Bounds
         if: matrix.resolution-strategy == 'lowest'
@@ -68,9 +75,6 @@ jobs:
         if: matrix.resolution-strategy == 'latest'
         run: uv lock --upgrade
 
-      # --- Environment Sync & Execution ---
-
-      # Note: --frozen is omitted if we are mutating the lockfile above
       - name: Install tox and plugins
         run: |
           if [ "${{ matrix.resolution-strategy }}" = "default" ]; then
@@ -81,11 +85,17 @@ jobs:
         shell: bash
 
       - name: Run static checks
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.resolution-strategy == 'default'
         run: uv run tox -m static
 
+      - name: Install System Headless Graphics Libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1
+
       - name: Run tests with tox
-        run: uv run tox -e py$(echo ${{ matrix.python-version }} | tr -d '.')
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.os == 'ubuntu-latest' && 'offscreen' || '' }}
+        run: uv run tox -e py$(echo "${{ matrix.python-version }}" | tr -d '.')
 
       - name: Upload test results
         if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'

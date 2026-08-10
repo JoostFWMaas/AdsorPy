@@ -1,13 +1,19 @@
-min_version = "4.54.0"
-env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "pyright", "tach", "slotscheck"]
+min_version = "4.58.0"
+env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
 isolated_build = true
 recreate = true
-labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "pyright", "tach", "slotscheck"] }
+labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
 [env_run_base]
-pass_env = ["CI", "GITHUB_*", "CODECOV_*"]
+pass_env = [
+    "CI",
+    "GITHUB_*",
+    "CODECOV_*",
+    "QT_QPA_PLATFORM",
+    "QT_XCB_GL_INTEGRATION",
+]
 deps = ["-e .[test]"]
-commands = [["pytest", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
+commands = [["pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
     ["codecov"],
 ]
 
@@ -19,16 +25,16 @@ commands = [["ruff", "check", "src", "tests"]]
 [env.mypy]
 skip_install = true
 deps = ["mypy", "numpy", "pydantic"]
-commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--exclude", "/scripts/", "src", "tests"],
+commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--allow-subclassing-any", "--exclude", "/scripts/", "src", "tests"],
 ]
 
-[env.pyright]
-deps = ["pyright", "[test]"]
-commands = [["pyright"]]
+[env.basedpyright]
+deps = ["basedpyright", "[test]"]
+commands = [["basedpyright", "--venvpath", "{envdir}"]]
 
 [env.slotscheck]
-deps = ["slotscheck"]
-commands = [["python", "-m", "slotscheck", "."]]
+deps = ["slotscheck", "[gui-deps]"]
+commands = [["python", "-m", "slotscheck", "-m", "adsorpy"]]
 
 [env.tach]
 skip_install = true

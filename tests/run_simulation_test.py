@@ -12,16 +12,15 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.strategies import SearchStrategy
-from shapely import Polygon, unary_union
+from shapely import Polygon
 from shapely.ops import orient
-from shapely.prepared import prep
 
-from src.adsorpy.randomsequentialadsorption import Simulator
-from src.adsorpy.rsa_config import RsaConfig
-from src.adsorpy.run_simulation import _select_and_run, run_simulation
+from adsorpy.randomsequentialadsorption import Simulator
+from adsorpy.rsa_config import RsaConfig
+from adsorpy.run_simulation import _select_and_run, run_simulation
 
 if TYPE_CHECKING:
-    from src.adsorpy.types import GeoArray
+    pass
 
 SEED = 123654789
 
@@ -41,19 +40,7 @@ def default_polygon() -> Polygon:
 
 def overlap_tester(simulator: Simulator) -> Literal[0]:
     """Test whether none of the molecules overlap. Solely for periodic boundary conditions."""
-    polygons: GeoArray
-    existing = simulator.mol_data.stored_mirr_data["exists"]
-    polygons = simulator.mol_data.stored_mirr_data["polygon"][existing]
-
-    ii: Polygon
-    overlap = False
-    for idx, ii in enumerate(polygons):
-        prepared_multipolygon = prep(unary_union(polygons[idx + 1 :]))
-        overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this test fails.
-        if overlap:
-            break
-
-    assert not overlap
+    assert not simulator.check_if_overlap()
 
     return 0
 
@@ -208,17 +195,17 @@ def test_run_simulation_randomness(
 ) -> None:
     """Test the randomness based on datetime seed."""
     fixed_datetime = datetime(2023, 1, 1, 0, 0, 0, 1, tzinfo=timezone.utc)
-    monkeypatch.setattr("run_simulation.datetime", fixed_datetime)
+    monkeypatch.setattr("adsorpy.run_simulation.datetime", fixed_datetime)
 
     results_1 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
 
     # Move time forward by 1 second to ensure a different seed.
-    monkeypatch.setattr("run_simulation.datetime", fixed_datetime + timedelta(seconds=1))
+    monkeypatch.setattr("adsorpy.run_simulation.datetime", fixed_datetime + timedelta(seconds=1))
 
     results_2 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
 
-    assert results_1[2] != results_2[2]  # Seeds should be different
-    assert not np.array_equal(results_1[3], results_2[3])  # The dose timestamps are virtually guaranteed to be unequal.
+    assert results_1[2] != results_2[2], "Seeds should be different."
+    assert not np.array_equal(results_1[3], results_2[3]), "The dose timestamps are virtually guaranteed to be unequal."
 
 
 def test_run_simulation_determinism(rsa_config: RsaConfig, default_polygon: Polygon, subtests: pytest.Subtests) -> None:
@@ -229,12 +216,12 @@ def test_run_simulation_determinism(rsa_config: RsaConfig, default_polygon: Poly
         "molecules_list": [default_polygon],
         "seed": 42,
     }
-    results_1 = run_simulation(rsa_config, **kwargs)[:-1]  # type: ignore[arg-type]
-    results_2 = run_simulation(rsa_config, **kwargs)[:-1]  # type: ignore[arg-type]
+    results_1 = run_simulation(rsa_config, **kwargs)[:-1]  # pyright: ignore[reportArgumentType]
+    results_2 = run_simulation(rsa_config, **kwargs)[:-1]  # pyright: ignore[reportArgumentType]
     comparison_test_names = ("Mol count", "Gap size", "Seed", "Flux/dose", "ASF")
     for comparison_test_name, output_1, output_2 in zip(comparison_test_names, results_1, results_2, strict=True):
         with subtests.test(f"{comparison_test_name} equivalence"):
-            assert np.array_equal(output_1, output_2)  # type: ignore[arg-type]
+            assert np.array_equal(output_1, output_2)  # pyright: ignore[reportArgumentType]
 
 
 @st.composite
@@ -335,7 +322,7 @@ class TestCustomGrid:
             ValueError,
             match=r"A custom grid will only be generated if 'site_x_coords', 'site_y_coords',*",
         ):
-            run_simulation(rsa_config=rsa_config, site_x_coords=[1.1])  # type: ignore[arg-type]
+            run_simulation(rsa_config=rsa_config, site_x_coords=[1.1])  # pyright: ignore[reportArgumentType]
 
     def test_bad_xcoords(self) -> None:
         """Raise an error when the x coordinates are negative. Same effect as the y coordinates."""
@@ -343,8 +330,8 @@ class TestCustomGrid:
         with pytest.raises(ValueError, match=r"Site x coordinates must be positive.*"):
             run_simulation(
                 rsa_config=rsa_config,
-                site_x_coords=[-1.1],  # type: ignore[arg-type]
-                site_y_coords=[-2.0, 1.1],  # type: ignore[arg-type]
+                site_x_coords=[-1.1],  # pyright: ignore[reportArgumentType]
+                site_y_coords=[-2.0, 1.1],  # pyright: ignore[reportArgumentType]
                 bounding_x_coord=-10,
                 bounding_y_coord=-10,
             )
@@ -356,8 +343,8 @@ class TestCustomGrid:
         *_, sim = run_simulation(
             rsa_config=rsa_config,
             seed=SEED,
-            site_x_coords=0.9 * np.repeat(np.arange(10, dtype=np.float64), 10),
-            site_y_coords=0.9 * np.tile(np.arange(10, dtype=np.float64), 10),
+            site_x_coords=0.9 * np.repeat(np.arange(10, dtype=np.double), 10),
+            site_y_coords=0.9 * np.tile(np.arange(10, dtype=np.double), 10),
             bounding_x_coord=10,
             bounding_y_coord=10,
         )
@@ -384,11 +371,11 @@ def test_select_and_run() -> None:
         ValueError,
         match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported.",
     ):
-        _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # type: ignore[arg-type]
+        _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # pyright: ignore[reportArgumentType]
 
 
 def test_wrong_stickingprobability() -> None:
     """When the wrong sticking probability type is used, an error should be raised."""
     rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
     with pytest.raises(TypeError, match=r"sticking_probability must be a float, list, or np.ndarray"):
-        run_simulation(rsa_config=rsa_config, simulation_type="sequential", sticking_probability="one")  # type: ignore[arg-type]
+        run_simulation(rsa_config=rsa_config, simulation_type="sequential", sticking_probability="one")  # pyright: ignore[reportArgumentType]

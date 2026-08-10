@@ -8,20 +8,20 @@ from pathlib import Path
 
 import numpy as np  # For vectorised computations (performed in C).
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from hypothesis.strategies import SearchStrategy
 from numpy.random import PCG64DXSM, Generator  # New random generator.
 from scipy.spatial.distance import cdist
-from shapely import Polygon, unary_union
-from shapely.prepared import prep
+from shapely import Polygon
 
-import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
-import src.adsorpy.randomsequentialadsorption as rsarun
-from src.adsorpy.rsa_calculator import squared_cdist
-from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-from src.adsorpy.types import CoordsArray, GeoArray
+import adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
+import adsorpy.randomsequentialadsorption as rsarun
+from adsorpy.rsa_calculator import squared_cdist
+from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+from adsorpy.types import CoordsArray, GeoArray
 
 
 class ExampleSimulation:
@@ -93,7 +93,8 @@ class TestWithParameters:
 
     # A fixture sets up the testing environment/provides test data in a test suite.
     @pytest.fixture(scope="class")
-    def simulator(self, configname: str, molgr_count: int, surf_type: str) -> ExampleSimulation:
+    @classmethod
+    def simulator(cls) -> ExampleSimulation:
         """Fixture for the test simulation class."""
         return ExampleSimulation(123123)
 
@@ -138,17 +139,17 @@ class TestWithParameters:
             rot_syms = [2]
             rot_cnts = [360]
             mirror_syms = [True]
-            mol_list = [mol.discorectangle([4.1, 3.1])]
+            mol_list = [mol.discorectangle(4.1, 3.1)]
         elif molgr_count == 2:  # noqa: PLR2004
             rot_syms = [2, 1]
             rot_cnts = [360, 360]
             mirror_syms = [True, False]
-            mol_list = [mol.discorectangle([4.1, 3.1]), mol.discorectangle([3.1, 2.1], 1)]
+            mol_list = [mol.discorectangle(4.1, 3.1), mol.discorectangle(3.1, 2.1, 1)]
         elif molgr_count == 3:  # noqa: PLR2004
             rot_syms = [2, 1, 0]
             rot_cnts = [360, 360, 360]
             mirror_syms = [True, False, True]
-            mol_list = [mol.discorectangle([4.1, 3.1]), mol.discorectangle([3.1, 2.1], 1), mol.circulium(2.05)]
+            mol_list = [mol.discorectangle(4.1, 3.1), mol.discorectangle(3.1, 2.1, 1), mol.circulium(2.05)]
         else:
             errmsg = f"The number of molecules provided ({molgr_count}) is not valid."
             raise ValueError(errmsg)
@@ -178,10 +179,10 @@ class TestWithParameters:
     ) -> None:
         """The boundary parameters initialises correctly."""
         dbl_max_rad = 2.0 * max(ii.max_radius for ii in simulator.molecules)
-        simulator.surf.bp.biggest_radius = dbl_max_rad
+        simulator.surf.bp.biggest_diameter = dbl_max_rad
         simulator.surf.bp.generate_boundary_conditions(simulator.surf)
         for molec in simulator.molecules:
-            molec.bp.biggest_radius = dbl_max_rad
+            molec.bp.biggest_diameter = dbl_max_rad
             molec.bp.generate_boundary_conditions(simulator.surf, molec)
             molec.generate_rotated_molecules(molec.bp, simulator.molecules)
 
@@ -215,20 +216,24 @@ class TestWithParameters:
     ) -> None:
         """The first molecule is placed correctly."""
         succ, *_ = simulator.sim.attempt_place_molecule(simulator.surf, simulator.molecules[0])
-
+        any_test_performed = False
         if (
             succ or not simulator.sim.bp.hard_flag
         ):  # Adsorption cannot be guaranteed on the first step for a hard surface.
+            any_test_performed = True
             assert (
                 np.count_nonzero(simulator.sim.mol_data.stored_data["exists"]) == 1
             )  # One molecule exists on the surf!
 
         if simulator.sim.bp.periodic_flag:
+            any_test_performed = True
             assert np.count_nonzero(simulator.sim.mol_data.stored_mirr_data["exists"]) >= 1
             assert (
                 np.count_nonzero(simulator.sim.mol_data.stored_mirr_data["exists"])
                 == simulator.sim.molgroups[0].bp.mirror_counter
             )
+        if not any_test_performed:
+            pytest.skip("Neither test condition was met.")
 
     def test_buffer_trimming(
         self,
@@ -240,6 +245,8 @@ class TestWithParameters:
         """Multiple sites are removed during the buffer trimming (r neighbourhood clearance) step."""
         if simulator.sim.total_molecule_counter > 0:
             assert simulator.sim.surf.all_site_count - np.count_nonzero(simulator.sim.molgroups[0].vacant) > 1
+        else:
+            pytest.skip("No molecule was placed.")
 
     def test_random_placement(
         self,
@@ -249,7 +256,9 @@ class TestWithParameters:
         surf_type: str,
     ) -> None:
         """Placement works for the codosing scheme."""
-        simulator.sim.attempt_random_placement(simulator.surf, *simulator.molecules)
+        probabilities = np.identity(simulator.sim.molgrcount)
+        for probability in probabilities:
+            simulator.sim.attempt_random_placement(simulator.surf, *simulator.molecules, weights=probability)
 
     def test_try_placement(
         self,
@@ -272,7 +281,14 @@ class TestWithParameters:
         while np.any(simulator.sim.molgroups[0].vacant):
             simulator.sim.attempt_place_molecule(simulator.surf, simulator.molecules[0])
 
+        coverage = simulator.sim.coverage
+        fraction_of_covered_area = simulator.sim.fraction_of_covered_area
+
         assert not np.any(simulator.sim.molgroups[0].vacant)
+        assert np.sum(coverage > 0), "Total coverage > 0."
+        assert np.sum(fraction_of_covered_area > 0), "Total fraction_of_covered_area > 0."
+        assert np.sum(coverage < 1), "Total coverage < 1."
+        assert np.sum(fraction_of_covered_area < 1), "Total fraction_of_covered_area < 1."
 
     def test_no_overlap(
         self,
@@ -285,23 +301,7 @@ class TestWithParameters:
 
         Test periodic molecules as well for periodic boundary conditions.
         """
-        polygons: GeoArray
-        if simulator.sim.bp.periodic_flag:
-            existing = simulator.sim.mol_data.stored_mirr_data["exists"]
-            polygons = simulator.sim.mol_data.stored_mirr_data["polygon"][existing]
-        else:
-            existing = simulator.sim.mol_data.stored_data["exists"]
-            polygons = simulator.sim.mol_data.stored_data["polygon"][existing]
-
-        ii: Polygon
-        overlap = False
-        for idx, ii in enumerate(polygons):  # TODO: Add STRtree to speed up?
-            prepared_multipolygon = prep(unary_union(polygons[idx + 1 :]))
-            overlap = prepared_multipolygon.intersects(ii)  # If there is any overlap, this test fails.
-            if overlap:
-                break
-
-        assert not overlap
+        assert not simulator.sim.check_if_overlap()
 
     def test_no_large_gaps(
         self,
@@ -319,7 +319,8 @@ class TestWithParameters:
         assert np.all(gaps <= circumradius)
 
     @pytest.fixture(scope="class")
-    def alt_simulator(self, configname: str, molgr_count: int, surf_type: str) -> ExampleSimulation:
+    @classmethod
+    def alt_simulator(cls) -> ExampleSimulation:
         """Fixture for the test simulation class, seed differs by 1."""
         return ExampleSimulation(123124)
 
@@ -387,7 +388,7 @@ def test_boundarytype_invalid_input() -> None:
     """An error is raised for invalid boundary types."""
     bad_type: int = 10
     with pytest.raises(TypeError, match=f"The boundary_type of type {type(bad_type).__name__} is not a string."):
-        rsarun.BoundaryParameters(bad_type)  # type: ignore[arg-type]
+        rsarun.BoundaryParameters(bad_type)  # pyright: ignore[reportArgumentType]
 
     bad_name: str = "Dogbonium"
     with pytest.raises(ValueError, match=f"The boundary_type string {bad_name} is not 'soft', 'hard', or 'periodic'."):
@@ -400,7 +401,7 @@ def test_molecules_invalid_input() -> None:
     sim.set_configname("config_test_soft.json")
     sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
     with pytest.raises(ValueError, match=r"No molecules have been provided!"):
-        rsarun.Simulator(sim.rsa_config, None, None, [], None)  # type: ignore[arg-type]
+        rsarun.Simulator(sim.rsa_config, None, None, [], None)  # pyright: ignore[reportArgumentType]
 
 
 @pytest.fixture(scope="class")
@@ -419,7 +420,7 @@ def simple_simulator() -> ExampleSimulation:
     rot_syms = [2]
     rot_cnts = [360]
     mirror_syms = [True]
-    mol_list = [mol.discorectangle([4.1, 3.1])]
+    mol_list = [mol.discorectangle(4.1, 3.1)]
     flux_flag = False
     mgc = count()
     for idx, pp in enumerate(mol_list):
@@ -436,10 +437,10 @@ def simple_simulator() -> ExampleSimulation:
         )
 
     dbl_max_rad = 2.0 * max([ii.max_radius for ii in sim.molecules])
-    sim.surf.bp.biggest_radius = dbl_max_rad
+    sim.surf.bp.biggest_diameter = dbl_max_rad
     sim.surf.bp.generate_boundary_conditions(sim.surf)
     for molec in sim.molecules:
-        molec.bp.biggest_radius = dbl_max_rad
+        molec.bp.biggest_diameter = dbl_max_rad
         molec.bp.generate_boundary_conditions(sim.surf, molec)
         molec.generate_rotated_molecules(molec.bp, sim.molecules)
 
@@ -536,12 +537,12 @@ class TestMiscSettings:
 @settings(deadline=None)
 @given(
     arr1=arrays(
-        dtype=np.float64,
+        dtype=np.double,
         shape=st.tuples(st.just(2), st.integers(min_value=1, max_value=2000)),
         elements=st.floats(allow_infinity=False, allow_nan=False),
     ),
     arr2=arrays(
-        dtype=np.float64,
+        dtype=np.double,
         shape=st.tuples(st.just(2), st.integers(min_value=1, max_value=2000)),
         elements=st.floats(allow_infinity=False, allow_nan=False),
     ),
@@ -625,10 +626,10 @@ def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[i
         )
 
     dbl_max_rad = 2.0 * max([ii.max_radius for ii in simrad.molecules])
-    simrad.surf.bp.biggest_radius = dbl_max_rad
+    simrad.surf.bp.biggest_diameter = dbl_max_rad
     simrad.surf.bp.generate_boundary_conditions(simrad.surf)
     for molec in simrad.molecules:
-        molec.bp.biggest_radius = dbl_max_rad
+        molec.bp.biggest_diameter = dbl_max_rad
         molec.bp.generate_boundary_conditions(simrad.surf, molec)
         molec.generate_rotated_molecules(molec.bp, simrad.molecules)
 
@@ -655,7 +656,50 @@ def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[i
     out_gaps = my_gaps - simrad.sim.molgroups[0].max_radius
     out_gaps[out_gaps < 0.0] = 0.0
 
-    assert simrad.sim.total_molecule_counter == 1
+    assert simrad.sim.total_molecule_counter == 1, "Only 1 molecule may be present."
 
-    assert np.all(out_gaps <= gaps + tolerance)
-    assert np.all(gaps <= in_gaps + tolerance)
+    assert np.all(out_gaps <= gaps + tolerance), "The outradius gaps do not fall within tolerance."
+    assert np.all(gaps <= in_gaps + tolerance), "The inradius gaps do not fall within tolerance."
+
+
+@pytest.fixture
+def mock_simulator() -> rsarun.Simulator:
+    """Make fixture to initialise a minimal instance of the class."""
+    # Create a dummy instance without running a heavy __init__
+    obj = object.__new__(rsarun.Simulator)
+
+    # Mock basic attributes required to bypass initial attribute errors
+    obj.bp = type("MockBP", (), {"periodic_flag": False})()  # pyright: ignore[reportAttributeAccessIssue]
+    obj.mol_data = type("MockMolData", (), {"stored_data": {}})()  # pyright: ignore[reportAttributeAccessIssue]
+    return obj
+
+
+def test_check_if_overlap_succeeds_no_overlap(mock_simulator: rsarun.Simulator, monkeypatch: MonkeyPatch) -> None:
+    """Test that check_if_overlap returns False when polygons are completely disjoint."""
+    # Create two separate, non-overlapping squares
+    poly1 = Polygon([(0, 0), (0, 1), (1, 1), (1, 0)])
+    poly2 = Polygon([(2, 2), (2, 3), (3, 3), (3, 2)])
+
+    mock_polygons = [poly1, poly2]
+
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))  # pyright: ignore[reportArgumentType]
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)  # pyright: ignore[reportArgumentType]
+
+    result = mock_simulator.check_if_overlap()
+
+    assert result is False
+
+
+def test_check_if_overlap_fails_with_overlap(mock_simulator: rsarun.Simulator, monkeypatch: MonkeyPatch) -> None:
+    """Test that check_if_overlap returns True when polygons intersect/overlap."""
+    poly1 = Polygon([(0, 0), (0, 2), (2, 2), (2, 0)])
+    poly2 = Polygon([(1, 1), (1, 3), (3, 3), (3, 1)])  # Overlaps poly1 at (1,1) to (2,2)
+
+    mock_polygons = [poly1, poly2]
+
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "exists", slice(None))  # pyright: ignore[reportArgumentType]
+    monkeypatch.setitem(mock_simulator.mol_data.stored_data, "polygon", mock_polygons)  # pyright: ignore[reportArgumentType]
+
+    result = mock_simulator.check_if_overlap()
+
+    assert result is True

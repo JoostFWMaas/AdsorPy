@@ -9,6 +9,7 @@ The config.json can be found in the adsorpy folder as well.
 
 from __future__ import annotations
 
+import io
 from sys import version_info
 
 if version_info >= (3, 11):
@@ -19,27 +20,36 @@ else:
 import time  # For timing of the script.
 from itertools import count  # A simple counter, iterates with next(...).
 from pathlib import Path  # For path handling in Python.
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeAlias, TypeVar, cast  # For type hinting.
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast, overload  # For type hinting.
 
 import numpy as np  # For vectorised computations (performed in C).
 from numpy.random import PCG64DXSM, Generator  # New random generator.
 from shapely import Polygon  # Shapely creates and manipulates polygons.
 
-import src.adsorpy.molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
-from src.adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Surface
-from src.adsorpy.rsa_config import RsaConfig  # Config of the simulation.
+import adsorpy.molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
+from adsorpy.randomsequentialadsorption import MoleculeGroup, Simulator, Surface
+from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 if TYPE_CHECKING:
-    from src.adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
+    from matplotlib.axes import Axes
+
+    from adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
-    T1 = TypeVar("T1")
-    T2 = TypeVar("T2", bound=np.generic | Polygon)  # type: ignore[explicit-any]
-    TargetType: TypeAlias = np.generic | Polygon  # type: ignore[explicit-any]
-    Tn = TypeVar("Tn", bound=np.ndarray[tuple[int], np.dtype[np.generic | Polygon]])  # type: ignore[explicit-any]
+    T1 = TypeVar("T1", bool, int, float, str, np.double, np.str_, np.long, Polygon, np.bool_)
+    T2 = TypeVar("T2", np.double, np.str_, np.long, Polygon, np.bool_)
+    Tn = TypeVar(
+        "Tn",
+        np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
+        np.ndarray[tuple[int], np.dtype[np.double]],
+        np.ndarray[tuple[int], np.dtype[np.long]],
+        np.ndarray[tuple[int], np.dtype[np.str_]],
+        np.ndarray[tuple[int], np.dtype[np.bool]],
+    )
+    Tax = TypeVar("Tax", Axes, None)
 
 
-def run_simulation(  # noqa: PLR0913
+def run_simulation(  # noqa: PLR0913, PLR0917
     rsa_config: RsaConfig | None = None,
     molecules_list: Polygon | list[Polygon] | GeoArray | None = None,
     rotation_symmetries: int | list[int] | IdxArray | None = None,
@@ -53,7 +63,7 @@ def run_simulation(  # noqa: PLR0913
     dosing_distribution: list[float] | DistArray | None = None,
     include_rejected_flux: bool = False,
     calculate_gap_size: bool = False,
-    print_output_flag: bool = False,
+    prlongoutput_flag: bool = False,
     plot_output_flag: bool = False,
     seed: int | Generator | None = None,
     timestep_limit: int = 1000000,
@@ -82,7 +92,7 @@ def run_simulation(  # noqa: PLR0913
     :param dosing_distribution: The distribution of the adsorption attempts in case of "codosing". Uniform if None.
     :param include_rejected_flux: Whether to include rejected flux in the simulation. If True, sites can be reattempted.
     :param calculate_gap_size: Whether to calculate the gap size of the simulation.
-    :param print_output_flag: Toggle printing output of simulation.
+    :param prlongoutput_flag: Toggle printing output of simulation.
     :param plot_output_flag: Toggle plotting output of simulation.
     :param seed: The seed for the simulation. If None, takes the datetime in microseconds: YYYMMDDhhmmssuuuuuu.
     :param timestep_limit: The maximum number of timesteps to simulate for when the flux is taken into account.
@@ -150,6 +160,7 @@ def run_simulation(  # noqa: PLR0913
     results_folder = temp_results_folder
 
     surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
+
     if custom_grid_flg:
         if TYPE_CHECKING:
             if site_x_coords is None or site_y_coords is None or bounding_x_coord is None or bounding_y_coord is None:
@@ -187,11 +198,11 @@ def run_simulation(  # noqa: PLR0913
         )
 
     dbl_max_rad: float = 2.0 * max(cule.max_radius for cule in molecules)
-    surf.bp.biggest_radius = dbl_max_rad
+    surf.bp.biggest_diameter = dbl_max_rad
 
     surf.bp.generate_boundary_conditions(surf)  # Generate the boundary conditions.
     for molec in molecules:  # Generate the BC and molecules.
-        molec.bp.biggest_radius = dbl_max_rad
+        molec.bp.biggest_diameter = dbl_max_rad
         molec.bp.generate_boundary_conditions(surf, molec)
         molec.generate_rotated_molecules(molec.bp, molecules)
     sim = Simulator(
@@ -217,7 +228,7 @@ def run_simulation(  # noqa: PLR0913
         sim,
         surf,
         molecules,
-        print_output_flag,
+        prlongoutput_flag,
         plot_output_flag,
         calculate_gap_size,
         results_folder,
@@ -290,9 +301,9 @@ def _run_flux(
                 mol_flux.append(step)
                 all_phis.append(int(np.max(phis)))
 
-        all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.int_),))
+        all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.long),))
 
-    return all_flux, np.array(all_phis, dtype=np.int_)
+    return all_flux, np.array(all_phis, dtype=np.long)
 
 
 def _run_flux_fixedrotation(
@@ -311,7 +322,7 @@ def _run_flux_fixedrotation(
     :param distribution: list of floats indicating the distribution of the molecules. Empty for uniform distribution.
     :return: list of indices during which adsorption takes place.
     """
-    all_flux: tuple[IdxArray, ...] = cast("tuple[IdxArray, ...]", tuple(np.empty(0, dtype=np.int_)))
+    all_flux: tuple[IdxArray, ...] = tuple(np.empty(0, dtype=np.long))  # pyright: ignore[reportAssignmentType]
     all_phis: list[int] = []
     mol_array: GeoArray = np.array(molecules)
     all_phis = all_phis * mol_array.size
@@ -327,14 +338,14 @@ def _run_flux_fixedrotation(
             np.append(all_flux[randmol.group_id], step)
             all_phis.append(int(np.max(phi)))
 
-    return all_flux, np.array(all_phis, dtype=np.int_)
+    return all_flux, np.array(all_phis, dtype=np.long)
 
 
 def _initialise_run_parameters(
     molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,  # pyright: ignore[reportInvalidTypeArguments]
-    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
+    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
-    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int_]] | None = None,
+    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]] | None = None,
     simulation_type: str = "sequential",
 ) -> tuple[GeoArray, IdxArray, BoolArray, IdxArray]:
     """Initialise run parameters.
@@ -355,20 +366,55 @@ def _initialise_run_parameters(
         errmsg = "The simulation type must be either 'sequential', 'codosing', or 'cascade'."
         raise ValueError(errmsg)
 
-    molecules_list = _turn_into_list(molecules_list, Polygon)
-    rotation_symmetries = _turn_into_list(rotation_symmetries, int)
-    reflection_symmetries = _turn_into_list(reflection_symmetries, bool)
-    rotation_counts = _turn_into_list(rotation_counts, int)
+    mol_array = _turn_into_list(molecules_list, Polygon)
+    rot_symmetries = _turn_into_list(rotation_symmetries, int)
+    refl_symmetries = _turn_into_list(reflection_symmetries, bool)
+    rot_counts = _turn_into_list(rotation_counts, int)
 
-    mol_list_size = molecules_list.size
-    rot_syms = _repeater(rotation_symmetries, mol_list_size)
-    refl_syms = _repeater(reflection_symmetries, mol_list_size)
-    rot_cnts = _repeater(rotation_counts, mol_list_size)
+    mol_list_size = mol_array.size
+    rot_syms = _repeater(rot_symmetries, mol_list_size)
+    refl_syms = _repeater(refl_symmetries, mol_list_size)
+    rot_cnts = _repeater(rot_counts, mol_list_size)
 
-    return molecules_list, rot_syms, refl_syms, rot_cnts
+    return mol_array, rot_syms, refl_syms, rot_cnts
 
 
-def _turn_into_list(  # type: ignore[explicit-any]
+@overload
+def _turn_into_list(  # type: ignore[overload-overlap]
+    val_or_list: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]],
+    compare_to: type[int],
+) -> np.ndarray[tuple[int], np.dtype[np.long]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]],
+    compare_to: type[bool],
+) -> np.ndarray[tuple[int], np.dtype[np.bool_]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: float | list[float] | np.ndarray[tuple[int], np.dtype[np.double]],
+    compare_to: type[float],
+) -> np.ndarray[tuple[int], np.dtype[np.double]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: str | list[str] | np.ndarray[tuple[int], np.dtype[np.str_]],
+    compare_to: type[str],
+) -> np.ndarray[tuple[int], np.dtype[np.str_]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
+    compare_to: type[Polygon],
+) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # pyright: ignore[reportInvalidTypeArguments]
+
+
+def _turn_into_list(  # pyright: ignore[reportInvalidTypeArguments]
     val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
     compare_to: type[T1],
 ) -> np.ndarray[
@@ -384,14 +430,14 @@ def _turn_into_list(  # type: ignore[explicit-any]
     return np.asarray([val_or_list] if isinstance(val_or_list, compare_to) else val_or_list)
 
 
-def _repeater(orig_array: Tn, comparison_len: int) -> Tn:  # type: ignore[explicit-any]
+def _repeater(orig_array: Tn, comparison_len: int) -> Tn:
     """Take the array and repeat it if it has a length of 1.
 
     :param orig_array: original array.
     :param comparison_len: length of the repetition.
     :return: the array repeated to the proper length.
     """
-    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array  # type: ignore[return-value]
+    return np.repeat(orig_array, comparison_len) if orig_array.size == 1 else orig_array  # pyright: ignore[reportReturnType]
 
 
 def _error_checker(
@@ -460,7 +506,7 @@ def _postprocessing(
     sim: Simulator,
     surf: Surface,
     molecules: list[MoleculeGroup],
-    print_output_flag: bool,
+    prlongoutput_flag: bool,
     plot_output_flag: bool,
     calculate_gap_size: bool,
     results_folder: str | Path,
@@ -471,14 +517,14 @@ def _postprocessing(
     :param sim: simulator.
     :param surf: surface.
     :param molecules: list of molecules.
-    :param print_output_flag: True if output such as coverages and fraction of covered area should be printed.
+    :param prlongoutput_flag: True if output such as coverages and fraction of covered area should be printed.
     :param plot_output_flag: True if plots are to be shown.
     :param calculate_gap_size: True if gap size should be calculated. Can be computationally intensive.
     :param results_folder: results folder.
     :param timestr: timestr to use.
     :return: the gap size distribution. Empty array if calculate_gap_size is False.
     """
-    if print_output_flag:
+    if prlongoutput_flag:
         for mdx, molecul in enumerate(sim.molgroups):
             print(f"Mol {mdx}, {molecul.molecule_counter}")
             print(f"Mol dens {mdx}, {100 * molecul.molecule_counter / surf.area}")
@@ -521,7 +567,7 @@ def _select_and_run(
     :raises ValueError: if the `simulation_type` (dosing scheme) and flux flag combination are not supported.
     """
     all_flux: tuple[IdxArray, ...] = ()
-    phis: IdxArray = np.empty(0, dtype=np.int_)
+    phis: IdxArray = np.empty(0, dtype=np.long)
 
     match (simulation_type, include_rejected_flux):
         case ("sequential", False):
@@ -540,6 +586,78 @@ def _select_and_run(
     return all_flux, phis
 
 
+# @overload
+# def show_surface(
+#     rsa_config: RsaConfig | None = None,
+#     lattice_type: str = "triangular",
+#     site_count: int | None = None,
+#     lattice_a: float | None = None,
+#     # boundary_condition: str | None = None,
+#     seed: int | Generator | None = None,
+#     # site_x_coords: DistArray | None = None,
+#     # site_y_coords: DistArray | None = None,
+#     # bounding_x_coord: float | None = None,
+#     # bounding_y_coord: float | None = None,
+#     svg_flag: bool = False,
+#     filepath: str | Path | io.BytesIO = "",
+#     ax: Axes,
+#     dark_mode_bool: bool = False,
+# ) -> Axes: ...
+
+
+def show_surface(
+    rsa_config: RsaConfig | None = None,
+    lattice_type: str = "triangular",
+    site_count: int | None = None,
+    lattice_a: float | None = None,
+    # boundary_condition: str | None = None,
+    seed: int | Generator | None = None,
+    # site_x_coords: DistArray | None = None,
+    # site_y_coords: DistArray | None = None,
+    # bounding_x_coord: float | None = None,
+    # bounding_y_coord: float | None = None,
+    svg_flag: bool = False,
+    filepath: str | Path | io.BytesIO = "",
+    ax: Tax = None,
+    dark_mode_bool: bool = False,
+) -> Tax:
+    """Show the simulation surface.
+
+    :param rsa_config: Input parameters defined in the config.
+    :param lattice_type: The lattice type. "triangular", "honeycomb", or "square".
+    :param site_count: The site count along one axis. Optional. If None, defaults to the value in config.json.
+    :param lattice_a: The lattice spacing in Angstrom. If None, defaults to the value in config.json.
+    :param seed: The seed for the simulation. If None, takes the datetime in microseconds: YYYMMDDhhmmssuuuuuu.
+    :param svg_flag: If True, show the simulation surface in SVG format.
+    :param filepath: Where to save the file to.
+    :param ax: Plot Axes. Ignored if svg_flag is True.
+    :param dark_mode_bool: True if dark mode, False if light mode.
+    :return: Updated plot Axes.
+    """
+    rsa_config = RsaConfig(Path(__file__).parent / "config.json") if rsa_config is None else rsa_config
+
+    # The seed is defined as the datetime in microseconds. The seed is stored so simulations can be verified.
+    how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
+    seed = int(how_late.strftime("%Y%m%d%H%M%S%f")) if seed is None else seed
+    # As long as the new safer PCG64DXSM generator is not the default, override the generator.
+    rng = Generator(PCG64DXSM(seed)) if isinstance(seed, (int, np.integer)) else seed
+    # Output files of the script are datetime stamped.
+    # timestr = how_late.strftime("%Y%m%dT%H%M%S")
+    # results_folder = Path.cwd() / "Output" / f"{timestr}_RSA"
+
+    surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
+    surf.generate_grid(rng)
+
+    if svg_flag:
+        surf.svgplot_surface_sites(filename=filepath, dark_mode_bool=dark_mode_bool)
+    else:
+        if isinstance(filepath, io.BytesIO):
+            errmsg: str = "Plotter does not accept 'io.BytesIO' as directory."
+            raise TypeError(errmsg)
+        return cast("Tax", surf.plot_surface_sites("", filepath, ax))
+    return ax
+
+
 def main() -> Literal[0]:
     """Run the RSA script, for demonstration purposes.
 
@@ -548,7 +666,13 @@ def main() -> Literal[0]:
     config_path = Path(__file__).parent / "config.json"
     rsa_config = RsaConfig(config_path)
     start = time.perf_counter()
-    run_simulation(rsa_config, plot_output_flag=True, include_rejected_flux=False)
+    run_simulation(
+        rsa_config,
+        plot_output_flag=True,
+        include_rejected_flux=False,
+        molecules_list=mol.dogbonium(1),
+        site_count=10,
+    )
     end = time.perf_counter()
     totaltime = f"{(end - start):.0f} seconds elapsed since start."
     print(totaltime)

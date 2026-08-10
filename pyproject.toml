@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.2.2"  # Edit manually.
+version = "1.3.0-alpha.1"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -17,8 +17,8 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
-    "Natural Language :: English",
     # Intended users of project:
+    "Natural Language :: English",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Topic :: Software Development",
@@ -58,11 +58,17 @@ keywords = [
 
 dependencies = [
     "numpy>=2.2.6",
-    "numba>=0.65.1",
+    "numba>=0.66.0",
     "matplotlib>=3.10.9",
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
+    "pydantic-extra-types>=2.11.1",
     "rtree>=1.4.1",
+    "svg-py>=1.10.0",
+    "defusedxml>=0.7.1",
+    "PySide6>=6.11.1",
+    "typing-extensions>=4.16.0",
+    # Everything after this line is included so uv also runs with the lowest dependency resolution.
     "html5lib>=1.1",
     "wcwidth>=0.7.0",
     "webencodings>=0.5.1",
@@ -80,35 +86,54 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "pytest>=9.0.3",
+    "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.152.4",
+    "hypothesis>=6.165.2",
     "scipy>=1.15.3",
     "codecov>=2.1.13",
+    "pytest-qt>=4.5.0",
+    "adsorpy[gui-deps]",
+    "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
+    "pyvirtualdisplay>=1.3; sys_platform == 'linux'",
+    "easyprocess>=1.1; sys_platform == 'linux'",
 ]
 lint = [
-    "mypy>=2.1.0",
-    "ruff>=0.15.12",
-    "pyright>=1.1.409",
-    "tach>=0.34.1",
-    "slotscheck>=0.19.1",
+    "mypy==2.3.0",
+    "ruff==0.16.2",
+    "basedpyright==1.39.9",
+    "tach==0.35.0",
+    "slotscheck==0.20.1",
+    "pyside6-stubs==6.7.3.0",
+    "gitpython>=3.1.59",
 ]
 docs = [
-    "sphinx>=8.0",
+    "sphinx>=8.1.3",
     "furo>=2025.12.19",
-    "sphinx_design>=0.6.0",
-    "sphinx-autodoc-typehints>=3.0",
+    "sphinx_design>=0.6.1",
+    "sphinx-autodoc-typehints>=3.0.1",
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.54",
-    "tox-uv>=1.35.2",
+    "tox>=4.58.0",
+    "tox-uv>=1.36.0",
+    "uv>=0.12.3",
 ]
 dev-misc = [
     "build>=1.5.0",
     "twine>=6.0",
+    "cryptography>=50.0.0",
     "check-wheel-contents>=0.6.3",
-    "pre-commit>=4.6.0",
+    "pre-commit>=4.6.1",
+    "nodeenv>=1.10.0",
+]
+gui-deps = [
+    "pandas>=2.3.3",
+    "h5py>=3.16.0",
+    "seaborn>=0.13.2",
+    "dask[distributed]>=2026.7.1",
+]
+dev-complete = [
+    "adsorpy[test,lint,docs,envs,dev-misc,gui-deps]"
 ]
 
 [project.urls]
@@ -123,8 +148,6 @@ download = "https://pypi.org/project/adsorpy/#files"
 "adsorpy" = ["py.typed"]
 
 [tool.hatch.build]
-#include = ["src/**"]
-#only-packages = true
 deterministic = true
 
 [tool.hatch.build.targets.wheel]
@@ -140,18 +163,11 @@ include = [
     "sbom.cdx.json",
 ]
 
-[tool.hatch.env]
-requires = [
-    "hatch-pip-compile"
-]
-
-[tool.hatch.envs.default]
-type = "pip-compile"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src/adsorpy"]
-addopts = ["--cov=src/adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers"]
+pythonpath = ["."]
+addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
+qt_api = "pyside6"
 
 [tool.coverage.run]
 omit = [
@@ -166,26 +182,40 @@ omit = [
 ]
 
 [tool.coverage.report]
+#fail_under = 20
 exclude_also = [
     "if __name__ == .__main__.:",
     "def main()",
-    "if False:",
+#    "if False:",
     "raise NotImplementedError",
     "if TYPE_CHECKING",
-    "def plot_*",
-    "if print_*",
-    "if plot_*",
+    "def plot_",
+    "if print_",
+    "if plot_",
     "while temp_results_folder.is_dir()", # Checks for collision in saving folders. Nothing is saved for tests.
     "if self.flux_flag:", # Experimental feature, not yet usable.
-    "_run_flux_*", # See above.
+    "_run_flux_", # See above.
     "if not self.simple_shape_flag", # Idem ditto.
-    "if version_info", # Is tested with Tox (between instances of Pytest). False negative.
+    "if (sys\\.)?version_info", # Is tested with Tox (between instances of Pytest). False negative.
     "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
     "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
+    "svg",
+    "css",
+    "def show_",
+    "def save_",
+    "from typing",
+    "if prlongoutput_flag",
+    "batch_simulation",
+]
+
+[tool.coverage.paths]
+source = [
+    "src/",  # Local path
+    ".tox/*lib//site-packages/",  # Tox path
 ]
 
 [tool.mypy]
-mypy_path = ["src", "optional", "tests"]
+mypy_path = ["."]
 ignore_missing_imports = true
 strict = true
 disallow_any_explicit = true
@@ -198,6 +228,7 @@ plugins = ["pydantic.mypy"]
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
+disallow_subclassing_any = false
 
 [tool.flake8]
 max-line-length = 120
@@ -230,9 +261,13 @@ known_local_folder = ["molcule_lib", "RSA_Calculator", "rsa_config"]
 [tool.black]
 line-length = 88
 
+[tool.uv]
+required-version = "0.12.3"
+
 [tool.ruff]
 line-length = 120
 include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]
+src = ["src"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -265,22 +300,21 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]  # Missing docstring in public package. Not needed, package is empty.
-"test*.py" = ["S101", "TC"]  # Assert should not be used in production code! But this is test code, so here it is expected.
+"tests/*" = ["S101", "TC", "SLF001"]  # Assert should not be used in production code! But this is test code, so here it is expected.
 
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass"]
 
-[tool.pyright]
+[tool.basedpyright]
 include = ["src", "tests"]
-
-typeCheckingMode = "strict"
-
-useLibraryCodeForTypes = true
+extraPaths = ["src"]
+#typeCheckingMode = "strict"  # Comment when using basedpyright.
+#useLibraryCodeForTypes = true
 
 # Avoid penalising third-party libraries.
 reportMissingTypeStubs = "none"
 
-# Suppress "partially unknown" noise from deps like numpy, shapely, matplotlib, etc..
+# Suppress "partially unknown" noise from deps like numpy, shapely, matplotlib, etc...
 reportUnknownMemberType = "none"
 reportUnknownVariableType = "none"
 reportUnknownParameterType = "none"
@@ -293,6 +327,11 @@ reportImplicitOverride = "error"
 reportPrivateUsage = "warning"
 reportUnnecessaryTypeIgnoreComment = "warning"
 reportUnnecessaryComparison = "warning"  # These are usually included to prevent the user from breaking things.
+
+# Basedpyright options, comment these out when falling back on pyright:
+typeCheckingMode = "strict"  # Comment when using pyright.  Options are: "strict", "recommended", "all".
+failOnWarnings = false
+executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportUnnecessaryTypeIgnoreComment = "none" }]
 
 [tool.slotscheck]
 strict-imports = true

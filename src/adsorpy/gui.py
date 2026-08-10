@@ -1,0 +1,2749 @@
+# Copyright (c) 2025-2026 Contributors to the AdsorPy project.
+# SPDX-License-Identifier: MIT
+"""GUI module of adsorpy."""  # TODO: Make a new repo for this!
+
+from __future__ import annotations
+
+# __lazy_modules__ = ["json", "multiprocessing", "pickle", "zipfile", "h5py", "matplotlib", "pandas", "seaborn", "dask"]
+# """Modules that are imported lazily (only when needed) for 3.15+, but regularly for older Python. Place at top."""
+import inspect
+import io
+import json
+import multiprocessing
+import pickle
+import re
+import sys
+import textwrap
+import webbrowser
+import zipfile
+from collections import defaultdict
+
+import h5py
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+from dask.distributed import Future
+from matplotlib import patches
+from pydantic_core import core_schema
+from PySide6.QtCore import QByteArray, QMarginsF
+from PySide6.QtGui import QPageLayout
+from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
+from shiboken6 import Shiboken
+
+if sys.version_info >= (3, 11):
+    from datetime import UTC, datetime  # For datetime stamping and seed generation.
+    from typing import Unpack
+else:
+    from datetime import datetime
+
+    from typing_extensions import Unpack
+
+if sys.version_info >= (3, 12):
+    from typing import TypedDict, override
+else:
+    from typing_extensions import TypedDict, override
+
+from itertools import count
+from pathlib import Path
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    ParamSpec,
+    TypeAlias,
+    TypeGuard,
+    TypeVar,
+    cast,
+    get_origin,
+    get_type_hints,
+)
+
+import numpy as np
+from dask.delayed import delayed
+from dask.distributed import Client, as_completed
+from pydantic import (
+    ConfigDict,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    TypeAdapter,
+    ValidationError,
+    with_config,
+)
+from PySide6.QtCore import (
+    QObject,
+    QRect,
+    QRegularExpression,
+    QRunnable,
+    QSettings,
+    Qt,
+    QThreadPool,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import (
+    QAction,
+    QDoubleValidator,
+    QDropEvent,
+    QGuiApplication,
+    QIcon,
+    QIntValidator,
+    QPageSize,
+    QPainter,
+    QPdfWriter,
+    QPixmap,
+    QRegularExpressionValidator,
+    QResizeEvent,
+    QWheelEvent,
+)
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QLayoutItem,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+from shapely import Polygon, from_geojson
+from shapely.geometry import mapping
+
+from adsorpy import __version__, molecule_lib
+from adsorpy.run_simulation import run_simulation, show_surface
+
+T_qobj = TypeVar("T_qobj", bound=QObject)
+T_inv = TypeVar("T_inv", bool, int, str, float)
+P_mol = ParamSpec("P_mol")  # Helps with static type checkers.
+P = ParamSpec("P")
+R = TypeVar("R")
+# T_widg = TypeVar("T_widg", bound=QWidget)
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, ItemsView, ValuesView
+
+    from dask.delayed import Delayed
+    from numpy.random import Generator
+
+    from adsorpy.randomsequentialadsorption import Simulator
+    from adsorpy.rsa_config import RsaConfig
+    from adsorpy.types import BoolArray, DistArray, FloatArray, GeoArray, IdxArray
+
+    InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QLineEdit | "FilePickerWidget"
+    RunResult: TypeAlias = tuple[DistArray, DistArray, DistArray]
+
+
+class RunSimulationInput(TypedDict, total=False):
+    """Typed dictionary corresponding to the input of the run_simulation function."""
+
+    rsa_config: RsaConfig | None
+    molecules_list: Polygon | list[Polygon] | GeoArray | None
+    rotation_symmetries: int | list[int] | IdxArray | None
+    reflection_symmetries: bool | list[bool] | BoolArray | None
+    rotation_counts: int | list[int] | IdxArray | None
+    lattice_type: str
+    site_count: int | None
+    lattice_a: float | None
+    boundary_condition: str | None
+    simulation_type: str
+    dosing_distribution: list[float] | DistArray | None
+    include_rejected_flux: bool
+    calculate_gap_size: bool
+    prlongoutput_flag: bool
+    plot_output_flag: bool
+    seed: int | Generator | None
+    timestep_limit: int
+    site_x_coords: DistArray | None
+    site_y_coords: DistArray | None
+    bounding_x_coord: float | None
+    bounding_y_coord: float | None
+    sticking_probability: float | list[float] | DistArray
+
+
+class BatchSimulationInput(RunSimulationInput, total=False):
+    """Typed dictionary with repeats argument."""
+
+    repeats: int
+
+
+class FilePickerWidget(QWidget):
+    """Widget to help pick a file."""
+
+    def __init__(self, parent: QWidget | None = None, placeholder: str = "Select a file...") -> None:
+        """Initialise the file-picker widget.
+
+        :param parent: Parent widget.
+        :param placeholder: Placeholder text to display in the selector box.
+        """
+        super().__init__(parent)
+        self._settings = QSettings(type(self).__name__)
+        """Load the settings between sessions."""
+
+        # Layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.line_edit = QLineEdit()
+        """Line edit to show the path and hold the actual value."""
+        self.line_edit.setPlaceholderText(placeholder)
+
+        # Browse button
+        self.browse_button = QPushButton("")
+        """Button to browse files."""
+        self.browse_button.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.FolderOpen))
+        self.browse_button.clicked.connect(self.open_file_dialog)
+
+        # Add to layout
+        layout.addWidget(self.line_edit)
+        layout.addWidget(self.browse_button)
+
+    @Slot(str)
+    def setText(self, value: str) -> None:  # noqa: N802
+        """Set the file path text.
+
+        :param value: The new file path text string.
+        """
+        self.line_edit.setText(value)
+
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type = type(default) if return_type is None else return_type
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
+
+    def open_file_dialog(self) -> None:
+        """Dialogue to display when selecting a file."""
+        # Native OS file dialogue
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            caption="Select File",
+            dir=self._fetch_setting("last_visited_directory", default=""),  # Start at current directory
+            filter="XYZ File (*.xyz)",
+        )
+        if file_path:
+            self.line_edit.setText(file_path)
+            self._settings.setValue("last_visited_directory", str(Path(file_path).parent))
+
+    def text(self) -> str:
+        """Get the text of the box being edited.
+
+        :return: Text of the box being edited.
+        """
+        return cast("str", self.line_edit.text())
+
+
+def set_content(
+    widget: QSpinBox | QDoubleSpinBox | QLineEdit | FilePickerWidget,
+    content: str | float | list[str],
+) -> None:
+    """Set content of widget by matched content type.
+
+    :param widget: The widget being edited.
+    :param content: The content of the widget being edited.
+    :raises ValueError: If the content does not match the widget.
+    """
+    match widget, content:
+        case (QSpinBox(), int()):
+            widget.setValue(content)
+        case (QDoubleSpinBox(), float()):
+            widget.setValue(content)
+        case (QLineEdit() | FilePickerWidget(), str()):
+            widget.setText(content)
+        case (QLineEdit(), list()):
+            widget.setText(",".join(content))
+        case _:
+            errmsg = f"Widget and content mismatch: {type(widget).__name__} and {type(content).__name__}"
+            raise ValueError(errmsg)
+
+
+def extract_param_docs(func: Callable[P, R]) -> dict[str, str]:
+    """Extract parameters and their types from the docstring of a function.
+
+    This function is written for reStructuredText (rst) style docstrings.
+
+    :param func: The function from which the docstring is extracted.
+    :return: The dictionary of parameters and their types (as strings).
+    :raises ValueError: If the function has no docstring.
+    """
+    doc: str | None = inspect.getdoc(func)
+    if doc is None:
+        errmsg: str = f"Docstring of {func.__name__} is not defined."
+        raise ValueError(errmsg)
+
+    param_docs: dict[str, str] = {}
+    lines: list[str] = doc.splitlines()
+
+    current_param: str | None = None
+    buffer: list[str] = []
+
+    for line in lines:
+        param_match = re.match(r":param\s+(\w+)\s*:\s*(.*)", line)
+        end_match = re.match(r":returns?:*", line)
+        if param_match:
+            if current_param and buffer:
+                param_docs[current_param] = " ".join(buffer).strip()
+
+            current_param = param_match.group(1)
+            buffer = [param_match.group(2).strip()]
+
+        elif end_match:
+            break
+
+        elif current_param:
+            buffer.append(line.strip())
+
+    # Save last param
+    if current_param and buffer:
+        param_docs[current_param] = " ".join(buffer).strip()
+
+    return param_docs
+
+
+def from_geojson_str_to_polygon(geojson_str: str) -> Polygon:
+    """Convert from GeoJSON string to Polygon and validate geometry.
+
+    :param geojson_str: GeoJSON string to convert to Polygon.
+    :returns: Shapely Polygon.
+    :raises TypeError: If the string does not generate a Polygon.
+    :raises ValueError: If the generated Polygon is invalid.
+    :raises GEOSException: If the string cannot be parsed as a geojson.
+    """
+    polygon = from_geojson(geojson_str)
+    if isinstance(polygon, Polygon):
+        if polygon.is_valid:
+            return polygon
+        errmsg = f"Polygon is invalid. Exterior coordinates: {polygon.exterior.coords}"
+        raise ValueError(errmsg)
+    errmsg = f"Geometry is of wrong type: {type(polygon).__name__}"
+    raise TypeError(errmsg)
+
+
+def validate_polygon(pol: Polygon | str | dict[str, str | list[list[list[float]]]]) -> Polygon:
+    """Convert the GeoJSON dict data into a real Shapely Polygon or pass the data if it is already a Polygon.
+
+    :param pol: Polygon or GeoJSON format.
+    :returns: Polygon.
+    :raises TypeError: if the type cannot be converted to Polygon.
+    """
+    if isinstance(pol, Polygon):
+        return pol
+
+    if isinstance(pol, dict):
+        # Convert the python dictionary to a valid JSON string first
+        json_str = json.dumps(pol)
+        return from_geojson_str_to_polygon(json_str)
+
+    if isinstance(pol, str):
+        # Turns {"type": "Polygon", "coordinates": ...} into a Shapely object
+        return from_geojson_str_to_polygon(pol)
+
+    errmsg = f"Cannot convert {type(pol)} to a Shapely Polygon"
+    raise TypeError(errmsg)
+
+
+class SimplePolygonDict(TypedDict):
+    """Concise representation of a GeoJSON Polygon dictionary."""
+
+    type: Literal["Polygon"]
+    coordinates: list[list[list[float]]]
+
+
+class PydanticPolygon(Polygon):
+    """A Pydantic-native wrapper type for a Shapely Polygon."""
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls,
+        _source_type: object,
+        _handler: Callable[[object], core_schema.CoreSchema],
+    ) -> core_schema.CoreSchema:
+        """Tell Pydantic exactly how to validate and serialise a Shapely Polygon.
+
+        Uses American spelling of 'serialize' to be compliant with most programming conventions.
+
+        :param _source_type: The source type to use for validation.
+        :param _handler: The handler function to use for validation.
+        :returns: The Pydantic core schema.
+        """
+
+        def validate(value: Polygon | str | dict[str, str | list[list[list[float]]]]) -> Polygon:
+            return validate_polygon(value)
+
+        def serialize(instance: Polygon) -> SimplePolygonDict:
+            return cast("SimplePolygonDict", mapping(instance))
+
+        return core_schema.no_info_before_validator_function(
+            validate,
+            core_schema.any_schema(),
+            serialization=core_schema.plain_serializer_function_ser_schema(
+                serialize,
+                return_schema=core_schema.dict_schema(),
+            ),
+        )
+
+
+class ParamWidgets(TypedDict, total=False):
+    """Typed dictionary for the parameter widgets.
+
+    :ivar radius: Radius of the molecule.
+    :ivar distance: Distance between the halves.
+    :ivar x_offset: Offset in x-direction.
+    :ivar y_offset: Offset in y-direction.
+    :ivar quad_segs: How many segments in a quarter circle.
+    :ivar scale: Scale of the molecule.
+    :ivar verts: Vertex count of the molecule.
+    :ivar roundedness: Roundness of the molecule.
+    :ivar file_name: File name of the molecule.
+    :ivar ignore_atoms: Ignore atoms in the molecule.
+    :ivar roll: Roll of the molecule.
+    :ivar pitch: Pitch of the molecule.
+    :ivar yaw: Yaw of the molecule.
+    :ivar z_trim: Z trim of the molecule.
+    :ivar reference_lattice_spacing: Reference lattice spacing of the molecule.
+    """
+
+    radius: QDoubleSpinBox
+    distance: QDoubleSpinBox
+    x_offset: QDoubleSpinBox
+    y_offset: QDoubleSpinBox
+    quad_segs: QSpinBox
+    scale: QDoubleSpinBox
+    verts: QSpinBox
+    roundedness: QDoubleSpinBox
+    file_name: FilePickerWidget
+    ignore_atoms: QLineEdit
+    roll: QDoubleSpinBox
+    pitch: QDoubleSpinBox
+    yaw: QDoubleSpinBox
+    z_trim: QDoubleSpinBox
+    reference_lattice_spacing: QDoubleSpinBox
+
+
+ParamName = Literal[
+    "radius",
+    "distance",
+    "x_offset",
+    "y_offset",
+    "quad_segs",
+    "scale",
+    "verts",
+    "roundedness",
+    "file_name",
+    "ignore_atoms",
+    "roll",
+    "pitch",
+    "yaw",
+    "z_trim",
+    "reference_lattice_spacing",
+]
+
+
+def is_valid_param(name: str) -> TypeGuard[ParamName]:
+    """Check if a parameter name is valid.
+
+    :param name: Name of the parameter.
+    :returns: Boolean denoting validity.
+    """
+    return name in ParamWidgets.__annotations__
+
+
+@with_config(ConfigDict(arbitrary_types_allowed=True))
+class MoleculeParameters(TypedDict):
+    """Molecule parameters dataclass.
+
+    :ivar index: Index of the molecule parameters configuration.
+    :ivar label: Label of the molecule parameters configuration, guaranteed to be unique.
+    :ivar function_name: Function name of the molecule.
+    :ivar refl_sym: Reflection symmetry.
+    :ivar rot_sym: Rotation symmetry.
+    :ivar rot_cnt: Rotation count (before accounting for reflection/rotation symmetry).
+    :ivar polygon: 2D polygon representation of the molecule.
+    :ivar settings: Function input of the molecule. Defaults to an empty dictionary.
+    """
+
+    index: NonNegativeInt
+    label: str
+    function_name: str
+    refl_sym: bool
+    rot_sym: NonNegativeInt
+    rot_cnt: PositiveInt
+    polygon: PydanticPolygon
+    settings: dict[str, float | int | str | list[str] | None]
+
+
+class SurfaceParameters(TypedDict, total=False):
+    """Surface parameters dataclass.
+
+    :ivar lattice_type: Surface lattice type.
+    :ivar site_count: Site count of the surface.
+    :ivar lattice_a: Lattice spacing of the surface.
+    :ivar seed: RNG seed.
+    """
+
+    lattice_type: Literal["hexagonal", "triangular", "honeycomb", "square"]
+    site_count: PositiveInt
+    lattice_a: PositiveFloat | None
+    seed: int | None
+
+
+class MiscParameters(TypedDict):
+    """Miscellaneous parameters dataclass.
+
+    :ivar seed: RNG seed.
+    :ivar timestep_limit: Maximum allowed step count of the simulation.
+    """
+
+    seed: NonNegativeInt | None
+    timestep_limit: NonNegativeInt | None
+
+
+class ZoomableSvgWidget(QSvgWidget):
+    """SVG widget with zoom capabilities and an absolute floating save button."""
+
+    graphics_changed = Signal(bool)
+
+    def __init__(self, parent: QSvgWidget | None = None) -> None:
+        """Initialise the ZoomableSvgWidget.
+
+        :param parent: Parent QSvgWidget.
+        """
+        super().__init__(parent)
+
+        self.zoom_factor = 1.15
+        self.current_svg_path: str | None = None
+        self._current_svg_bytes: bytes | None = None  # Cache raw bytes for export
+
+        if parent is None:
+            self.setMinimumSize(600, 600)
+
+        # Instantiate directly onto 'self' without a regular layout manager
+        self.save_button = QPushButton(self)
+        self.save_button.setIcon(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave))
+        self.save_button.clicked.connect(self.export_graphics)
+
+        # Enforce exact bounding square dimension profile for an overlay layout
+        self.save_button.setFixedSize(40, 40)
+        self.save_button.hide()
+
+        # Connect visibility slot pipelines directly
+        self.graphics_changed.connect(self.save_button.setVisible)
+
+        # Floating subtle glass styling profile
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(240, 240, 240, 0.9);
+                border: 1px solid #ababab;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: rgba(225, 225, 225, 1.0);
+                border-color: #007BFF;
+            }
+        """)
+
+    @override
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Handle dynamic window resizes by pinning the button to the bottom right corner.
+
+        :param event: Resize event object.
+        """
+        super().resizeEvent(event)
+
+        # Offset placement geometry calculation metrics from boundary margins
+        margin = 20
+        button_w = self.save_button.width()
+        button_h = self.save_button.height()
+
+        # Calculate new destination absolute top-left point coordinates
+        x = self.width() - button_w - margin
+        y = self.height() - button_h - margin
+
+        self.save_button.move(x, y)
+
+    # Unfortunately, load() is an overloaded method. Overriding will always result in a signature error.
+    @override
+    def load(self, contents: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        """Override native load to accept raw bytes, strings, or paths while caching data.
+
+        :param contents: Raw SVG byte content, string path, or Pathlib instance.
+        """
+        if isinstance(contents, bytes):
+            self._current_svg_bytes = contents
+            self.current_svg_path = None
+            super().load(contents)
+        else:
+            path_str = str(contents)
+            self.current_svg_path = path_str
+            try:
+                self._current_svg_bytes = Path(path_str).read_bytes()
+            except (OSError, FileNotFoundError) as e:
+                self._current_svg_bytes = None
+                QMessageBox.warning(self, "Error", f"Data could not be loaded:\n{e}")
+                self.graphics_changed.emit(False)  # noqa: FBT003
+                return
+            super().load(path_str)
+
+        is_valid = self.renderer().isValid()
+
+        # Emit signal which updates button visibility automatically
+        self.graphics_changed.emit(is_valid)
+
+        # Force a geometry recalculation step to guarantee the button positions right away
+        if is_valid:
+            self.save_button.raise_()  # Bring the button to the absolute visual front layer
+            self.updateGeometry()
+
+    def load_svg(self, file_path: Path | str) -> None:
+        """Public convenience method that accepts Pathlib or strings.
+
+        :param file_path: Path to the file to load.
+        """
+        self.load(file_path)
+
+    def export_graphics(self) -> None:
+        """Handle exporting the SVG payload with native file handling and proper scaling."""
+        svg_renderer: QSvgRenderer = self.renderer()
+        if not svg_renderer.isValid():
+            QMessageBox.warning(self, "Export Error", "No valid SVG data loaded.")
+            return
+
+        file_filters = (
+            "Scalable Vector Graphics (*.svg);;PNG Image (*.png);;JPEG Image (*.jpg);;Portable Document Format (*.pdf)"
+        )
+
+        chosen_path_str, selected_filter = QFileDialog.getSaveFileName(self, "Save Graphics As", "", file_filters)
+
+        if not chosen_path_str:
+            return
+
+        file_path = Path(chosen_path_str)
+
+        if not file_path.suffix:
+            if "png" in selected_filter:
+                ext = ".png"
+            elif "jpg" in selected_filter:
+                ext = ".jpg"
+            elif "pdf" in selected_filter:
+                ext = ".pdf"
+            elif "svg" in selected_filter:
+                ext = ".svg"
+            else:
+                errmsg: str = "Invalid file extension."
+                QMessageBox.warning(self, "Export Error", errmsg)
+                return
+            file_path = file_path.with_suffix(ext)
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            suffix_lower = file_path.suffix.lower()
+
+            # Dynamically grab the precise bounding rectangle from the SVG itself
+            target_rect = svg_renderer.viewBoxF()
+            target_size = target_rect.size().toSize()
+
+            min_width: int = 900
+
+            if target_size.width() < min_width:
+                scale_factor: float = min_width / target_size.width()
+                target_size *= scale_factor
+            export_bounds = QRect(0, 0, target_size.width(), target_size.height())
+
+            if suffix_lower == ".svg":
+                if self._current_svg_bytes:
+                    file_path.write_bytes(self._current_svg_bytes)
+                else:
+                    # Pure procedural fallback generation if cache was ever erased
+                    generator = QSvgGenerator()
+                    generator.setFileName(str(file_path))
+                    generator.setSize(target_size)
+                    generator.setViewBox(svg_renderer.viewBox())
+
+                    painter = QPainter()
+                    if painter.begin(generator):
+                        svg_renderer.render(painter)
+                        painter.end()
+                    else:
+                        errmsg = "Could not initialize SVG generator output."
+                        QMessageBox.critical(self, "Export Error", errmsg)
+                        return
+
+            elif suffix_lower in [".png", ".jpg"]:
+                pixmap = QPixmap(target_size)
+
+                if suffix_lower == ".png":
+                    pixmap.fill(Qt.GlobalColor.transparent)
+                else:
+                    pixmap.fill(Qt.GlobalColor.white)
+
+                painter = QPainter(pixmap)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+                # Render into the target coordinate canvas space
+                svg_renderer.render(painter, export_bounds)
+                painter.end()
+
+                pixmap.save(str(file_path), None, 1600)
+
+            elif suffix_lower == ".pdf":
+                writer = QPdfWriter(str(file_path))
+
+                # Use standard Points (1/72 inch) for layout dimensions
+                writer.setPageSize(QPageSize(target_rect.size(), QPageSize.Unit.Point))
+                writer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Point)
+
+                painter = QPainter(writer)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+                scale_factor_x = writer.logicalDpiX() / 72.0
+                scale_factor_y = writer.logicalDpiY() / 72.0
+                painter.scale(scale_factor_x, scale_factor_y)
+
+                svg_renderer.render(painter, target_rect)
+                painter.end()
+
+            QMessageBox.information(self, "Success", f"Graphics successfully saved to:\n{file_path.name}")
+
+        except (ValueError, NotADirectoryError, OSError) as e:
+            errmsg = f"An error occurred while saving:\n{e!s}"
+            QMessageBox.critical(self, "Export Failed", errmsg)
+
+    @override
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """Override scroll wheel events to support Zoom and Horizontal Pan.
+
+        :param event: QWheelEvent for when scrolling occurs.
+        """
+        modifiers = event.modifiers()
+        scroll_area = self.parent()
+        while scroll_area and not isinstance(scroll_area, QScrollArea):
+            scroll_area = scroll_area.parent()
+
+        if modifiers == Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            scale = self.zoom_factor if delta > 0 else 1.0 / self.zoom_factor
+
+            old_size = self.size()
+            new_size = old_size * scale
+            min_scale: int = 100
+            max_scale: int = 50000
+
+            if min_scale < new_size.width() < max_scale:
+                mouse_pos_widget = event.position()
+                self.setFixedSize(new_size)
+
+                if scroll_area:
+                    h_bar = scroll_area.horizontalScrollBar()
+                    v_bar = scroll_area.verticalScrollBar()
+
+                    delta_x = mouse_pos_widget.x() * scale - mouse_pos_widget.x()
+                    delta_y = mouse_pos_widget.y() * scale - mouse_pos_widget.y()
+
+                    h_bar.setValue(int(h_bar.value() + delta_x))
+                    v_bar.setValue(int(v_bar.value() + delta_y))
+            event.accept()
+
+        elif modifiers == Qt.KeyboardModifier.ShiftModifier:
+            if scroll_area:
+                h_bar = scroll_area.horizontalScrollBar()
+                steps = event.angleDelta().y()
+                h_bar.setValue(h_bar.value() - steps)
+            event.accept()
+
+        elif scroll_area:
+            QApplication.sendEvent(scroll_area.viewport(), event)
+        else:
+            event.ignore()
+
+
+class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc]
+    """Metaclass for AppState to automatically communicate between tabs.
+
+    This metaclass scans the ``fields`` class variable and dynamically
+    generates a private storage field (``_field``), a public property
+    (``field``), and a Qt notification signal (``fieldChanged``) for each entry.
+
+    :cvar fields: A dictionary mapping state field names to their expected types.
+    """
+
+    fields: ClassVar[dict[str, type]]
+
+    def __new__(
+        cls,
+        name: str,
+        bases: tuple[type, ...],
+        attrs: dict[str, object],
+    ) -> AutoStateMeta[P_mol, T_qobj]:
+        """Create an AutoState class instance.
+
+        :param name: The name of the class.
+        :param bases: The base classes.
+        :param attrs: The class attributes.
+        :return: The AutoState class instance.
+        """
+        annotations = cast("dict[str, type]", attrs.get("__annotations__", {}))
+
+        fields = {k: v for k, v in annotations.items() if k != "fields" and not k.startswith("_")}
+
+        for field_name, field_type in fields.items():
+            signal_name = f"{field_name}Changed"
+            private_name = f"_{field_name}"
+
+            qt_compatible_type = get_origin(field_type) or field_type
+            if not isinstance(qt_compatible_type, type) or qt_compatible_type.__module__ != "builtins":
+                qt_compatible_type = object
+            attrs[signal_name] = Signal(qt_compatible_type)
+
+            def getter(self: object, private_name: str = private_name) -> object:
+                """Get the value.
+
+                :param private_name: private name.
+                :returns: the getattr() object.
+                """
+                return getattr(self, private_name)
+
+            def setter(
+                self: object,
+                value: object,
+                private_name: str = private_name,
+                signal_name: str = signal_name,
+            ) -> None:
+                """Set the value.
+
+                :param self: the class.
+                :param value: the value to update.
+                :param private_name: private name.
+                :param signal_name: signal name.
+                """
+                setattr(self, private_name, value)
+                getattr(self, signal_name).emit(value)
+
+            attrs[field_name] = property(getter, setter)
+
+        new_class = cast("AutoStateMeta[P_mol, T_qobj]", super().__new__(cls, name, bases, attrs))
+        type(new_class).fields = fields
+
+        return new_class
+
+    @override
+    def __call__(cls, *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
+        """Instantiate the class and auto-initialise its fields.
+
+        :param args: Positional arguments.
+        :param kwargs: Keyword arguments.
+        :returns: The initialised class instance.
+        """
+        obj: T_qobj = super().__call__(*args, **kwargs)
+
+        # Auto-initialise private fields
+        for field_name in cls.fields:
+            private_name = f"_{field_name}"
+            if not hasattr(obj, private_name):
+                setattr(obj, private_name, None)
+
+        return obj
+
+
+class AppState(QObject, metaclass=AutoStateMeta):  # pyright: ignore[reportMissingTypeArgument]
+    """AppState class to communicate between tabs.
+
+    This class maintains synchronised states across the user interface. Changes
+    to any property automatically emit a corresponding ``<property>Changed`` signal.
+
+    :ivar seed_input: The Qt input widget holding the seed value.
+    :ivar step_limit: The maximum allowable processing steps.
+    :ivar misc_params: Miscellaneous parameters.
+    :ivar molecule_param_list: Settings of the molecule(s).
+    :ivar surface_params: Settings of the surface.
+    :ivar coverages: Coverage of simulation results.
+    :ivar fraction_of_covered_area: Fraction of covered area of simulation results.
+    :ivar gap_size_distribution: Gap size distribution of simulation results.
+    """
+
+    seed_input: QLineEdit
+    step_limit: QSpinBox
+    misc_params: MiscParameters
+    molecule_param_list: list[MoleculeParameters]
+    surface_params: SurfaceParameters
+    coverages: tuple[DistArray, ...]
+    fraction_of_covered_area: tuple[DistArray, ...]
+    gap_size_distribution: DistArray
+
+
+class AdsorpyGUI(QMainWindow):
+    """Main window application shell for the AdsorPy simulation engine framework.
+
+    Coordinates the primary window frame, top level configuration menu bars,
+    and hooks up the shared global data state across tab layout frames.
+
+    :cvar window_resized:  Signal of (width, height) emitted when the main application window dimensions are modified.
+    """
+
+    window_resized: Signal = Signal(int, int)
+
+    def __init__(self) -> None:
+        """Initialise frame parameters, global context caches, and child windows.
+
+        This is the main window of the AdsorPy simulation application.
+        """
+        super().__init__()
+
+        self.setWindowTitle("AdsorPy Simulation GUI")
+
+        self.state = AppState()
+        """Shared application runtime cache synchronised across all view frames."""
+
+        self._settings = QSettings(type(self).__name__)
+        """Persistent platform configuration handle cached between user runtime sessions."""
+
+        # Delegate initialisation to helper workflows
+        self._init_menu_bar()
+        self._init_tabs()
+
+    def _init_menu_bar(self) -> None:
+        """Construct the top level application drop-down menu navigation bars."""
+        menubar = self.menuBar()
+
+        # ----------------------------------------------------
+        # File Menu Segment
+        # ----------------------------------------------------
+        file_menu = menubar.addMenu("File")
+
+        self._open_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentOpen), "Open…", self)
+        """Action trigger to parse a serialized system JSON file from disk."""
+        self._open_action.triggered.connect(self._load_settings_json)
+
+        self._save_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.DocumentSave), "Save", self)
+        """Action trigger to serialize current system conditions to disk."""
+        self._save_action.triggered.connect(self._save_settings_json)
+
+        self._exit_action = QAction(QIcon("assets/door-open-out.png"), "Exit", self)
+        """Action trigger to safely kill background workers and close window frames."""
+        self._exit_action.triggered.connect(self.close)
+
+        file_menu.addAction(self._open_action)
+        file_menu.addAction(self._save_action)
+        file_menu.addSeparator()
+        file_menu.addAction(self._exit_action)
+
+        # ----------------------------------------------------
+        # Help Menu Segment
+        # ----------------------------------------------------
+        help_menu = menubar.addMenu("Help")
+
+        self._doc_action = QAction(QIcon("assets/book-open-list.png"), "Documentation (web)", self)
+        """Action link opening the official Sphinx HTML documentation site."""
+        self._doc_action.triggered.connect(
+            lambda: webbrowser.open("https://joostfwmaas.github.io/AdsorPy/"),
+        )
+
+        self._wiki_action = QAction(QIcon.fromTheme(QIcon.ThemeIcon.HelpFaq), "Wiki (web)", self)
+        """Action link opening the community GitHub developer reference portal."""
+        self._wiki_action.triggered.connect(
+            lambda: webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/wiki"),
+        )
+
+        self._bug_action = QAction(QIcon("assets/bug--exclamation.png"), "Report bug (web)", self)
+        """Action link navigating directly to the open project issue dashboard."""
+        self._bug_action.triggered.connect(
+            lambda: webbrowser.open("https://github.com/JoostFWMaas/AdsorPy/issues"),
+        )
+
+        help_menu.addAction(self._doc_action)
+        help_menu.addAction(self._wiki_action)
+        help_menu.addAction(self._bug_action)
+
+    def _init_tabs(self) -> None:
+        """Assemble the central tab frame layout and register sub-dashboards."""
+        self.tabs = QTabWidget()
+        """Primary navigation container organizing distinct module windows."""
+
+        # Instantiate separate view models sharing the single source of truth state
+        self.tabs.addTab(GeneralSettings(self.state), "General")
+        self.tabs.addTab(SurfaceGeneration(self.state), "Surface")
+        self.tabs.addTab(MoleculeGeneration(self.state), "Molecule(s)")
+
+        self.setCentralWidget(self.tabs)
+
+    def _save_settings_json(self) -> None:
+        """Save settings to JSON file."""
+        # Validate seed
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Settings",
+            self._fetch_setting("last_visited_directory", default=""),
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        seed_text = self.state.seed_input.text().strip()
+        step_limit_val = self.state.step_limit.value()
+        # Convert empty fields to None, or parse them to integers
+        seed_val = int(seed_text) if seed_text else None
+        misc_settings = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
+        surf_settings: SurfaceParameters = self.state.surface_params
+        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
+
+        try:
+            misc_adapter = TypeAdapter(MiscParameters)
+            surf_adapter = TypeAdapter(SurfaceParameters)
+            mol_adapter = TypeAdapter(list[MoleculeParameters])
+
+            misc_dump = misc_adapter.dump_python(misc_settings)
+            surf_dump = surf_adapter.dump_python(surf_settings)
+            mol_dump = mol_adapter.dump_python(molecule_settings)
+
+            misc_adapter.validate_python(misc_settings)
+            surf_adapter.validate_python(surf_settings)
+            mol_adapter.validate_python(molecule_settings)
+
+        except ValidationError as e:
+            QMessageBox.critical(
+                self,
+                "Error Saving File",
+                f"Failed to save settings. Structure or type constraints were broken:\n{e}",
+            )
+            return
+
+        combined_data = {
+            "adsorpy_version": __version__,
+            "miscellaneous_parameters": misc_dump,
+            "surface_parameters": surf_dump,
+            "molecule_parameters": mol_dump,
+        }
+
+        with Path(file_path).open("w", encoding="utf-8") as f:
+            json.dump(combined_data, f, indent=4)
+
+        QMessageBox.information(
+            self,
+            "Save Successful",
+            "Your simulation configuration settings have been successfully saved!",
+        )
+
+    def _load_settings_json(self) -> None:
+        """Load, validate, and version-check simulation settings profiles."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Settings",
+            self._fetch_setting("last_visited_directory", default=""),
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if not file_path:
+            return  # User cancelled the file selection dialogue
+
+        with Path(file_path).open("rb") as f:
+            json_bytes = f.read()
+        try:
+            raw_structure = TypeAdapter(dict).validate_json(json_bytes)
+
+            misc_adapter = TypeAdapter(MiscParameters)
+            surf_adapter = TypeAdapter(SurfaceParameters)
+            mol_adapter = TypeAdapter(list[MoleculeParameters])
+
+            # Validate and re-hydrate fields directly into application state
+            self.state.misc_params = misc_adapter.validate_python(raw_structure["miscellaneous_parameters"])
+            self.state.surface_params = surf_adapter.validate_python(raw_structure["surface_parameters"])
+            self.state.molecule_param_list = mol_adapter.validate_python(raw_structure["molecule_parameters"])
+
+            # Synchronise GUI with the newly loaded state
+            misc = self.state.misc_params
+            self.state.seed_input.setText(getattr(misc, "seed", ""))
+
+            # self.log("Settings successfully loaded and validated.")
+
+        except (KeyError, ValidationError) as e:
+            QMessageBox.critical(
+                self,
+                "Error Loading File",
+                f"Failed to parse settings file. Structure or type constraints were broken:\n{e}",
+            )
+
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type = type(default) if return_type is None else return_type
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
+
+    @override  # This decorator is used to indicate a method overrides a method of the base class.
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """Trigger automatically whenever the window size changes.
+
+        :param event: QResizeEvent, an event changing the window size.
+        """
+        # Get the new size from the event object
+        new_size = event.size()
+        width: int = new_size.width()
+        height: int = new_size.height()
+
+        self.window_resized.emit(width, height)
+
+        super().resizeEvent(event)
+
+
+class GeneralSettings(QWidget):
+    """General simulation configuration dashboard tab view.
+
+    Provides inputs for setting the execution step boundaries, absolute pseudo-random
+    number generator seeds, and renders real-time structural vector tracking maps.
+    """
+
+    def __init__(self, state: AppState) -> None:
+        """Initialise validation engines and build structural control modules.
+
+        :param state: AppState object for communication between tab widgets.
+        """
+        super().__init__()  # Inherit from the super() class (in this case: AppState).
+
+        self._settings = QSettings(type(self).__name__)
+        """Persistent platform configuration handle cached between user runtime sessions."""
+
+        self.state = state
+        """App state object for communication between tab widgets."""
+
+        self.bg_signals = BackgroundTaskSignals()
+        """Signals for the simulation background tasks."""
+
+        # Run UI Initialisation steps
+        self._init_validators()
+
+        # Extract widgets/layouts from the initialisation helpers
+        # (Assuming _init_controls sets up fields like seed, step limits, etc.)
+        controls_layout = self._init_controls()
+        svg_widget = self._init_svg_view()
+
+        # Create the Left Panel: Wrap controls layout inside a clean container QWidget
+        left_panel = QWidget()
+        left_panel.setLayout(controls_layout)
+
+        # Create the Centre Panel: Wrap SVG view in a QScrollArea for responsiveness
+        centre_scroll = QScrollArea()
+        centre_scroll.setWidgetResizable(True)
+        centre_scroll.setWidget(svg_widget)
+
+        self.state.surface_paramsChanged.connect(self._on_surface_changed)  # pyright: ignore[reportAttributeAccessIssue]
+        self.state.molecule_param_listChanged.connect(self._on_molecules_changed)  # pyright: ignore[reportAttributeAccessIssue]
+        self.input_metadata: BatchSimulationInput = BatchSimulationInput()
+        """Dict of input values, to be stored as metadata."""
+
+        # Clean up scroll area borders to integrate smoothly with the splitter look
+        # centre_scroll.setFrameShape(QScrollArea.FrameShape.NoFrame)
+
+        # Create the Right Panel: Create a panel for listing generated arrays/molecules
+        # right_panel = self._init_management_panel() # Or: right_panel = QWidget()
+        # right_panel = QWidget()
+
+        # Unify sub-panels using exact splitter framework layout method
+        self._assemble_layout(left=left_panel, center=centre_scroll)
+
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type: type[T_inv] = type(default) if return_type is None else return_type
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
+
+    def _init_validators(self) -> None:
+        """Instantiate validation models for text constraint processing."""
+        self._seed_validator = QRegularExpressionValidator()
+        """Restricts string parameters strictly to absolute positive digits."""
+        self._seed_validator.setRegularExpression(QRegularExpression(r"^\d+$"))
+
+    def _init_controls(self) -> QVBoxLayout:
+        """Assemble environment settings selectors and connect state triggers.
+
+        :return: A populated vertical layout holding runtime widgets.
+        """
+        layout = QVBoxLayout()
+
+        # Pseudo-random generator state seed tracking
+        layout.addWidget(QLabel("Optional Seed (positive int):"))
+        self.seed_input = QLineEdit()
+        """Input widget capturing custom random generation bounds."""
+        self.seed_input.setValidator(self._seed_validator)
+        self.seed_input.setPlaceholderText("e.g. 23")
+        self.seed_input.setToolTip("RNG seed for the simulation. If empty, defaults to datetime in microseconds.")
+        layout.addWidget(self.seed_input)
+
+        # Sync the specific text field reference directly to global state tracking
+        self.state.seed_input = self.seed_input
+
+        # Absolute execution cycle step limit constraints
+        layout.addWidget(QLabel("Step limit (optional, > 0 int):"))
+        self.step_limit = QSpinBox()
+        """Input widget restricting maximum sequential process cycles."""
+        self.step_limit.setToolTip("The maximum step limit of the simulation. Stops when done or when limit reached.")
+        # self.step_limit.setPlaceholderText("e.g. 1")
+        # self.step_limit.setValidator(self._gt_one_validator)
+        self.step_limit.setMinimum(0)
+        self.step_limit.setMaximum(100000000)
+        self.step_limit.setValue(cast("int", self.get_run_sim_default("timestep_limit")))
+        self.step_limit.setAccelerated(True)
+        self.step_limit.setStepType(QSpinBox.StepType.AdaptiveDecimalStepType)
+        self.state.step_limit = self.step_limit
+        layout.addWidget(self.step_limit)
+
+        layout.addWidget(_make_horizontal_line())
+
+        layout.addLayout(self._init_feedback_textboxes())
+
+        self.run_group = QGroupBox()
+        """Simulation run group box."""
+        run_grid = QGridLayout(self.run_group)
+
+        self.run_button = QPushButton("Run Simulation (1x)")
+        """Trigger execution wrapper for adsorpy run."""
+        self.run_button.setToolTip("Runs the random sequential adsorption simulation.")
+        run_grid.addWidget(self.run_button, 0, 1)
+        self.run_button.clicked.connect(self.run_simulation)
+
+        self.repeat_count = QSpinBox()
+        """Repeat count value."""
+        self.repeat_count.setToolTip("Number of times to repeat. 100 is plenty for most purposes.")
+        self.repeat_count.setMinimum(1)
+        self.repeat_count.setMaximum(100000)
+        self.repeat_count.setValue(self._fetch_setting("repeat_count", 10))
+        self.repeat_count.setAccelerated(True)
+        self.repeat_count.valueChanged.connect(self._change_bulk_run_value)
+        run_grid.addWidget(self.repeat_count, 1, 0)
+
+        self.bulk_run_button = QPushButton(f"Bulk Run ({self.repeat_count.value()}x)")
+        """Trigger execution wrapper for adsorpy bulk run."""
+        self.bulk_run_button.setToolTip("Runs the simulation multiple times in parallel.")
+        self.bulk_run_button.clicked.connect(self.run_batch_simulation)
+        run_grid.addWidget(self.bulk_run_button, 1, 1)
+
+        layout.addWidget(self.run_group)
+
+        layout.addWidget(_make_horizontal_line())
+
+        self.progress_bar = QProgressBar()
+        """Progress bar for simulations."""
+        self.progress_bar.setToolTip("Simulation progress. 'Are we there yet?'")
+        self.progress_bar.setRange(0, 100)  # Maps perfectly to percentages (0 to 100)
+        self.progress_bar.setValue(0)  # Start empty
+        self.progress_bar.hide()
+        layout.addWidget(self.progress_bar, stretch=1, alignment=Qt.AlignmentFlag.AlignTop)
+
+        self.coverage_label = QLabel("")
+        """Coverage value."""
+        self.coverage_label.hide()
+        self.coverage_label.setToolTip("Fraction of surface sites consumed by molecules.")
+        layout.addWidget(self.coverage_label, alignment=Qt.AlignmentFlag.AlignTop)
+        self.covered_area_label = QLabel("")
+        """Fraction of covered area value."""
+        self.coverage_label.setToolTip("Fraction of surface area covered by molecule footprints.")
+        self.covered_area_label.hide()
+        layout.addWidget(self.covered_area_label, alignment=Qt.AlignmentFlag.AlignTop)
+
+        self.export_results_button = QPushButton("Export Results")
+        """Button to export the results."""
+        self.export_results_button.setToolTip("Export results by format of choice.")
+        self.export_results_button.hide()
+        self.export_results_button.clicked.connect(self.export_results)
+        layout.addWidget(self.export_results_button, alignment=Qt.AlignmentFlag.AlignTop)
+
+        layout.addStretch()
+
+        return layout
+
+    def _change_bulk_run_value(self, run_count: int) -> None:
+        """Change the bulk run button tooltip.
+
+        :param run_count: The number of times to repeat the simulation.
+        """
+        self.bulk_run_button.setText(f"Bulk Run ({run_count}x)")
+        self._settings.setValue("repeat_count", run_count)
+
+    def _init_feedback_textboxes(self) -> QGridLayout:
+        """Provide text to show the user whether data has been loaded."""
+        grid_layout = QGridLayout()
+        self.initiated_surface_label = QLabel("Surface:")
+        """Surface label."""
+        self.initiated_surface_textbox = QLabel("Default.")
+        """What kind of surface has been loaded."""
+        self.initiated_molecules_label = QLabel("Molecule(s):")
+        """Molecule label."""
+        self.initiated_molecules_textbox = QLabel("Default.")
+        """How many molecules has been loaded."""
+
+        grid_layout.addWidget(self.initiated_surface_label, 0, 0)
+        grid_layout.addWidget(self.initiated_surface_textbox, 0, 1)
+        grid_layout.addWidget(self.initiated_molecules_label, 1, 0)
+        grid_layout.addWidget(self.initiated_molecules_textbox, 1, 1)
+
+        return grid_layout
+
+    def _on_surface_changed(self, params: SurfaceParameters | None) -> None:
+        """Fire instantly when surface_params changes in another tab."""
+        if params is not None:
+            self.initiated_surface_textbox.setText("User-defined.")
+        else:
+            self.initiated_surface_textbox.setText("Default.")
+
+    def _on_molecules_changed(self, mol_list: list[MoleculeParameters] | None) -> None:
+        """Fire instantly when molecule_param_list changes in another tab."""
+        if mol_list:  # Checks if list exists and is not empty
+            count: int = len(mol_list)
+            self.initiated_molecules_textbox.setText(f"{count} molecule{'s' * bool(count - 1)} defined by user.")
+        else:
+            self.initiated_molecules_textbox.setText("Default.")
+
+    def _init_svg_view(self) -> QSvgWidget:
+        """Construct the graphics frame and isolate structural canvas layouts.
+
+        :return: An isolated vector viewport container canvas.
+        """
+        self.svg_widget = ZoomableSvgWidget()
+        """Custom render context displaying loaded vector data files."""
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        return self.svg_widget
+
+    def _assemble_layout(self, left: QWidget, center: QScrollArea) -> None:
+        """Unify sub-panels inside the scalable horizontal splitter framework.
+
+        :param left: QWidget to place sub-panels inside.
+        :param center: QScrollArea to place sub-panels inside.
+        """
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        """Main splitter to dynamically divide the window."""
+
+        self.main_splitter.addWidget(left)
+        self.main_splitter.addWidget(center)
+
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 3)
+
+        root_layout = QVBoxLayout(self)
+        root_layout.addWidget(self.main_splitter)
+        self.setLayout(root_layout)  # Formally registers root_layout to this QWidget
+
+    @staticmethod
+    def get_run_sim_default(name: str) -> str | int | float | None:
+        """Get the default value of a function.
+
+        :param name: Name of the parameter.
+        :returns: Default value of the parameter.
+        :raises ValueError: If the parameter has no default value.
+        :raises KeyError: If the parameter does not exist.
+        """
+        sig: inspect.Signature = inspect.signature(run_simulation)
+        param: inspect.Parameter = sig.parameters[name]
+        if param.default is inspect.Parameter.empty:
+            errmsg: str = f"{name} has no default"
+            raise ValueError(errmsg)
+        return cast("str | int | float | None", param.default)
+
+    def _prepare_simulation_inputs(self) -> BatchSimulationInput:
+        """Validate UI components and format into a unified dictionary for the simulation engine.
+
+        :returns: Dict as input for run_simulation if successful, None if validation fails.
+        """
+        seed_text = self.state.seed_input.text().strip()
+        step_limit_val = self.state.step_limit.value()
+
+        # Generate seed from current datetime in microseconds if field is empty
+        if seed_text:
+            seed_val = int(seed_text)
+        else:
+            how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()
+            seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
+
+        try:
+            misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
+        except ValidationError as e:
+            errmsg = f"Invalid parameters provided:\n{e}"
+            self.error(errmsg)
+            return BatchSimulationInput()
+
+        misc_adapter = TypeAdapter(MiscParameters)
+        misc_params = misc_adapter.dump_python(misc_params)
+
+        surf_settings: SurfaceParameters = self.state.surface_params
+        surf_adapter = TypeAdapter(SurfaceParameters)
+
+        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
+        mol_adapter = TypeAdapter(MoleculeParameters)
+
+        defaultdict_of_lists: defaultdict[str, list[Polygon] | list[int] | list[bool]] = defaultdict(list)
+        molecule_settings = [] if molecule_settings is None else molecule_settings
+
+        for dict_in_list in molecule_settings:
+            checked_dict = mol_adapter.dump_python(dict_in_list)
+            for key, value in checked_dict.items():
+                defaultdict_of_lists[key].append(value)
+
+        key_to_fix = "polygon"
+        if key_to_fix in defaultdict_of_lists:
+            defaultdict_of_lists[key_to_fix] = [
+                validate_polygon(cast("Polygon", geo_item)) for geo_item in defaultdict_of_lists[key_to_fix]
+            ]
+
+        def replace_keys(
+            dict_with_old_keys: defaultdict[str, list[Polygon] | list[int] | list[bool]],
+        ) -> dict[str, list[Polygon] | list[int] | list[bool]]:
+            old_keys: list[str] = ["polygon", "refl_sym", "rot_sym", "rot_cnt"]
+            new_keys: list[str] = ["molecules_list", "reflection_symmetries", "rotation_symmetries", "rotation_counts"]
+            mapping: dict[str, str] = dict(zip(old_keys, new_keys, strict=True))
+            dict_with_new_keys = dict_with_old_keys.copy()
+
+            for old, new in mapping.items():
+                if old in dict_with_new_keys:
+                    dict_with_new_keys[new] = dict_with_new_keys.pop(old)
+
+            return dict_with_new_keys
+
+        def filter_dict_for_func(
+            data_dict: dict[str, list[Polygon] | list[int] | list[bool]],
+        ) -> dict[str, list[Polygon] | list[int] | list[bool]]:
+            sig = inspect.signature(run_simulation)
+            valid_keys = sig.parameters.keys()
+            return {k: v for k, v in data_dict.items() if k in valid_keys}
+
+        dict_of_lists = replace_keys(defaultdict_of_lists)
+        dict_of_lists = filter_dict_for_func(dict_of_lists)
+
+        surface_settings: SurfaceParameters = surf_adapter.dump_python(surf_settings)
+        surface_settings = SurfaceParameters() if surface_settings is None else surface_settings
+        surface_settings.pop("seed") if "seed" in surface_settings else None
+        return BatchSimulationInput(**misc_params, **surface_settings, **dict_of_lists)  # type: ignore[typeddict-item, no-any-return]
+
+    def run_simulation(self) -> None:
+        """Run exactly one instance of the simulation engine."""
+        inputs = self._prepare_simulation_inputs()
+        self.input_metadata = inputs
+        if inputs is None:
+            errmsg = "Simulation input is empty."
+            QMessageBox.critical(self, "Input Error", errmsg)
+            return
+
+        self.run_group.setEnabled(False)
+        self.progress_bar.show()
+        self.progress_bar.setValue(0)
+        # self.run_group.setText("Computing...")
+
+        sim_input = RunSimulationInput(**{key: value for key, value in inputs.items() if key != "repeats"})  # type: ignore[typeddict-item]
+        task = BackgroundTask(run_simulation, self.bg_signals, **sim_input)
+        task.signals.finished.connect(self._on_simulation_complete)
+        task.signals.error.connect(self._on_simulation_error)
+        QThreadPool.globalInstance().start(task)
+
+    def run_batch_simulation(self) -> None:
+        """Run N parallel instances using Dask with safe child-spawned seeds."""
+        n_instances = self.repeat_count.value()
+        inputs = self._prepare_simulation_inputs()
+        self.input_metadata = inputs.copy()
+        self.input_metadata["repeats"] = n_instances
+        if inputs is None:
+            return
+
+        self.run_group.setEnabled(False)
+        self.progress_bar.show()
+        self.progress_bar.setValue(0)
+
+        def execute_dask_batch(
+            base_inputs: RunSimulationInput,
+            total_runs: int,
+            task_ref: BackgroundTask | None = None,  # type: ignore[type-arg]
+        ) -> list[RunResult]:
+
+            tasks: list[Delayed] = []
+            parent_seed: int = cast("int", base_inputs.get("seed"))
+
+            child_seeds = np.random.SeedSequence(parent_seed).spawn(total_runs)
+
+            def wrap_run_func(**kwargs: Unpack[RunSimulationInput]) -> RunResult:
+                output = run_simulation(**kwargs)[-1]
+                return output.coverage, output.fraction_of_covered_area, output.analyse_gap_size()
+
+            for seed in child_seeds:
+                run_inputs = base_inputs.copy()
+                run_inputs["seed"] = seed.generate_state(n_words=1, dtype=np.uint32)[0]
+                tasks.append(delayed(wrap_run_func)(**run_inputs))
+
+            workers = max(1, multiprocessing.cpu_count() - 1)
+
+            with Client(n_workers=workers, threads_per_worker=1, processes=True) as client:
+                futures: list[Future[RunResult]] = client.compute(tasks)  # pyright: ignore[reportAssignmentType]
+
+                for idx, _ in enumerate(as_completed(futures), start=1):
+                    if task_ref is not None:
+                        percentage = int((idx / total_runs) * 100)
+                        task_ref.signals.progress.emit(percentage)
+
+                results: tuple[RunResult] = client.gather(futures)  # pyright: ignore[reportAssignmentType]
+
+            return list(results)
+
+        # Instantiate task and pass 'task' itself into the execution function so it can access signals
+        task = BackgroundTask(
+            execute_dask_batch,
+            self.bg_signals,
+            base_inputs=inputs,
+            total_runs=n_instances,
+        )  # typing: ignore[arg-type]
+        task.kwargs["task_ref"] = task  # Dynamically inject the task reference into kwargs
+
+        if hasattr(self, "progress_bar") and self.progress_bar is not None:
+
+            def set_bar(val: int) -> None:
+                self.progress_bar.setValue(val)
+
+            task.signals.progress.connect(
+                set_bar if Shiboken.isValid(self.progress_bar) else None,
+            )
+
+        task.signals.finished.connect(self._on_batch_simulation_complete)
+        task.signals.error.connect(self._on_simulation_error)
+        QThreadPool.globalInstance().start(task)
+
+    def _on_simulation_complete(
+        self,
+        simulation_outputs: tuple[list[int], DistArray, int | Generator, tuple[IdxArray, ...], IdxArray, Simulator],
+    ) -> None:
+        """Run lightweight plotting pipeline back on the UI thread."""
+        try:
+            self.progress_bar.setValue(100)
+            output = simulation_outputs[-1]
+
+            # Generate SVG elements in memory
+            svg_buffer = io.BytesIO()
+            dark_mode_bool: bool = QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark
+            output.svgplot_covered_grid(filename=svg_buffer, dark_mode_bool=dark_mode_bool)
+            svg_data = svg_buffer.getvalue()
+
+            # Render UI updates directly
+            self.svg_widget.load(svg_data)
+            self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+            # Populate numeric output displays
+            self.state.coverages = (output.coverage,)
+            self.coverage_label.setText(f"Coverage: {np.sum(output.coverage):.4f}")
+            self.coverage_label.show()
+            self.state.fraction_of_covered_area = (output.fraction_of_covered_area,)
+            frac_of_covered_area = np.sum(output.fraction_of_covered_area)
+
+            self.state.gap_size_distribution = output.analyse_gap_size()
+
+            self.covered_area_label.setText(f"Fraction of covered area: {frac_of_covered_area:.4f}")
+            self.covered_area_label.show()
+
+        except (ValueError, TypeError, ValidationError) as e:
+            self.error(f"Error preparing visual plot data:\n{e}")
+        finally:
+            # Always unlock button when processing completes
+            self.run_group.setEnabled(True)
+            self.progress_bar.hide()
+            # self.run_group.setText("Run Simulation")
+
+    def _on_batch_simulation_complete(self, batch_outputs: list[RunResult]) -> None:
+        """Process multiple parallel output tuples sent back from the dask pool cluster.
+
+        :param batch_outputs: list of output values.
+        """
+        try:
+            if not batch_outputs:
+                return
+
+            coverages: tuple[DistArray, ...]
+            fraction_of_cov_ar: tuple[DistArray, ...]
+            gapsize_dist: tuple[DistArray, ...]
+            coverages, fraction_of_cov_ar, gapsize_dist = zip(*batch_outputs, strict=True)
+
+            mpl.use("Agg")
+            fig = plt.figure(figsize=(8, 6))
+            gs = fig.add_gridspec(2, 2)
+
+            coverages_arr = np.array(coverages)
+            fraction_arr = np.array(fraction_of_cov_ar)
+            gapsize_distribution: DistArray = np.hstack(gapsize_dist)
+
+            missing_coverage = 1.0 - np.sum(coverages_arr, axis=1)
+            missing_fraction = 1.0 - np.sum(fraction_arr, axis=1)
+
+            coverages_final: FloatArray = np.column_stack((coverages_arr, missing_coverage)).tolist()
+            fraction_final: FloatArray = np.column_stack((fraction_arr, missing_fraction)).tolist()
+            cov = [np.mean(x) for x in zip(*coverages_final, strict=True)]  # typing: ignore[explicit-any, assignment]
+            frac_of_cov_ar = [
+                np.mean(x) for x in zip(*fraction_final, strict=True)
+            ]  # typing: ignore[explicit-any, assignment]
+
+            self.coverage_label.setText(f"Coverage: {(1.0 - cov[-1]):.4f}")
+            self.coverage_label.show()
+            self.covered_area_label.setText(f"Fraction of covered area: {(1.0 - frac_of_cov_ar[-1]):.4f}")
+            self.covered_area_label.show()
+            self.export_results_button.show()
+
+            colors = [f"C{ii}" for ii in range(len(cov))]
+            colors[-1] = "none"
+            # Top left plot (Row 0, Column 0)
+            ax1 = fig.add_subplot(gs[0, 0])
+            ax1.set_title("Coverage")
+            ax1.pie(cov, colors=colors)
+
+            # Add outer circle to ax1
+            circle1 = patches.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
+            ax1.add_patch(circle1)
+
+            # Top right plot (Row 0, Column 1)
+            ax2 = fig.add_subplot(gs[1, 0])
+            ax2.set_title("Frac. cov. area")
+            ax2.pie(frac_of_cov_ar, colors=colors)
+
+            # Add outer circle to ax2
+            circle2 = patches.Circle((0, 0), 1, facecolor="none", edgecolor="black", linewidth=1.5)
+            ax2.add_patch(circle2)
+
+            # Bottom double-length plot (Row 1, spans both Columns 0 and 1)
+            ax3 = fig.add_subplot(gs[:, 1])
+            ax3.set_title("Gap size distribution")
+            sns.violinplot(gapsize_distribution, ax=ax3, color="0.8")
+            svg_buffer = io.BytesIO()
+            plt.savefig(svg_buffer, format="svg", bbox_inches="tight")
+            plt.close(fig)  # Clear memory
+
+            self.state.coverages = tuple(col for col in coverages_arr.T)
+            self.state.fraction_of_covered_area = tuple(col for col in fraction_arr.T)
+            self.state.gap_size_distribution = gapsize_distribution
+
+            svg_data = svg_buffer.getvalue()
+            self.svg_widget.load(svg_data)
+            self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        except (ValueError, TypeError, ValidationError) as e:
+            self.error(f"Error processing compiled batch metrics:\n{e}")
+        finally:
+            self.run_group.setEnabled(True)
+            self.progress_bar.hide()
+            # self.run_group.setText("Run Simulation")
+
+    def _on_simulation_error(self, exception: Exception) -> None:
+        """Fallback callback handling background core crashes safely.
+
+        :param exception: Exception raised during simulation.
+        """
+        self.error(f"Simulation engine error:\n{exception}")
+        self.run_group.setEnabled(True)
+        self.progress_bar.hide()
+        # self.run_group.setText("Run Simulation")
+
+    def export_results(self) -> None:
+        """Export the simulation results to JSON, HDF5, Pickle, or zipped CSVs."""
+        if self.state.gap_size_distribution is None:
+            QMessageBox.warning(self, "Export Warning", "No valid simulation data found to export.")
+            return
+
+        file_filters = (
+            "Hierarchical Data Format (*.h5);;"
+            "JSON Data Interchange (*.json);;"
+            "Python Pickle Binary (*.pkl);;"
+            "Zipped Comma Separated Values (*.zip)"
+        )
+
+        chosen_path_str, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Simulation Results As",
+            "",
+            file_filters,
+        )
+
+        if not chosen_path_str:
+            return  # User cancelled out of the file dialogue
+
+        file_path = Path(chosen_path_str)
+
+        # Enforce file extension strings if skipped by the user
+        if not file_path.suffix:
+            if "json" in selected_filter:
+                ext = ".json"
+            elif "pkl" in selected_filter:
+                ext = ".pkl"
+            elif "zip" in selected_filter:
+                ext = ".zip"
+            elif "h5" in selected_filter:
+                ext = ".h5"
+            else:
+                errmsg: str = "Incorrect file extension."
+                QMessageBox.warning(self, "Error", errmsg)
+                return
+            file_path = file_path.with_suffix(ext)
+
+        covs = self.state.coverages
+        fracs = self.state.fraction_of_covered_area
+        gaps = self.state.gap_size_distribution
+
+        suffix_lower = file_path.suffix.lower()
+
+        meta = self.input_metadata
+        print(meta)
+
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # -------------------------------------------------------------
+            # OPTION 1: HDF5 (.h5) -> Variable-length dataset trees
+            # -------------------------------------------------------------
+            if ".h5" in suffix_lower:
+                with h5py.File(str(file_path), "w") as f:
+                    for key, val in meta.items():
+                        f.attrs[key] = str(val)
+
+                    grp_a = f.create_group("Coverage")
+                    for i, arr in enumerate(covs):
+                        grp_a.create_dataset(f"col_{i}", data=arr, compression="gzip")
+
+                    grp_b = f.create_group("Fraction_of_covered_area")
+                    for i, arr in enumerate(fracs):
+                        grp_b.create_dataset(f"col_{i}", data=arr, compression="gzip")
+
+                    f.create_dataset("Gap_size_distribution", data=gaps, compression="gzip")
+
+            # -------------------------------------------------------------
+            # OPTION 2: JSON (.json) -> Plaintext serialization format
+            # -------------------------------------------------------------
+            elif ".json" in suffix_lower:
+                payload = {
+                    "metadata": meta,
+                    "Coverage": [arr.tolist() for arr in covs],
+                    "Fraction_of_covered_area": [arr.tolist() for arr in fracs],
+                    "Gap_size_distribution": gaps.tolist(),
+                }
+                with file_path.open("w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=4)
+
+            # -------------------------------------------------------------
+            # OPTION 3: PICKLE (.pkl) -> High-speed memory state dump
+            # -------------------------------------------------------------
+            elif ".pkl" in suffix_lower:
+                payload = {
+                    "metadata": meta,
+                    "Coverage": covs,
+                    "Fraction_of_covered_area": fracs,
+                    "Gap_size_distribution": gaps,
+                }
+                with file_path.open("wb") as f:
+                    pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+            # -------------------------------------------------------------
+            # OPTION 4: ZIPPED CSV (.csv.gz) -> Tabular with NaN padding
+            # -------------------------------------------------------------
+            elif ".zip" in suffix_lower:
+                # Open a compressed zip file archive stream wrapper directly
+                with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+                    meta_io = io.StringIO()
+                    for key, val in meta.items():
+                        meta_io.write(f"{key}: {val}\n")
+                    zf.writestr("metadata.txt", meta_io.getvalue())
+
+                    aaa_dict = {f"col_{i}": arr for i, arr in enumerate(covs)}
+                    aaa_io = io.StringIO()
+                    pd.DataFrame(aaa_dict).to_csv(aaa_io, index=False)
+                    zf.writestr("Coverage.csv", aaa_io.getvalue())
+
+                    bbb_dict = {f"col_{i}": arr for i, arr in enumerate(fracs)}
+                    bbb_io = io.StringIO()
+                    pd.DataFrame(bbb_dict).to_csv(bbb_io, index=False)
+                    zf.writestr("Fraction_of_covered_area.csv", bbb_io.getvalue())
+
+                    ccc_io = io.StringIO()
+                    pd.DataFrame({"gap_size_distribution": gaps}).to_csv(ccc_io, index=False)
+                    zf.writestr("Gap_size_distribution.csv", ccc_io.getvalue())
+
+            QMessageBox.information(self, "Success", f"Results successfully exported to:\n{file_path.name}")
+
+        except (OSError, ValueError, NotADirectoryError) as e:
+            QMessageBox.critical(self, "Export Failed", f"An error occurred while compiling your export:\n{e!s}")
+
+    def error(self, msg: str) -> None:
+        """Handle the errors.
+
+        :param msg: Error message to display in a new window.
+        """
+        QMessageBox.critical(self, "Input Error", msg)
+
+
+class MoleculeGeneration(QWidget):
+    """Molecule layout configuration dashboard tab view.
+
+    Handles dynamic generation of geometric molecule polygon shapes via reflective
+    library lookups, updates parameters on the fly, and lists them inside a tracking layout.
+    """
+
+    def __init__(self, state: AppState) -> None:
+        """Initialise settings storage engines and compile separate view columns.
+
+        :param state: AppState instance for communication between tabs.
+        """
+        super().__init__()
+
+        self.param_widgets: ParamWidgets = {}
+        """"Parameter widgets derived from molecule function signatures."""
+        self.opt_checkboxes: dict[str, QCheckBox] = {}
+        """"Optional checkbox widgets derived from molecule function signatures."""
+        self._settings = QSettings(type(self).__name__)
+        """Persistent platform configuration handle cached between user runtime sessions."""
+
+        self.state = state
+        """Shared application state cache container."""
+
+        # Initialise data storage metrics
+        self._init_data_storage()
+
+        # Build the three core panel containers
+        left_container = self._build_left_panel()
+        scroll_area = self._build_center_panel()
+        right_container = self._build_right_panel()
+
+        # Assemble components into the splitter layout interface
+        self._assemble_layout(left_container, scroll_area, right_container)
+
+    def _init_data_storage(self) -> None:
+        """Initialise internal state tracking arrays and counting iterations."""
+        self.mol_list_counter: count[int] = count()
+        """Thread-safe sequential index iterator generating unique molecule instance identifier tags."""
+
+        self.mol_params_list: list[MoleculeParameters] = []
+        """List of MoleculeParameters dataclasses."""
+
+    def _build_left_panel(self) -> QWidget:
+        """Construct the left parameters control dashboard and link active list triggers.
+
+        :return: A populated structural container pane acting as the configuration panel.
+        """
+        container = QWidget()
+        self.controls_layout = QVBoxLayout(container)
+        """Layout frame coordinating selection toggles and configuration property fields."""
+
+        self.add_molecule_button = QPushButton("Add new molecule")
+        """Action button triggering instance generation from the current profile layout."""
+        self.controls_layout.addWidget(self.add_molecule_button)
+
+        self.func_dropdown = QComboBox()
+        """Selection field populated with valid introspected molecule generator workflows."""
+        self.controls_layout.addWidget(QLabel("Select molecule"), alignment=Qt.AlignmentFlag.AlignTop)
+        self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # Discover generators using introspective library lookups
+        self.generators = cast("dict[str, Callable[P_mol, Polygon]]", self._discover_molecule_generators())  # pyright: ignore[reportGeneralTypeIssues]
+        """Registry cache linking user-facing label text keys directly to underlying library callables."""
+
+        self.func_dropdown.addItems(list(self.generators.keys()))
+        self.func_dropdown.currentTextChanged.connect(self._update_func_dropdown)
+
+        # Parameter group layout setup
+        mol_param_group = QGroupBox("Parameters")
+        mol_param_layout = QVBoxLayout(mol_param_group)
+        mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
+
+        # self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog]
+        # """Active reference tracking field maps mapping variable names to their raw UI input views."""
+        #
+        # self.opt_checkboxes: dict[str, QCheckBox]
+        # """Active state checkboxes controlling presence flags for optional properties or switches."""
+
+        self.param_layout = QVBoxLayout()
+        """Parameter layout."""
+        mol_param_layout.addLayout(self.param_layout)
+
+        self.controls_layout.addWidget(mol_param_group, alignment=Qt.AlignmentFlag.AlignTop)
+
+        target_index = self._fetch_setting("current_molecule", 0)
+
+        # 4. Handle the index 0 edge case manually if it matches the default initial index
+        if target_index == 0:
+            # Force execution since setCurrentIndex(0) won't trigger a change event
+            self.build_param_inputs(self.func_dropdown.currentText())
+            self.plot_molecule()
+        else:
+            self.func_dropdown.setCurrentIndex(target_index)
+
+        self.output_label = QLabel("")
+        """Status indicator updating real-time compilation info or syntax exceptions."""
+        self.controls_layout.addWidget(self.output_label)
+
+        return container
+
+    def _update_func_dropdown(self, name: str) -> None:
+        """Update when func dropdown changes.
+
+        :param name: The name of the dropdown option.
+        """
+        self.build_param_inputs(name)
+        self.plot_molecule()
+
+    @staticmethod
+    def _discover_molecule_generators() -> dict[str, Callable[P_mol, Polygon]]:
+        """Isolate reflection logic filtering usable library structural definitions.
+
+        :return: A sorted lookup dict mapping valid function names to execution references.
+        """
+        temp_generators: dict[str, Callable[P_mol, Polygon]] = {
+            name: func
+            for name, func in molecule_lib.__dict__.items()
+            if inspect.isfunction(func)
+            and not name.startswith("_")
+            and func.__module__ == molecule_lib.__name__
+            and inspect.signature(func).return_annotation in {"Polygon", "dict[str, str | float | list[str] | None]"}
+        }
+        return dict(sorted(temp_generators.items()))
+
+    def _build_center_panel(self) -> QScrollArea:
+        """Construct the viewport frame area housing the centered vector graphics.
+
+        :return: A scroll area wrapper managing the interactive central viewport.
+        """
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+
+        scroll_container = QWidget()
+        container_layout = QGridLayout(scroll_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.svg_widget = ZoomableSvgWidget()
+        """Custom structural viewport rendering vector polygon outlines."""
+        self.svg_widget.setMinimumSize(600, 600)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
+        scroll_area.setWidget(scroll_container)
+
+        return scroll_area
+
+    def _build_right_panel(self) -> QWidget:
+        """Construct the right tracking grid columns managing existing records.
+
+        :return: A secondary control panel listing items added to the current system context.
+        """
+        container = QWidget()
+        right_col = QVBoxLayout(container)
+
+        group = QGroupBox("Molecules")
+        group_layout = QVBoxLayout(group)
+
+        self.molecule_list_widget = ReorderableListWidget()
+        """List widget selection tool indicating current added molecule configurations."""
+        self.molecule_list_widget.currentItemChanged.connect(self.show_molecule_settings)
+        self.molecule_list_widget.itemsMoved.connect(self.sync_list_order)
+        group_layout.addWidget(self.molecule_list_widget)
+
+        self.delete_btn = QPushButton("Delete Selected Molecule")
+        """Action button triggering array removal operations from local caches."""
+        self.delete_btn.clicked.connect(self.delete_molecule)
+        group_layout.addWidget(self.delete_btn)
+
+        right_col.addWidget(group)
+
+        return container
+
+    def _assemble_layout(self, left: QWidget, center: QScrollArea, right: QWidget) -> None:
+        """Unify sub-panels inside the scalable horizontal splitter framework.
+
+        :param left: Parameter selection pane widget.
+        :param center: Scroll pane holding vector outputs.
+        :param right: Management column listing generated arrays.
+        """
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        """Scalable divider framework managing responsive interface margins."""
+
+        self.main_splitter.addWidget(left)
+        self.main_splitter.addWidget(center)
+        self.main_splitter.addWidget(right)
+
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 3)
+        self.main_splitter.setStretchFactor(2, 1)
+
+        root_layout = QVBoxLayout(self)
+        root_layout.addWidget(self.main_splitter)
+
+    def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
+        """Fetch settings by checking if they exist followed by their value.
+
+        :param name: The name of the setting to fetch.
+        :param default: The default value to return if the setting does not exist.
+        :param return_type: The default return type if the setting exists. If not given, type(default) is used.
+        :returns: The setting value if it exists, or else the default.
+        """
+        check_type: type[T_inv] = type(default) if return_type is None else return_type
+        return cast("T_inv", self._settings.value(name, defaultValue=default, type=check_type))
+
+    def _delete_previous_layout(self) -> None:
+        """Recursively delete the layout of the previous molecule parameters."""
+
+        def clear_layout(layout: QLayout | None) -> None:
+            """Clear the layout by deleting its widgets or traversing its child layouts.
+
+            :param layout: The layout to clear.
+            """
+            if layout is None:
+                return
+
+            while layout.count():
+                item = cast("QLayoutItem", layout.takeAt(0))
+
+                # Use structural pattern matching to safely handle the item type
+                match item.widget(), item.layout():
+                    case (widget, _) if widget is not None:
+                        # It is a widget container item
+                        widget.deleteLater()
+
+                    case (_, child_layout) if child_layout is not None:
+                        # It is a nested layout item; recurse down first, then delete it
+                        clear_layout(child_layout)
+                        child_layout.deleteLater()
+
+                    case _:
+                        # It is a spacer item or an empty container
+                        del item
+
+        clear_layout(self.param_layout)
+
+    def build_param_inputs(self, func_name: str) -> None:
+        """Inspect a generator function signature to build a parameter layout frame.
+
+        Clears existing child controls, parses required types from function type annotations,
+        configures dynamic tooltip data, and maps live text update signalling pipelines.
+
+        :param func_name: Target library function name registry string.
+        """
+        self._delete_previous_layout()
+        self._settings.setValue("current_molecule", self.func_dropdown.currentIndex())
+
+        func = self.generators[func_name]
+        sig = inspect.signature(func)
+        param_docs = extract_param_docs(func)
+
+        if func_name == "first_time_loader":
+            launch_loader_button = QPushButton("Launch first time loader")
+            launch_loader_button.setToolTip("Start the first_time_loader script in a separate window.")
+            launch_loader_button.clicked.connect(self.launch_first_time_loader)
+            self.param_layout.addWidget(launch_loader_button)
+
+        self.param_widgets = {}
+        self.opt_checkboxes = {}
+
+        widget_type_hints: dict[str, InputWidget] = get_type_hints(ParamWidgets)
+
+        param_grid = QGridLayout()
+        for idx, (name, param) in enumerate(sig.parameters.items()):
+            default = param.default
+            is_optional: bool = default is None
+            is_required: bool = param.default is inspect.Parameter.empty
+            row = QHBoxLayout()
+
+            name_label = QLabel(name.replace("_", " "))
+            if name in param_docs:
+                name_label.setToolTip(param_docs[name])
+            param_grid.addWidget(name_label, idx, 0)
+
+            param_annotation: str | type = param.annotation
+            if not isinstance(param_annotation, str):
+                errmsg = "Parameter is not a string. Use ``from __future__ import annotations`` to ensure this."
+                self.error(errmsg)
+                return
+            widget = self._create_param_widget(param_annotation, default)
+
+            if not (is_required or is_optional):
+                set_content(widget, default)
+
+            if is_optional:
+                checkbox = QCheckBox()
+                checkbox.setChecked(False)
+                checkbox.setToolTip("If unchecked, the value is None")
+                self.opt_checkboxes[name] = checkbox
+                row.addWidget(checkbox, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+                widget.setEnabled(False)
+                checkbox.toggled.connect(widget.setEnabled)
+
+            if name in param_docs:
+                widget.setToolTip(param_docs[name])
+
+            row.addWidget(widget, alignment=Qt.AlignmentFlag.AlignVCenter)
+            widg_hint = widget_type_hints.get(name)
+            if is_valid_param(name) and widg_hint is not None and isinstance(widget, widg_hint):  # pyright: ignore[reportArgumentType]
+                self.param_widgets[name] = widget  # pyright: ignore[reportGeneralTypeIssues]
+            else:
+                errmsg = f"Parameter input widget mismatch: {name} and {type(widget).__name__}"
+                QMessageBox.critical(self, "Value Error", errmsg)
+            param_grid.addLayout(row, idx, 1)
+
+        self.param_layout.addLayout(param_grid)
+        self.param_layout.addWidget(_make_horizontal_line())
+
+        # Delegate secondary form components to helpers
+        self._build_symmetry_controls()
+        self.param_layout.addWidget(_make_horizontal_line())
+        self._build_action_buttons()
+
+    @staticmethod
+    def _create_param_widget(
+        annotation: str,
+        default: str | float | inspect.Parameter,
+    ) -> InputWidget:
+        """Create param widget using factory strategy translating library type hints to matching user input views.
+
+        :param annotation: The raw string signature representation of the type hint.
+        :param default: The underlying fallback data default value assigned to the flag.
+        :return: A customised interactive input container widget subclass.
+        :raises TypeError: If an unmapped or exotic data structure type is processed.
+        """
+        default_max: int = 999
+        widget: InputWidget
+        match annotation:
+            case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
+                widget = QDoubleSpinBox()
+                min_float_val: float = -999.0
+                if annotation == "PositiveFloat":
+                    min_float_val = 0.0001
+                    if not isinstance(default, inspect.Parameter.empty):
+                        widget.setValue(1.0)
+                elif annotation == "NonNegativeFloat":
+                    min_float_val = 0.0
+                widget.setRange(min_float_val, default_max)
+                widget.setDecimals(4)
+                widget.setSingleStep(0.1)
+                return widget
+
+            case "int" | "PositiveInt":
+                min_int_val: int = 1 if annotation == "PositiveInt" else -999
+                widget = QSpinBox()
+                widget.setRange(min_int_val, default_max)
+                return widget
+
+            case "FilePath":
+                return FilePickerWidget()
+
+            case "str | list[str] | None":
+                return QLineEdit()
+
+            case _:
+                errmsg = f"Unsupported parameter annotation: '{annotation}'."
+                raise TypeError(errmsg)
+
+    def sync_list_order(self, old_index: int, new_index: int) -> None:
+        """Take the row transformation from list A and applies it programmatically to list B.
+
+        The ReorderableListWidget allows for items to be drag/dropped. This function links the reordering.
+
+        :param old_index: The original index of the item changing position.
+        :param new_index: The new index to which the item is moved.
+        """
+        # Pop the item out of its old position in List B
+        taken_item = self.mol_params_list.pop(old_index)
+
+        # Insert it into the exact same new position
+        if taken_item:
+            self.mol_params_list.insert(new_index, taken_item)
+            self.state.molecule_param_list = self.mol_params_list
+
+    def _build_symmetry_controls(self) -> None:
+        """Assemble the geometric shape matrix transformation property grid layouts."""
+        self.refl_sym: bool = False
+        """Default value of reflection symmetry."""
+        self.rot_sym: int = 1
+        """Default value of rotation symmetry."""
+        self.rot_cnt: int = 360
+        """Default value of rotation count."""
+
+        symmetry_options_layout = QGridLayout()
+        refl_sym_label = QLabel("Reflection symmetry")
+        refl_sym_tooltip_text = "Set checked if the molecule has reflection symmetry (symmetric group Cn → Dn)."
+        refl_sym_label.setToolTip(refl_sym_tooltip_text)
+
+        self.refl_sym_checkbox = QCheckBox()
+        """Reflection symmetry checkbox, corresponding to True (checked) or False (unchecked)."""
+        self.refl_sym_checkbox.setChecked(self.refl_sym)
+        self.refl_sym_checkbox.setToolTip(refl_sym_tooltip_text)
+
+        self.rot_sym_label = QLabel("Rotation symmetry")
+        """Rotation symmetry label."""
+
+        self.rot_sym_spinbox = QSpinBox()
+        """Rotation symmetry spinbox, for non-negative integers."""
+        self.rot_sym_spinbox.setMinimum(0)
+        self.rot_sym_spinbox.setValue(self.rot_sym)
+        self._update_symmetry_tooltip(self.refl_sym)
+        self.refl_sym_checkbox.toggled.connect(self._update_symmetry_tooltip)
+
+        rot_cnt_label = QLabel("Rotation count")
+        rot_cnt_tooltip_text = "Number of rotations to be used for the molecule. The step size is 360/n°."
+        rot_cnt_label.setToolTip(rot_cnt_tooltip_text)
+
+        self.rot_cnt_spinbox = QSpinBox()
+        """Rotation count spinbox, for positive (non-zero) integers."""
+        self.rot_cnt_spinbox.setMinimum(1)
+        self.rot_cnt_spinbox.setMaximum(99999)
+        self.rot_cnt_spinbox.setValue(self.rot_cnt)
+        self.rot_cnt_spinbox.setToolTip(rot_cnt_tooltip_text)
+
+        symmetry_options_layout.addWidget(refl_sym_label, 0, 0)
+        symmetry_options_layout.addWidget(self.refl_sym_checkbox, 0, 1)
+        symmetry_options_layout.addWidget(self.rot_sym_label, 1, 0)
+        symmetry_options_layout.addWidget(self.rot_sym_spinbox, 1, 1)
+        symmetry_options_layout.addWidget(rot_cnt_label, 2, 0)
+        symmetry_options_layout.addWidget(self.rot_cnt_spinbox, 2, 1)
+
+        self.param_layout.addLayout(symmetry_options_layout)
+
+    def _build_action_buttons(self) -> None:
+        """Map active interactive preview checkboxes and form processing buttons."""
+        molecule_buttons = QHBoxLayout()
+        self.show_molecule_checkbox = QCheckBox("Plot Molecule")
+        """Checkbox whether to show the molecule."""
+        self.show_molecule_checkbox.setToolTip("Plot the molecule")
+        # self.show_molecule_checkbox.setChecked(self.func_dropdown.currentText != "first_time_loader")
+        self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
+        molecule_buttons.addWidget(self.show_molecule_checkbox)
+
+        for widget_object in cast("ValuesView[InputWidget]", self.param_widgets.values()):
+            if not isinstance(widget_object, QLineEdit | QDoubleSpinBox | QSpinBox):
+                continue
+            if isinstance(widget_object, QLineEdit):
+                widget_object.textChanged.connect(self.plot_molecule)
+            else:
+                widget_object.valueChanged.connect(self.plot_molecule)
+
+        for optional_checkbox in self.opt_checkboxes.values():
+            optional_checkbox.toggled.connect(self.plot_molecule)
+
+        add_molecule_button = QPushButton("Add Molecule")
+        add_molecule_button.clicked.connect(self.add_molecule)
+        add_molecule_button.setToolTip("Add molecule to list of molecules in simulation")
+        molecule_buttons.addWidget(add_molecule_button)
+
+        self.param_layout.addLayout(molecule_buttons)
+
+    def _update_symmetry_tooltip(self, is_checked: bool) -> None:
+        """Update the tooltip of the rotation symmetry label and spinbox.
+
+        :param is_checked: True if there is reflection symmetry, False otherwise.
+        """
+        symmetry_group = "D" if is_checked else "C"
+        circle_group = "O(2)" if is_checked else "SO(2)"
+
+        rot_sym_tooltip_text = textwrap.dedent(
+            f"""\
+            Keep 1 for no rotation symmetry (symmetric group {symmetry_group}1),
+            2 for 180° symmetry ({symmetry_group}2),
+            3 for 120° symmetry ({symmetry_group}3),
+            n for 360/n° symmetry ({symmetry_group}n),
+            Special case: 0 for circle symmetry ({circle_group}).""",
+        )
+
+        for widget in [self.rot_sym_label, self.rot_sym_spinbox]:
+            widget.setToolTip(rot_sym_tooltip_text)
+
+    def launch_first_time_loader(self) -> None:
+        """Launch the first time loader from molecule_lib.
+
+        If no file path has been provided, prompt the user to add one before running the first time loader.
+        """
+        if "file_name" not in self.param_widgets:
+            errmsg = "Parameter file_name not found in widget."
+            QMessageBox.critical(self, "Key Error", errmsg)
+            return
+        if not self.param_widgets["file_name"].text():
+            self.param_widgets["file_name"].browse_button.click()
+        output = molecule_lib.first_time_loader(Path(self.param_widgets["file_name"].text()))
+        first_time_key: ParamName
+        first_time_value: str | float | list[str] | None
+        for first_time_key, first_time_value in output.items():  # pyright: ignore[reportAssignmentType]
+            if not (is_valid_param(first_time_key) or first_time_key in self.param_widgets):
+                errmsg = f"Not a valid key: {first_time_key}"
+                QMessageBox.critical(self, "Key Error", errmsg)
+                return
+            if first_time_value is not None:
+                set_content(self.param_widgets[first_time_key], first_time_value)  # pyright: ignore[reportTypedDictNotRequiredAccess]
+                if first_time_key in self.opt_checkboxes:
+                    self.opt_checkboxes[first_time_key].setChecked(True)
+
+    def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
+        """Extract current user inputs from widgets back into a data dictionary.
+
+        :return: Dictionary containing the key-value pairs of the parameters.
+        """
+        values: dict[str, float | int | str | list[str] | None] = {}
+
+        for name, widget in cast("ItemsView[str, InputWidget]", self.param_widgets.items()):
+            # If the widget is disabled, the optional checkbox was unchecked -> value is None
+            if not widget.isEnabled():
+                continue
+
+            # Extract value based on the PySide6/PyQt6 widget type
+            match widget:
+                case QSpinBox() | QDoubleSpinBox():
+                    values[name] = widget.value()
+
+                case QLineEdit() | FilePickerWidget():
+                    values[name] = widget.text()
+
+                case _:
+                    values[name] = None
+
+        return values
+
+    def error(self, msg: str) -> None:
+        """Handle the errors.
+
+        Please open a ticket if this happens when it should not.
+
+        :param msg: Error message.
+        """
+        QMessageBox.critical(self, "Input Error", msg)
+
+    def plot_molecule(self) -> None:
+        """Plot the molecule."""
+        if not self.show_molecule_checkbox.isChecked():
+            return
+        molecule_func = self.generators[self.func_dropdown.currentText()]
+        molecule_dict = self.get_param_values()
+        if molecule_func.__name__ == "first_time_loader":
+            molecule_func = cast("Callable[P_mol, Polygon]", molecule_lib.xyz_reader)  # pyright: ignore[reportGeneralTypeIssues]
+        try:
+            svg_io = io.BytesIO()
+            molecule_lib.save_molecule_svg(molecule_func(**molecule_dict), filename=svg_io)  # pyright: ignore[reportCallIssue]
+            svg_data = svg_io.getvalue()
+            self.svg_widget.load(svg_data)
+        except ValueError as e:
+            self.error(str(e))
+
+    def add_molecule(self) -> None:
+        """Add a molecule to the list of molecules to use."""
+        current_func_name = self.func_dropdown.currentText()
+        current_func_name = current_func_name if current_func_name != "first_time_loader" else "xyz_reader"
+        molecule_func = self.generators[current_func_name]
+        molecule_dict = self.get_param_values()
+        # if molecule_func.__name__ == "first_time_loader":
+        #     molecule_func = molecule_lib.xyz_reader
+
+        try:
+            result = molecule_func(**molecule_dict)  # pyright: ignore[reportCallIssue]
+        except ValidationError as e:
+            self.error(str(e))
+            return
+
+        name = (
+            self.func_dropdown.currentText()
+            if "file_name" not in molecule_dict
+            else Path(cast("str", molecule_dict["file_name"])).name
+        )
+
+        # Update dropdown
+        index = next(self.mol_list_counter)
+        label = f"{name} #{index}"
+        self.molecule_list_widget.addItem(label)
+
+        mol_params = MoleculeParameters(
+            index=index,
+            function_name=current_func_name,
+            label=label,
+            polygon=PydanticPolygon(result),
+            settings=molecule_dict,
+            refl_sym=self.refl_sym_checkbox.isChecked(),
+            rot_sym=self.rot_sym_spinbox.value(),
+            rot_cnt=self.rot_cnt_spinbox.value(),
+        )
+
+        self.mol_params_list.append(mol_params)
+        self.state.molecule_param_list = self.mol_params_list
+
+        self.output_label.setText(f"Added: {name}")
+
+    def delete_molecule(self) -> None:
+        """Delete the current selected molecule."""
+        # Hitting the delete button without a selection results in -1.
+        idx = self.molecule_list_widget.currentRow()
+        if idx < 0:
+            return
+
+        del self.mol_params_list[idx]
+        self.molecule_list_widget.takeItem(idx)
+        self.state.molecule_param_list = self.mol_params_list
+
+        self.output_label.setText("Molecule deleted")
+        self.molecule_list_widget.clearSelection()
+        self.molecule_list_widget.setCurrentItem(QListWidgetItem(None))
+
+    def show_molecule_settings(self) -> None:
+        """Show the settings of this molecule."""
+        current_idx: int = self.molecule_list_widget.currentRow()
+        if current_idx < 0 or current_idx >= len(self.mol_params_list):
+            return
+        current_name: str = self.mol_params_list[current_idx]["function_name"]
+        match_idx: int = self.func_dropdown.findText(current_name, Qt.MatchFlag.MatchExactly)
+        self.func_dropdown.setCurrentIndex(match_idx)
+        for key, val in self.mol_params_list[current_idx]["settings"].items():
+            if not is_valid_param(key) or key not in self.param_widgets:
+                errmsg: str = f"Key does not exist: {key}"
+                raise KeyError(errmsg)
+            if val is None:
+                continue
+            current_param: InputWidget = self.param_widgets[key]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+            set_content(current_param, val)
+
+            if key in self.opt_checkboxes:
+                self.opt_checkboxes[key].setChecked(True)
+        self.show_molecule_checkbox.setChecked(True)
+
+
+class SurfaceGeneration(QWidget):
+    """Surface generation dashboard tab view.
+
+    Provides control inputs for generating geometric lattice surfaces and
+    displays the resulting surface within an interactive, centered viewer.
+    """
+
+    def __init__(self, state: AppState) -> None:
+        """Initialise user widgets and assemble geometric layout wrappers.
+
+        :param state: AppState object to share information between tabs.
+        """
+        super().__init__()
+        self.state = state
+        """Shared application state cache container."""
+
+        self.surface_count: int = 50
+        """Default surface site count."""
+
+        self.real_surface_count: int = 50
+        """Default computed surface site count."""
+
+        self.stored_params: SurfaceParameters | None = None
+        """Parameters of the surface, to be communicated between tabs."""
+
+        self._init_validators()
+
+        # Initialise panels
+        left_container = self._build_left_panel()
+        scroll_area = self._init_svg_view()
+
+        # Assemble components directly inside the splitter framework
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        """Main splitter of the window."""
+        self.main_splitter.addWidget(left_container)
+        self.main_splitter.addWidget(scroll_area)
+
+        # Configure layout stretching rules (1 unit left panel, 3 units centre viewport)
+        self.main_splitter.setStretchFactor(0, 1)
+        self.main_splitter.setStretchFactor(1, 3)
+
+        # Clean up root assignment
+        root_layout = QHBoxLayout(self)
+        root_layout.addWidget(self.main_splitter)
+
+    def _init_validators(self) -> None:
+        """Instantiate validation models for text constraint processing."""
+        self._gt_one_validator = QIntValidator()
+        """Validator to ensure an int >= 1"""
+        self._gt_one_validator.setBottom(1)
+        self._pos_float_validator = QDoubleValidator()
+        """Validator to ensure a float >= 0.0"""
+        self._pos_float_validator.setBottom(0.0)
+
+    def _build_left_panel(self) -> QWidget:
+        """Construct the left controls container pane layout.
+
+        :return: A populated structural layout container.
+        """
+        container = QWidget()
+        layout = QVBoxLayout(container)
+
+        # Surface configuration selector.
+        layout.addWidget(QLabel("Surface Type:"), alignment=Qt.AlignmentFlag.AlignTop)
+        self.surface_dropdown = QComboBox()
+        """Selection box for geometry presets."""
+        self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))
+        self.surface_dropdown.setToolTip("Select surface type.")
+        layout.addWidget(self.surface_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # Theoretical count constraints input.
+        layout.addWidget(QLabel("Optional surface site count (positive int):"), alignment=Qt.AlignmentFlag.AlignTop)
+        self.site_count_input = QLineEdit()
+        """Numeric entry field for requested surface site count."""
+        self.site_count_input.setValidator(self._gt_one_validator)
+        self.site_count_input.setPlaceholderText("e.g. 42")
+        layout.addWidget(self.site_count_input, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # Evaluated real layout node calculation trackers.
+        layout.addWidget(QLabel("Real surface site count:"), alignment=Qt.AlignmentFlag.AlignTop)
+        self.real_site_count = QLabel()
+        """Text label reflecting processed actual surface site count."""
+        self.real_site_count.setText("50")
+        self.real_site_count.setToolTip("The actual site count computed from the input count and the surface type.")
+        layout.addWidget(self.real_site_count, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # Physical spacing distance parameters.
+        layout.addWidget(QLabel("Lattice Spacing (optional, > 0 float):"), alignment=Qt.AlignmentFlag.AlignTop)
+        self.lattice_input = QDoubleSpinBox()
+        """Numeric entry field for lattice spacing."""
+        self.lattice_input.setMinimum(0.0)
+        self.lattice_input.setValue(1.0)
+        self.lattice_input.setDecimals(2)
+        self.lattice_input.setSingleStep(0.01)
+        self.lattice_input.setAccelerated(True)
+        self.lattice_input.setSuffix(" Å")
+        self.lattice_input.setToolTip("Numeric entry field for lattice spacing.")
+        layout.addWidget(self.lattice_input, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # Control trigger processing elements.
+        self.generate_surface_button = QPushButton("Generate Surface")
+        """Trigger execution pipeline for layout generation code."""
+        self.generate_surface_button.setToolTip("Plot and store the surface.")
+        layout.addWidget(self.generate_surface_button, alignment=Qt.AlignmentFlag.AlignTop)
+
+        # Establish signalling loops.
+        self.site_count_input.textChanged.connect(self._get_real_surface_site_count)
+        self.surface_dropdown.currentIndexChanged.connect(self._get_real_surface_site_count)
+        self.generate_surface_button.clicked.connect(self.generate_surface)
+
+        # Force components to stick tight to the top boundary layout.
+        layout.addStretch()
+        return container
+
+    def _init_svg_view(self) -> QScrollArea:
+        """Construct the graphics frame and isolate structural canvas centering.
+
+        :return: A scroll container managing the viewport window frame.
+        """
+        self.svg_widget = ZoomableSvgWidget()
+        """Custom render context displaying loaded vector data."""
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        # Create a container widget with a Grid Layout to centre the SVG
+        container = QWidget()
+        container_layout = QGridLayout(container)
+        container_layout.addWidget(self.svg_widget, 0, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self.scroll_area = QScrollArea()
+        """Interactive bounding box containing the centered layout viewport."""
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setWidget(container)
+
+        return self.scroll_area
+
+    def _get_real_surface_site_count(self) -> None:
+        """Get the real surface site count."""
+        default_count: int = 50
+        surface_type: str = self.surface_dropdown.currentText()
+        temp_count: str = self.site_count_input.text().strip()
+        self.surface_count = default_count if not temp_count else int(temp_count)
+        self.real_surface_count = self.surface_count * self.surface_count
+        if surface_type == "hexagonal":
+            self.real_surface_count *= 2
+        elif surface_type == "honeycomb":
+            self.real_surface_count *= 4
+        self.real_site_count.setText(str(self.real_surface_count))
+
+    def generate_surface(self) -> None:
+        """Generate an example surface."""
+        seed_text = self.state.seed_input.text().strip()
+        seed: int | None = None
+        if seed_text:
+            if not seed_text.isnumeric() or int(seed_text) < 0:
+                self.error("Seed must be a positive integer")
+                return
+            seed = int(seed_text)
+
+        # Validate lattice spacing
+        lattice_text = self.lattice_input.value()
+        lattice: float | None = None
+        if lattice_text:
+            try:
+                lattice = float(lattice_text)
+            except ValueError as e:
+                self.error(str(e))
+                return
+
+        lattice_type = cast(
+            "Literal['hexagonal', 'triangular', 'honeycomb', 'square']",
+            self.surface_dropdown.currentText(),
+        )
+        app = cast("QGuiApplication", QGuiApplication.instance())
+        dark_mode_bool = app.styleHints().colorScheme() == Qt.ColorScheme.Dark
+
+        svg_buffer = io.BytesIO()
+
+        surf_params: SurfaceParameters = {
+            "lattice_a": lattice,
+            "lattice_type": lattice_type,
+            "seed": seed,
+            "site_count": self.surface_count,
+        }
+
+        show_surface(
+            **surf_params,
+            filepath=svg_buffer,
+            svg_flag=True,
+            dark_mode_bool=dark_mode_bool,
+        )
+        svg_data = svg_buffer.getvalue()
+
+        self.svg_widget.load(svg_data)
+        self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
+
+        self.stored_params = SurfaceParameters(**surf_params)
+        self.state.surface_params = self.stored_params
+
+    def error(self, msg: str) -> None:
+        """Handle the errors.
+
+        :param msg: Error message to display in a new window.
+        """
+        QMessageBox.critical(self, "Input Error", msg)
+
+
+class BackgroundTaskSignals(QObject):
+    """Signals for the generic background worker.
+
+    :cvar finished: Emits the raw output data package.
+    :cvar progress: Emits the current simulation progress as a percentage integer.
+    :cvar progress: Emits the integer percentage (0 to 100).
+    """
+
+    finished = Signal(object)
+    error = Signal(Exception)
+    progress = Signal(int)
+
+
+class BackgroundTask(QRunnable, Generic[P, R]):
+    """Executes a single blocking function call in the background thread pool."""
+
+    def __init__(
+        self,
+        func: Callable[P, R],
+        signals: BackgroundTaskSignals | None = None,
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> None:
+        """Initialise the BackgroundTask.
+
+        :param func: Function to be executed.
+        :param signals: Signals object to emit when done/encountering an error.
+        :param args: Positional arguments to be passed to the function.
+        :param kwargs: Keyword arguments to be passed to the function.
+        """
+        super().__init__()
+        self.func: Callable[P, R] = func
+        self.args = args
+        self.kwargs = kwargs
+        self.signals = BackgroundTaskSignals() if signals is None else signals
+
+    @override
+    def run(self) -> None:
+        """Run the background task."""
+        try:
+            result = self.func(*self.args, **self.kwargs)
+            self.signals.finished.emit(result)
+        except (ValueError, TypeError, OSError) as e:
+            self.signals.error.emit(e)
+
+
+class ReorderableListWidget(QListWidget):
+    """Reorderable list widget.
+
+    :cvar itemsMoved: Custom signal that emits (old_row_idx, new_row_idx).
+    """
+
+    itemsMoved = Signal(int, int)  # noqa: N815
+
+    def __init__(self, parent: QListWidget | None = None) -> None:
+        """Initialise the ReorderableListWidget.
+
+        :param parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+
+    @override
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Overridden drop event method.
+
+        Define a new drop event that emits the old and the new position.
+
+        :param event: Event object.
+        """
+        # Find the item currently selected (the one being dragged)
+        moving_item = self.currentItem()
+        if not moving_item:
+            super().dropEvent(event)
+            return
+
+        old_row = self.row(moving_item)
+
+        # QListWidget handles visual reordering
+        super().dropEvent(event)
+
+        # Find the item's new position after the move completes
+        new_row = self.row(moving_item)
+
+        # If the position actually changed, emit the signal
+        if old_row != new_row:
+            self.itemsMoved.emit(old_row, new_row)
+
+
+def _make_horizontal_line() -> QFrame:
+    """Create a horizontal line widget using a QFrame object.
+
+    :returns: A horizontal line widget.
+    """
+    hline = QFrame()
+    hline.setFrameShape(QFrame.Shape.HLine)
+    hline.setFrameShadow(QFrame.Shadow.Sunken)
+    return hline
+
+
+def main() -> int:
+    """Launch the adsorpy GUI.
+
+    :returns: Return code.
+    """
+    app = QApplication(sys.argv)
+    app.setOrganizationName("adsorpy")
+    app.setApplicationName("adsorpy-app")
+    gui = AdsorpyGUI()
+    gui.resize(1600, 900)
+    gui.show()
+    return cast("int", app.exec())
+
+
+if __name__ == "__main__":
+    sys.exit(main())
