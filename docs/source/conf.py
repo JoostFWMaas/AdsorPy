@@ -3,6 +3,7 @@
 """Sphinx config to generate documentation automatically."""
 import sys
 from pathlib import Path
+
 from sphinx_pyproject import SphinxConfig
 
 # Configuration file for the Sphinx documentation builder.
@@ -46,6 +47,7 @@ intersphinx_mapping = {
     "numba": ("https://numba.readthedocs.io/en/stable/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
     "rtree": ("https://rtree.readthedocs.io/en/latest/", None),
+    "pyside6": ("https://doc.qt.io/qtforpython-6/", None),
 }
 
 sd_custom_directives = {

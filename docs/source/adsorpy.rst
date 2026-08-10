@@ -12,6 +12,7 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
+   adsorpy.gui
    adsorpy.molecule_lib
    adsorpy.randomsequentialadsorption
    adsorpy.rsa_calculator
