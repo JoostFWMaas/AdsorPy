@@ -34,7 +34,7 @@ commands = [["basedpyright", "--venvpath", "{envdir}"]]
 
 [env.slotscheck]
 deps = ["slotscheck", "[gui-deps]"]
-commands = [["python", "-m", "slotscheck", "src/adsorpy"]]
+commands = [["python", "-m", "slotscheck", "-m", "adsorpy"]]
 
 [env.tach]
 skip_install = true
