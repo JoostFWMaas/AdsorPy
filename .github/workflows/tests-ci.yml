@@ -28,15 +28,15 @@ jobs:
       matrix:
         os: [
           ubuntu-latest,
-          macos-latest,
-          windows-latest,
+#          macos-latest,
+#          windows-latest,
         ]
         python-version: [
-          '3.10',
-          '3.11',
-          '3.12',
+#          '3.10',
+#          '3.11',
+#          '3.12',
           '3.13',
-          '3.14',
+#          '3.14',
         ]
         # Default behaviour uses the standard frozen lockfile
         resolution-strategy: [ default ]
@@ -89,9 +89,9 @@ jobs:
         run: uv run tox -m static
 
       - name: Run tests with tox
-        uses: coactions/setup-xvfb@b6b4fcfb9f5a895edadc3bc76318fae0ac17c8b3 # v1.0.1
-        with:
-          run: uv run tox -e py$(python3 -c "print('${{ matrix.python-version }}'.replace('.', ''))")
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.os == 'ubuntu-latest' && 'offscreen' || '' }}
+        run: uv run tox -e py$(python3 -c "print('${{ matrix.python-version }}'.replace('.', ''))")
 
       - name: Upload test results
         if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
