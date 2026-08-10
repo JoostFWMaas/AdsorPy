@@ -307,7 +307,7 @@ runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass"]
 
 [tool.basedpyright]
 include = ["src", "tests"]
-#extraPaths = ["src"]
+extraPaths = ["src"]
 #typeCheckingMode = "strict"  # Comment when using basedpyright.
 #useLibraryCodeForTypes = true
 
@@ -337,7 +337,7 @@ executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportUn
 strict-imports = true
 include-modules = """
 (
-    src
+    src.adsorpy
 #    |tests
 )
 """
