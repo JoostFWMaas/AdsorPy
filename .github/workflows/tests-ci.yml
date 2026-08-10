@@ -88,6 +88,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
         run: uv run tox -m static
 
+      - name: Install System Headless Graphics Libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1
+
       - name: Run tests with tox
         env:
           QT_QPA_PLATFORM: ${{ matrix.os == 'ubuntu-latest' && 'offscreen' || '' }}
