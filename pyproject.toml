@@ -100,11 +100,11 @@ test = [
 lint = [
     "mypy==2.3.0",
     "ruff==0.16.2",
-    "pyright==1.1.411",
+    "basedpyright==1.39.9",
     "tach==0.35.0",
     "slotscheck==0.20.1",
     "pyside6-stubs==6.7.3.0",
-    "gitpython>=3.1.58",
+    "gitpython>=3.1.59",
 ]
 docs = [
     "sphinx>=8.1.3",
@@ -124,6 +124,7 @@ dev-misc = [
     "cryptography>=50.0.0",
     "check-wheel-contents>=0.6.3",
     "pre-commit>=4.6.1",
+    "nodeenv>=1.10.0",
 ]
 gui-deps = [
     "pandas>=2.3.3",
@@ -304,16 +305,16 @@ ignore = [
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass"]
 
-[tool.pyright]
+[tool.basedpyright]
 include = ["src", "tests"]
-extraPaths = ["src"]
-typeCheckingMode = "strict"
-useLibraryCodeForTypes = true
+#extraPaths = ["src"]
+#typeCheckingMode = "strict"  # Comment when using basedpyright.
+#useLibraryCodeForTypes = true
 
 # Avoid penalising third-party libraries.
 reportMissingTypeStubs = "none"
 
-# Suppress "partially unknown" noise from deps like numpy, shapely, matplotlib, etc..
+# Suppress "partially unknown" noise from deps like numpy, shapely, matplotlib, etc...
 reportUnknownMemberType = "none"
 reportUnknownVariableType = "none"
 reportUnknownParameterType = "none"
@@ -326,6 +327,11 @@ reportImplicitOverride = "error"
 reportPrivateUsage = "warning"
 reportUnnecessaryTypeIgnoreComment = "warning"
 reportUnnecessaryComparison = "warning"  # These are usually included to prevent the user from breaking things.
+
+# Basedpyright options, comment these out when falling back on pyright:
+typeCheckingMode = "strict"  # Comment when using pyright.  Options are: "strict", "recommended", "all".
+failOnWarnings = false
+executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportUnnecessaryTypeIgnoreComment = "none" }]
 
 [tool.slotscheck]
 strict-imports = true

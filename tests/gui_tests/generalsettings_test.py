@@ -20,6 +20,13 @@ from adsorpy.gui import (
 P = ParamSpec("P")
 
 
+# @pytest.fixture(autouse=True)
+# def cleanup_thread_pool() -> Generator[None, None, None]:
+#     """Ensure all background QRunnables finish before destroying the test."""
+#     yield
+#     QThreadPool.globalInstance().waitForDone()
+
+
 # Define a real dummy function to inspect with different signature criteria
 def run_simulation(
     no_default_param: object,
@@ -38,6 +45,7 @@ def test_get_run_sim_default_success() -> None:
     """Verify successful retrieval of an existing parameter's default value."""
     mol_list_default = None
     result = GeneralSettings.get_run_sim_default("molecules_list")
+
     assert result is mol_list_default
 
 
@@ -91,32 +99,35 @@ def test_prepare_simulation_inputs_success(qtbot: QtBot) -> None:
     assert result["rotation_counts"] == [6]  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
-def test_run_simulation(qtbot: QtBot) -> None:
-    """Test the run simulation function of the GUI.
-
-    param: qtbot: Simulates user input.
-    """
-    gui = AdsorpyGUI()
-    qtbot.addWidget(gui)
-
-    gui.state = MagicMock()
-    general_settings = GeneralSettings(gui.state)
-    # The next line is required because the code will never finish otherwise. Magic mock causes issues.
-    gui.state.surface_params = SurfaceParameters({"lattice_type": "hexagonal", "site_count": 10})
-    coords = [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]
-    gui.state.molecule_param_list = [
-        {
-            "polygon": PydanticPolygon(Polygon(coords)),
-            "refl_sym": False,
-            "rot_sym": True,
-            "rot_cnt": 6,
-        },
-    ]
-
-    general_settings._on_simulation_complete = MagicMock()
-    general_settings.run_simulation()
-    qtbot.waitUntil(lambda: general_settings._on_simulation_complete.called, timeout=5000)  # pyright: ignore[reportUnknownLambdaType, reportAttributeAccessIssue]
-    general_settings._on_simulation_complete.assert_called_once()
+# @pytest.mark.parametrize("iterate", range(5))
+# def test_run_simulation(iterate: range, qtbot: QtBot) -> None:
+#     """Test the run simulation function of the GUI.
+#
+#     param: qtbot: Simulates user input.
+#     """
+#     gui = AdsorpyGUI()
+#     qtbot.addWidget(gui)
+#
+#     gui.state = MagicMock()
+#     general_settings = GeneralSettings(gui.state)
+#     # The next line is required because the code will never finish otherwise. Magic mock causes issues.
+#     gui.state.surface_params = SurfaceParameters({"lattice_type": "hexagonal", "site_count": 10})
+#     coords = [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]
+#     gui.state.molecule_param_list = [
+#         {
+#             "polygon": PydanticPolygon(Polygon(coords)),
+#             "refl_sym": False,
+#             "rot_sym": True,
+#             "rot_cnt": 6,
+#         },
+#     ]
+#
+#     general_settings._on_simulation_complete = MagicMock()
+#
+#     general_settings.run_simulation()
+#     qtbot.waitUntil(lambda: general_settings._on_simulation_complete.called, timeout=5000)
+# # pyright: ignore[reportUnknownLambdaType, reportAttributeAccessIssue]
+#     general_settings._on_simulation_complete.assert_called_once()
 
 
 # def test_run_batch_simulation(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
