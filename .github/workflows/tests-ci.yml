@@ -47,11 +47,11 @@ jobs:
 
         include:
           # Test absolute lowest bounds (Ubuntu, standard Python version)
-          - os: ubuntu-latest
+          - os: windows-latest
             python-version: '3.13'
             resolution-strategy: lowest
           # Test latest available package upgrades on PyPI
-          - os: ubuntu-latest
+          - os: windows-latest
             python-version: '3.13'
             resolution-strategy: latest
 
