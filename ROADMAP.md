@@ -30,10 +30,10 @@ The roadmap evolves as the project grows.
 
 ## 2. Medium‑Term Goals
 
-### Visualization
-- Improve built‑in plotting utilities
-- Add interactive visualization tools (widgets or browser‑based)
-- Add a GUI for standalone execution
+### Visualisation
+- [x] Improve built‑in plotting utilities
+- [x] Add interactive visualization tools (widgets or browser‑based)
+- [x] Add a GUI for standalone execution
 
 ---
 

@@ -3,12 +3,19 @@ All important changes to ``AdsorPy`` will be documented in this file.
 
 This format is based on [Keep a Changelog](http://keepachangelog.com/). This project adheres to [Semantic Versioning](http://semver.org/).
 
+
 ## [unreleased]
 ### Added
+- Add ``adsorpy.gui`` as a visual layer on top of the ``adsorpy.run_simulation.run_simulation`` function using ``PySide6``.
+- Add custom ``SVG`` generation script to store saturated RSA plot data with template shapes and rotation/translation/reflection references. Significant improvement in plot speed, plots no longer appear to crash the visualiser.
+- Add Pyside6 function for molecule footprint generation. The new GUI is significantly faster than the interactive ``matplotlib`` implementation.
 ### Changed
-- ``Change VdW_Radii.csv`` into ``vdw_radii.json`` with stricter pydantic checking.
+- Change ``VdW_Radii.csv`` into ``vdw_radii.json`` with stricter pydantic checking.
+- Change function signature of ``molecule_lib.discorectangle``: first argument was ``list[float, float]`` for radius and distance, is now 2 arguments of radius and distance.
+- Change from native Python types to Pydantic types where applicable. All molecule generation functions now take Pydantic types as input to ensure validity, e.g., radius has to be a positive float. Validity is checked when the function is called.
 ### Fixed
 - Fix broken HTML colour code for Pd. Leading 00 was missing.
+- Fix bug that rarely triggered: if a smaller molecule was placed close to the edge with periodic boundary conditions, a larger molecule could overlap with it from the other side of the periodic boundary. The molecule did not register as close to the boundary. This has been amended: closeness to the boundary is now registered as the sum of the circumradius of the molecule itself and the circumradius of the largest molecule in the simulation.
 ### Removed
 
 ## 1.2.2 - 2026-05-22
