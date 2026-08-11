@@ -423,6 +423,7 @@ def _turn_into_list(  # pyright: ignore[reportInvalidTypeArguments]
 ]:
     """Turn a variable or a list into an array.
 
+    :no-overloads:
     :param val_or_list: value or list.
     :param compare_to: comparison type. Should be either the type of the value or the type in the list.
     :return: the 1D array of the original variable or list.
