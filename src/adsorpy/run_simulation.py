@@ -36,15 +36,15 @@ if TYPE_CHECKING:
     from adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
 
     P = ParamSpec("P")  # Helps with static type checkers.
-    T1 = TypeVar("T1", bool, int, float, str, np.double, np.str_, np.long, Polygon, np.bool_)
-    T2 = TypeVar("T2", np.double, np.str_, np.long, Polygon, np.bool_)
+    T1 = TypeVar("T1", bool, int, float, str, np.float64, np.str_, np.int64, Polygon, np.bool_)
+    T2 = TypeVar("T2", np.float64, np.str_, np.int64, Polygon, np.bool_)
     Tn = TypeVar(
         "Tn",
         np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
-        np.ndarray[tuple[int], np.dtype[np.double]],
-        np.ndarray[tuple[int], np.dtype[np.long]],
+        np.ndarray[tuple[int], np.dtype[np.float64]],
+        np.ndarray[tuple[int], np.dtype[np.int64]],
         np.ndarray[tuple[int], np.dtype[np.str_]],
-        np.ndarray[tuple[int], np.dtype[np.bool]],
+        np.ndarray[tuple[int], np.dtype[np.bool_]],
     )
     Tax = TypeVar("Tax", Axes, None)
 
@@ -301,9 +301,9 @@ def _run_flux(
                 mol_flux.append(step)
                 all_phis.append(int(np.max(phis)))
 
-        all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.long),))
+        all_flux += cast("tuple[IdxArray, ...]", (np.asarray(mol_flux, dtype=np.int64),))
 
-    return all_flux, np.array(all_phis, dtype=np.long)
+    return all_flux, np.array(all_phis, dtype=np.int64)
 
 
 def _run_flux_fixedrotation(
@@ -322,7 +322,7 @@ def _run_flux_fixedrotation(
     :param distribution: list of floats indicating the distribution of the molecules. Empty for uniform distribution.
     :return: list of indices during which adsorption takes place.
     """
-    all_flux: tuple[IdxArray, ...] = tuple(np.empty(0, dtype=np.long))  # pyright: ignore[reportAssignmentType]
+    all_flux: tuple[IdxArray, ...] = tuple(np.empty(0, dtype=np.int64))  # pyright: ignore[reportAssignmentType]
     all_phis: list[int] = []
     mol_array: GeoArray = np.array(molecules)
     all_phis = all_phis * mol_array.size
@@ -338,14 +338,14 @@ def _run_flux_fixedrotation(
             np.append(all_flux[randmol.group_id], step)
             all_phis.append(int(np.max(phi)))
 
-    return all_flux, np.array(all_phis, dtype=np.long)
+    return all_flux, np.array(all_phis, dtype=np.int64)
 
 
 def _initialise_run_parameters(
     molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,  # pyright: ignore[reportInvalidTypeArguments]
-    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]] | None = None,
+    rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int64]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
-    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]] | None = None,
+    rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int64]] | None = None,
     simulation_type: str = "sequential",
 ) -> tuple[GeoArray, IdxArray, BoolArray, IdxArray]:
     """Initialise run parameters.
@@ -381,42 +381,42 @@ def _initialise_run_parameters(
 
 @overload
 def _turn_into_list(  # type: ignore[overload-overlap]
-    val_or_list: int | list[int] | np.ndarray[tuple[int], np.dtype[np.long]],
+    val_or_list: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int64]],
     compare_to: type[int],
-) -> np.ndarray[tuple[int], np.dtype[np.long]]: ...
+) -> np.ndarray[tuple[int], np.dtype[np.int64]]: ...
 
 
 @overload
 def _turn_into_list(
     val_or_list: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]],
-    compare_to: type[bool],
+    compare_to: type,
 ) -> np.ndarray[tuple[int], np.dtype[np.bool_]]: ...
 
 
 @overload
 def _turn_into_list(
-    val_or_list: float | list[float] | np.ndarray[tuple[int], np.dtype[np.double]],
-    compare_to: type[float],
-) -> np.ndarray[tuple[int], np.dtype[np.double]]: ...
+    val_or_list: float | list[float] | np.ndarray[tuple[int], np.dtype[np.float64]],
+    compare_to: type,
+) -> np.ndarray[tuple[int], np.dtype[np.float64]]: ...
 
 
 @overload
 def _turn_into_list(
     val_or_list: str | list[str] | np.ndarray[tuple[int], np.dtype[np.str_]],
-    compare_to: type[str],
+    compare_to: type,
 ) -> np.ndarray[tuple[int], np.dtype[np.str_]]: ...
 
 
 @overload
 def _turn_into_list(
     val_or_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
-    compare_to: type[Polygon],
+    compare_to: type,
 ) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # pyright: ignore[reportInvalidTypeArguments]
 
 
 def _turn_into_list(  # pyright: ignore[reportInvalidTypeArguments]
     val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
-    compare_to: type[T1],
+    compare_to: type,
 ) -> np.ndarray[
     tuple[int],
     np.dtype[T2],  # pyright: ignore[reportInvalidTypeArguments]
@@ -567,7 +567,7 @@ def _select_and_run(
     :raises ValueError: if the `simulation_type` (dosing scheme) and flux flag combination are not supported.
     """
     all_flux: tuple[IdxArray, ...] = ()
-    phis: IdxArray = np.empty(0, dtype=np.long)
+    phis: IdxArray = np.empty(0, dtype=np.int64)
 
     match (simulation_type, include_rejected_flux):
         case ("sequential", False):
