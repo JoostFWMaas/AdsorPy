@@ -56,7 +56,7 @@ if TYPE_CHECKING:
     from adsorpy.types import BoolArray, CoordsArray3D, DistArray, IdxArray, RotMatrix, StrArray
 
     T = TypeVar("T", bool, int, str, float)
-    Tfloat = TypeVar("Tfloat", float, np.double, DistArray)
+    Tfloat = TypeVar("Tfloat", float, np.float64, DistArray)
     # P = ParamSpec("P")  # Helps with static type checkers.
 
 plt.rcParams.update(
@@ -189,7 +189,7 @@ def polygonium(
     :param roundedness: The roundedness, removes sharp corners. Theoretical limit at infinity is a disk.
     :return: The regular (rounded) polygon.
     """
-    points = np.arange(verts, dtype=np.double)
+    points = np.arange(verts, dtype=np.float64)
     points *= 2 * np.pi
     points /= verts
     points = np.column_stack((np.sin(points), np.cos(points)))
@@ -254,7 +254,7 @@ def xyz_reader(
     return cast("Polygon", aff.translate(molecule, *centre))
 
 
-def _rotation_matrix(roll: float | np.double, pitch: float | np.double, yaw: float | np.double) -> RotMatrix:
+def _rotation_matrix(roll: float | np.float64, pitch: float | np.float64, yaw: float | np.float64) -> RotMatrix:
     """Compute the 3D rotation matrix using roll, pitch, and yaw.
 
     :param roll: Rotation along the x-axis.
@@ -412,7 +412,7 @@ class MoleculeViewer(QDialog):
         :return: Tuple containing configured baseline instance data arrays.
         """
         self.orig_atomkeys: StrArray = np.array(atomkeys, dtype=np.str_)
-        self.orig_atompos: CoordsArray3D = np.array(atompos, dtype=np.double)
+        self.orig_atompos: CoordsArray3D = np.array(atompos, dtype=np.float64)
         self.orig_colours: StrArray = np.array(colours, dtype=np.str_)
 
         # Establish working instance clones to avoid operational mutations
@@ -1250,7 +1250,7 @@ def first_time_loader(
 def _xyz_verifier(
     atomkeys: StrArray,
     atompos: CoordsArray3D,
-    listed_molecule_count: np.long,
+    listed_molecule_count: np.int64,
 ) -> None:
     """Check if the .xyz file is of the correct format.
 
@@ -1312,9 +1312,9 @@ def _initialise_reader(
         errmsg = f"The file type is not .xyz but {badtype}"
         raise ValueError(errmsg)
     data = np.loadtxt(file_path, dtype=str, skiprows=2)
-    listed_molecule_count: np.long = cast("np.long", np.loadtxt(file_path, dtype=np.long, max_rows=1))
+    listed_molecule_count: np.int64 = cast("np.int64", np.loadtxt(file_path, dtype=np.int64, max_rows=1))
     atomkeys: StrArray = data[:, 0]
-    atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.double))
+    atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.float64))
 
     _xyz_verifier(atomkeys, atompos, listed_molecule_count)
 

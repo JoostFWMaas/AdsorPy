@@ -27,8 +27,8 @@ def valid_xyz_inputs(
     draw: Callable[[SearchStrategy[T]], T],
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.str_]],
-    np.ndarray[tuple[int, Literal[3]], np.dtype[np.double]],
-    np.long,
+    np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]],
+    np.int64,
 ]:
     """Generate valid .xyz inputs.
 
@@ -45,18 +45,18 @@ def valid_xyz_inputs(
         dtype=str,
     )
 
-    atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.double]] = cast(
-        "np.ndarray[tuple[int, Literal[3]], np.dtype[np.double]]",
+    atompos: np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]] = cast(
+        "np.ndarray[tuple[int, Literal[3]], np.dtype[np.float64]]",
         draw(
             arrays(  # pyright: ignore[reportArgumentType]
-                dtype=np.double,
+                dtype=np.float64,
                 shape=(num, 3),
                 elements=st.floats(allow_nan=False, allow_infinity=False),
             ),
         ),
     )
 
-    return atomkeys, atompos, np.long(num)
+    return atomkeys, atompos, np.int64(num)
 
 
 @st.composite
@@ -64,7 +64,7 @@ def invalid_xyz_inputs(
     draw: Callable[[SearchStrategy[T]], T],
 ) -> tuple[
     np.ndarray[tuple[int], np.dtype[np.str_]],
-    np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.double]],
+    np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.float64]],
     int | None,
 ]:
     """Generate invalid .xyz inputs.
@@ -85,11 +85,11 @@ def invalid_xyz_inputs(
 
     # Random shape (may violate 3D rule)
     dim2 = draw(st.integers(min_value=1, max_value=5))  # pyright: ignore[reportArgumentType]
-    atompos: np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.double]] = cast(
-        "np.ndarray[tuple[int, Literal[1, 2 ,3 ,4 ,5]], np.dtype[np.double]]",
+    atompos: np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.float64]] = cast(
+        "np.ndarray[tuple[int, Literal[1, 2 ,3 ,4 ,5]], np.dtype[np.float64]]",
         draw(
             arrays(  # pyright: ignore[reportCallIssue]
-                dtype=np.double,
+                dtype=np.float64,
                 shape=(num, dim2),  # pyright: ignore[reportArgumentType]
                 elements=st.floats(allow_nan=True, allow_infinity=True),
             ),
@@ -117,7 +117,7 @@ def test_xyz_verifier_valid(
     data: tuple[
         StrArray,
         CoordsArray3D,
-        np.long,
+        np.int64,
     ],
 ) -> None:
     """Test correct response to valid input.
@@ -134,8 +134,8 @@ def test_xyz_verifier_valid(
 def test_xyz_verifier_invalid(
     data: tuple[
         np.ndarray[tuple[int], np.dtype[np.str_]],
-        np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.double]],
-        np.long | None,
+        np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.float64]],
+        np.int64 | None,
     ],
 ) -> None:
     """Test correct response to invalid input.

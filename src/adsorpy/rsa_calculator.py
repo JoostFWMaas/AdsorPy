@@ -38,7 +38,7 @@ if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
 
 
 @njit("double[:, :](double[:, :], double[:, :])", parallel=True, cache=True)
-def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.double]]:
+def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
     """Calculate the square distance between two sets of coordinates.
 
     :param coords1: The first set of coordinates.
@@ -47,7 +47,7 @@ def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tupl
     """
     dim1: int = coords1.shape[1]
     dim2: int = coords2.shape[1]
-    distances: np.ndarray[tuple[int, int], np.dtype[np.double]] = np.empty((dim1, dim2), dtype=np.double)
+    distances: np.ndarray[tuple[int, int], np.dtype[np.float64]] = np.empty((dim1, dim2), dtype=np.float64)
     for ii in prange(dim1):
         for jj in prange(dim2):
             dx = coords1[0, ii] - coords2[0, jj]
@@ -92,7 +92,7 @@ def calculate_square_distance(
     if filtered_coords.size != 0:  # If the list of nearby coordinates is not empty, proceed.
         distance_squared = squared_cdist(candidate_coords, filtered_coords)[0]
     else:
-        distance_squared = np.empty(0, dtype=np.double)  # If there are no nearby coordinates, skip.
+        distance_squared = np.empty(0, dtype=np.float64)  # If there are no nearby coordinates, skip.
     return distance_squared, neighbour_index, mol_group_index
 
 
@@ -142,7 +142,7 @@ def check_hard_border(
 
     :return: bool: is there guaranteed clearance between the molecule radius and the edge?
     """
-    both_max: CoordPair = cast("CoordPair", np.array([[x_max], [y_max]], dtype=np.double))
+    both_max: CoordPair = cast("CoordPair", np.array([[x_max], [y_max]], dtype=np.float64))
     both_max -= max_radius
     included: BoolArray = cast("BoolArray", max_radius < candidate_coords)
     included &= candidate_coords < both_max
@@ -185,7 +185,7 @@ def check_shape_overlap(
     neighbour_index: IdxArray,
     simul: Simulator,
     pmg: MoleculeGroup,
-    try_angle_first: int | np.long | None = None,
+    try_angle_first: int | np.int64 | None = None,
 ) -> tuple[bool, CandidateMolecule]:
     """Check whether there the new molecule overlaps with existing molecules.
 
@@ -216,7 +216,7 @@ def check_shape_overlap(
     if try_angle_first is not None:
         random_angle_order = np.delete(random_angle_order, np.nonzero(available_rotations == try_angle_first))
         random_angle_order = np.insert(random_angle_order, 0, try_angle_first)
-    ii: np.long
+    ii: np.int64
     for ii in random_angle_order:
         candidate_molecule: Polygon = aff.translate(
             pmg.rotated_molecules[ii],
@@ -227,7 +227,7 @@ def check_shape_overlap(
         overlap_indices = pos_tree.query(candidate_molecule)  # Returns the indices of overlapping bounding boxes.
 
         intersect_flag: bool = False
-        nn: np.long
+        nn: np.int64
         for nn in neighbour_index[overlap_indices]:  # For all neighbours, check intersection.
             if prepared_candidate.intersects(positioned_molecules[nn]):
                 intersect_flag = True
@@ -243,7 +243,7 @@ def check_shape_overlap(
 
 
 def make_rtree_filter(
-    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.double]],
+    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
     rtree: Index,
     circumradius: float,
     existing: BoolArray,
@@ -262,16 +262,16 @@ def make_rtree_filter(
         candidate_coordinates[1] + circumradius,
     )
 
-    tempresult = np.array(list(rtree.intersection(minxminymaxxmaxy)), dtype=np.long)
+    tempresult = np.array(list(rtree.intersection(minxminymaxxmaxy)), dtype=np.int64)
     temprange = np.arange(existing.size)
     filterrange = temprange[existing]
-    keyvals: dict[np.long, np.long] = dict(zip(filterrange, temprange, strict=False))
+    keyvals: dict[np.int64, np.int64] = dict(zip(filterrange, temprange, strict=False))
 
-    return np.array([keyvals[sol] for sol in tempresult], dtype=np.long)
+    return np.array([keyvals[sol] for sol in tempresult], dtype=np.int64)
 
 
 def make_rectangular_filter(
-    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.double]],
+    candidate_coordinates: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]],
     other_coordinates: CoordsArray,
     x_offset: float,
     y_offset: float | None = None,
@@ -285,8 +285,8 @@ def make_rectangular_filter(
 
     :return: Nx1 boolean array to filter the coordinates over.
     """
-    candidate_x: np.double
-    candidate_y: np.double
+    candidate_x: np.float64
+    candidate_y: np.float64
     candidate_x, candidate_y = candidate_coordinates
 
     other_x: FloatArray
@@ -324,27 +324,27 @@ def create_periodic_images(
     extended_coordinates: T = coordinates.copy()
     # This creates an array of the form [[x_max, 0], [0, y_max]].
     temp_offset: (
-        np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.double]]
-        | np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.double]]
+        np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]]
+        | np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]
     ) = (
-        cast("np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.double]]", np.diag([x_max, y_max]).reshape((2, 2)))
+        cast("np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]]", np.diag([x_max, y_max]).reshape((2, 2)))
         if z_max is None
-        else cast("np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.double]]", np.diag([x_max, y_max, z_max]))
+        else cast("np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]", np.diag([x_max, y_max, z_max]))
     )
-    offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.double]] = temp_offset[
+    offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]] = temp_offset[
         :,
         :,
         np.newaxis,
     ]
 
-    ii: NDArray[np.double]
+    ii: NDArray[np.float64]
     for ii in offset:  # The first pass creates padding in x dir, the second pads in y.
         sliced_offset = ii
         extended_coordinates1: T = extended_coordinates + sliced_offset
         extended_coordinates2: T = extended_coordinates - sliced_offset
         extended_coordinates = cast(
             "T",
-            np.hstack((extended_coordinates, extended_coordinates1, extended_coordinates2), dtype=np.double),
+            np.hstack((extended_coordinates, extended_coordinates1, extended_coordinates2), dtype=np.float64),
         )
 
     return extended_coordinates
