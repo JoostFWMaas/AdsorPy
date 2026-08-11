@@ -76,10 +76,6 @@ automodule_path = [""]
 automodule_members = True
 autoclass_content = "both"
 
-nitpick_ignore = [
-    ("py:class", "np.bool"),
-    ("py:class", "np.str"),
-]
 
 autodoc_default_options = {
     "members": True,
