@@ -1461,7 +1461,7 @@ class GeneralSettings(QWidget):
         # self.run_group.setText("Computing...")
 
         sim_input = RunSimulationInput(**{key: value for key, value in inputs.items() if key != "repeats"})  # type: ignore[typeddict-item]
-        task = BackgroundTask(run_simulation, self.bg_signals, **sim_input)
+        task = BackgroundTask(run_simulation, **sim_input)
         task.signals.finished.connect(self._on_simulation_complete)
         task.signals.error.connect(self._on_simulation_error)
         QThreadPool.globalInstance().start(task)
@@ -1516,7 +1516,6 @@ class GeneralSettings(QWidget):
         # Instantiate task and pass 'task' itself into the execution function so it can access signals
         task = BackgroundTask(
             execute_dask_batch,
-            self.bg_signals,
             base_inputs=inputs,
             total_runs=n_instances,
         )  # typing: ignore[arg-type]
@@ -2650,14 +2649,12 @@ class BackgroundTask(QRunnable, Generic[P, R]):
     def __init__(
         self,
         func: Callable[P, R],
-        signals: BackgroundTaskSignals | None = None,
         *args: P.args,
         **kwargs: P.kwargs,
     ) -> None:
         """Initialise the BackgroundTask.
 
         :param func: Function to be executed.
-        :param signals: Signals object to emit when done/encountering an error.
         :param args: Positional arguments to be passed to the function.
         :param kwargs: Keyword arguments to be passed to the function.
         """
@@ -2665,7 +2662,7 @@ class BackgroundTask(QRunnable, Generic[P, R]):
         self.func: Callable[P, R] = func
         self.args = args
         self.kwargs = kwargs
-        self.signals = BackgroundTaskSignals() if signals is None else signals
+        self.signals = BackgroundTaskSignals()
 
     @override
     def run(self) -> None:
