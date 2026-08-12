@@ -1,15 +1,13 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+# Coordinated Dependabot configuration file for Python (pip & uv) and GitHub Actions.
+# Reference documentation: https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
-
 updates:
-  - package-ecosystem: "pip" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  # ---------- Python Fast Package Ecosystem (uv) ----------------
+  - package-ecosystem: "uv"
+    directory: "/" # Will look for the uv.lock file.
     schedule:
-      interval: "weekly"
+      - cron: "0 4 * * 2" # Every Tuesday at 04:00 UTC
 
     groups:
       python-dependencies:
@@ -22,17 +20,29 @@ updates:
     labels:
       - "dependencies"
 
-    rebase-strategy: "auto"
-
-    ignore: # Does not automatically push major version updates. Those can break things.
+    ignore:
       - dependency-name: "*"
-        update-types: [ "version-update:semver-major" ]
+        update-types:
+          - "version-update:semver-major"
 
-
-  # Enable version updates for GitHub Actions
+  # --------- CI/CD Workflows Ecosystem (GitHub Actions) --------------
   - package-ecosystem: "github-actions"
-    # Workflow files stored in the default location of `.github/workflows`
-    # You don't need to specify `/.github/workflows` for `directory`. You can use `directory: "/"`.
-    directory: "/"
+    directory: "/" # Resolves automatically to standard path: /.github/workflows
     schedule:
-      interval: "weekly"
+      - cron: "0 4 * * 2" # Every Tuesday at 04:00 UTC
+
+    groups:
+      action-dependencies:
+        patterns:
+          - "*"
+
+    commit-message:
+      prefix: "deps"
+
+    labels:
+      - "dependencies"
+
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
