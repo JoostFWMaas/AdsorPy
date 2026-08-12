@@ -7,7 +7,8 @@ updates:
   - package-ecosystem: "uv"
     directory: "/" # Will look for the uv.lock file.
     schedule:
-      - cron: "0 4 * * 2" # Every Tuesday at 04:00 UTC
+        interval: "cron"
+        cron: "0 4 * * 2" # Every Tuesday at 04:00 UTC
 
     groups:
       python-dependencies:
@@ -29,7 +30,8 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/" # Resolves automatically to standard path: /.github/workflows
     schedule:
-      - cron: "0 4 * * 2" # Every Tuesday at 04:00 UTC
+        interval: "cron"
+        cron: "0 4 * * 2" # Every Tuesday at 04:00 UTC
 
     groups:
       action-dependencies:
