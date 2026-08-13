@@ -338,6 +338,6 @@ strict-imports = true
 include-modules = """
 (
     adsorpy
-#    |tests
+    |src
 )
 """
