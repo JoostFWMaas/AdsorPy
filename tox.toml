@@ -33,7 +33,6 @@ deps = ["basedpyright", "[test]"]
 commands = [["basedpyright", "--venvpath", "{envdir}"]]
 
 [env.slotscheck]
-set_env = { PYTHONPATH = "{toxinidir}/src" }
 deps = ["slotscheck", "[gui-deps]"]
 commands = [["python", "-m", "slotscheck", "-m", "adsorpy"]]
 
