@@ -335,9 +335,3 @@ executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportUn
 
 [tool.slotscheck]
 strict-imports = true
-include-modules = """
-(
-    adsorpy
-    |src
-)
-"""
