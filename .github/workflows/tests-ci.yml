@@ -84,13 +84,15 @@ jobs:
           fi
         shell: bash
 
-      - name: Run static checks
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.resolution-strategy == 'default'
-        run: uv run tox -m static
-
       - name: Install System Headless Graphics Libraries
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1
+
+      - name: Run static checks
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.resolution-strategy == 'default'
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.os == 'ubuntu-latest' && 'offscreen' || '' }}
+        run: uv run tox -m static
 
       - name: Run tests with tox
         env:
