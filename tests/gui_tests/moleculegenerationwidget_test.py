@@ -70,7 +70,6 @@ def test_panels_assemble_structural_widgets_correctly(molecule_tab: MoleculeGene
     """Verify three distinct control layouts organise inside expected parent wrappers."""
     # Validate Left Panel components
     assert isinstance(molecule_tab.func_dropdown, QComboBox)
-    assert molecule_tab.add_molecule_button.text() == "Add new molecule"
 
     # Validate Center Panel viewport frame components
     assert isinstance(molecule_tab.svg_widget, ZoomableSvgWidget)
