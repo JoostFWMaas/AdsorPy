@@ -1845,15 +1845,15 @@ class MoleculeGeneration(QWidget):
     def _build_left_panel(self) -> QWidget:
         """Construct the left parameters control dashboard and link active list triggers.
 
+        The left panel is populated by the parameters of a molecule selected from ``adsorpy.mol_lib``.
+        The molecules are kept in a dropdown menu based on a filtered list of the molecule functions.
+        Parameters are taken from type hints. Type hints determine whether a box is a spinbox, textbox, optional, etc.
+
         :return: A populated structural container pane acting as the configuration panel.
         """
         container = QWidget()
         self.controls_layout = QVBoxLayout(container)
-        """Layout frame coordinating selection toggles and configuration property fields."""
-
-        self.add_molecule_button = QPushButton("Add new molecule")
-        """Action button triggering instance generation from the current profile layout."""
-        self.controls_layout.addWidget(self.add_molecule_button)
+        """Layout frame coordinating selection toggles and molecule configuration property fields."""
 
         self.func_dropdown = QComboBox()
         """Selection field populated with valid introspected molecule generator workflows."""
@@ -1872,12 +1872,6 @@ class MoleculeGeneration(QWidget):
         mol_param_layout = QVBoxLayout(mol_param_group)
         mol_param_layout.addWidget(QLabel("Mouse over parameter for tooltip."), alignment=Qt.AlignmentFlag.AlignTop)
 
-        # self.param_widgets: dict[str, QLineEdit | QDoubleSpinBox | QSpinBox | QFileDialog]
-        # """Active reference tracking field maps mapping variable names to their raw UI input views."""
-        #
-        # self.opt_checkboxes: dict[str, QCheckBox]
-        # """Active state checkboxes controlling presence flags for optional properties or switches."""
-
         self.param_layout = QVBoxLayout()
         """Parameter layout."""
         mol_param_layout.addLayout(self.param_layout)
@@ -1886,7 +1880,7 @@ class MoleculeGeneration(QWidget):
 
         target_index = self._fetch_setting("current_molecule", 0)
 
-        # 4. Handle the index 0 edge case manually if it matches the default initial index
+        # Handle the index 0 edge case manually if it matches the default initial index
         if target_index == 0:
             # Force execution since setCurrentIndex(0) won't trigger a change event
             self.build_param_inputs(self.func_dropdown.currentText())
@@ -2229,7 +2223,6 @@ class MoleculeGeneration(QWidget):
         self.show_molecule_checkbox = QCheckBox("Plot Molecule")
         """Checkbox whether to show the molecule."""
         self.show_molecule_checkbox.setToolTip("Plot the molecule")
-        # self.show_molecule_checkbox.setChecked(self.func_dropdown.currentText != "first_time_loader")
         self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
         molecule_buttons.addWidget(self.show_molecule_checkbox)
 
@@ -2351,8 +2344,6 @@ class MoleculeGeneration(QWidget):
         current_func_name = current_func_name if current_func_name != "first_time_loader" else "xyz_reader"
         molecule_func = self.generators[current_func_name]
         molecule_dict = self.get_param_values()
-        # if molecule_func.__name__ == "first_time_loader":
-        #     molecule_func = molecule_lib.xyz_reader
 
         try:
             result = molecule_func(**molecule_dict)  # pyright: ignore[reportCallIssue]
@@ -2389,9 +2380,8 @@ class MoleculeGeneration(QWidget):
 
     def delete_molecule(self) -> None:
         """Delete the current selected molecule."""
-        # Hitting the delete button without a selection results in -1.
         idx = self.molecule_list_widget.currentRow()
-        if idx < 0:
+        if idx < 0:  # Hitting the delete button without a selection results in -1.
             return
 
         del self.mol_params_list[idx]

@@ -114,9 +114,9 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.59.0",
-    "tox-uv>=1.36.0",
-    "uv>=0.12.3",
+    "tox==4.59.0",
+    "tox-uv==1.36.0",
+    "uv==0.12.5",
 ]
 dev-misc = [
     "build>=1.5.0",
@@ -262,7 +262,7 @@ known_local_folder = ["molcule_lib", "RSA_Calculator", "rsa_config"]
 line-length = 88
 
 [tool.uv]
-required-version = "0.12.3"
+required-version = "0.12.5"
 
 [tool.ruff]
 line-length = 120
