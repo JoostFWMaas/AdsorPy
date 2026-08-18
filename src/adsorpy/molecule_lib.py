@@ -1063,7 +1063,7 @@ class MoleculeViewer(QDialog):
         # Render the 3 traditional scatter projections
         elements.extend(scatter_proj(xs, ys, zs, 0, 0))
         elements.extend(scatter_proj(zs, ys, xs, 1, 0))
-        elements.extend(scatter_proj(xs, zs, ys, 0, 1))
+        elements.extend(scatter_proj(xs, -zs, ys, 0, 1))  # FIXME: Why must -zs be upside-down?
 
         # Render the 4th panel using the new helper
         elements.extend(vdw_lattice_proj(xs, ys, zs, 1, 1))
