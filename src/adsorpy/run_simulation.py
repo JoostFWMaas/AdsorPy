@@ -414,7 +414,7 @@ def _turn_into_list(
 ) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # pyright: ignore[reportInvalidTypeArguments]
 
 
-def _turn_into_list(  # pyright: ignore[reportInvalidTypeArguments]
+def _turn_into_list(
     val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
     compare_to: type,
 ) -> np.ndarray[

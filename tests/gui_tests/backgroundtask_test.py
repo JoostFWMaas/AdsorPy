@@ -27,7 +27,7 @@ def test_background_task_success_path(qtbot: QtBot) -> None:
 
     :param qtbot: The pytest-qt robot fixture managing UI thread synchronisation.
     """
-    task: BackgroundTask[Any, str] = BackgroundTask(sample_successful_job,  10, 5, message="complete")
+    task: BackgroundTask[Any, str] = BackgroundTask(sample_successful_job, 10, 5, message="complete")
 
     # Corrected: Call waitSignal directly on the PySide signal attribute
     with qtbot.waitSignal(task.signals.finished, timeout=2000) as blocker:

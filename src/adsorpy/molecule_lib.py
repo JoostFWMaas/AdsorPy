@@ -246,10 +246,8 @@ def xyz_reader(
 
     molecule: Polygon = cast("Polygon", unary_union(MultiPolygon(atom_list)))
     centre = -np.mean(atompos, axis=0)
-    if x_offset is not None:
-        centre[0] -= x_offset
-    if y_offset is not None:
-        centre[1] -= y_offset
+    centre[0] -= x_offset
+    centre[1] -= y_offset
 
     return cast("Polygon", aff.translate(molecule, *centre))
 
@@ -1250,13 +1248,13 @@ def first_time_loader(
 def _xyz_verifier(
     atomkeys: StrArray,
     atompos: CoordsArray3D,
-    listed_molecule_count: np.int64,
+    listed_molecule_count: np.int64 | None,
 ) -> None:
     """Check if the .xyz file is of the correct format.
 
     :param atomkeys: Atom key values (element abbreviations).
     :param atompos: Atom positions in 3D.
-    :param listed_molecule_count: Number of molecules according to the file.
+    :param listed_molecule_count: Number of molecules according to the file. If None is passed, something is wrong.
     :raises ValueError:
         1) If the .xyz file has no listed molecule count or an invalid count.
         2) if the .xyz file's molecule count does not match the read molecule count.
@@ -1312,7 +1310,7 @@ def _initialise_reader(
         errmsg = f"The file type is not .xyz but {badtype}"
         raise ValueError(errmsg)
     data = np.loadtxt(file_path, dtype=str, skiprows=2)
-    listed_molecule_count: np.int64 = cast("np.int64", np.loadtxt(file_path, dtype=np.int64, max_rows=1))
+    listed_molecule_count: np.int64 | None = cast("np.int64 | None", np.loadtxt(file_path, dtype=np.int64, max_rows=1))
     atomkeys: StrArray = data[:, 0]
     atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.float64))
 
@@ -1404,8 +1402,8 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
         width=svg.Length(100, "%"),
         height=svg.Length(100, "%"),
         viewBox=svg.ViewBoxSpec(min_x, min_y, view_w, view_h),
-        preserveAspectRatio=aspect_ratio,  # Injected corrected aspect behaviour
-        elements=[poly, *elements],  # pyright: ignore[reportArgumentType]
+        preserveAspectRatio=aspect_ratio,
+        elements=[poly, *elements],
     )
 
     # 6. Handle output
@@ -1425,7 +1423,5 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
 
 
 if __name__ == "__main__":  # Best practice
-    # while (file := input("File path name, or q to quit: ")).lower() not in {"q", "quit"}:
-    #     first_time_loader(file)
-    file = Path(r"C:\Users\Flash User\Downloads\xyz_examples\fluorochloromethanol.xyz")
-    first_time_loader(file)
+    while (file := input("File path name, or q to quit: ")).lower() not in {"q", "quit"}:
+        first_time_loader(Path(file))
