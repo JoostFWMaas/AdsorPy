@@ -1,11 +1,18 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-cython"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel.hooks.cython]
+dependencies = ["hatch-cython", "numpy"]
+
+[tool.hatch.build.targets.wheel.hooks.cython.options]
+compile_py = false
+
 
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.3.1"  # Edit manually.
+version = "1.3.1-alpha.1"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -15,7 +22,7 @@ license-files = ["LICEN[CS]E.md"]
 classifiers = [
     # Project maturity:
     "Development Status :: 5 - Production/Stable",
-    "License :: OSI Approved :: MIT License",
+#    "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
     # Intended users of project:
     "Natural Language :: English",
@@ -58,7 +65,7 @@ keywords = [
 
 dependencies = [
     "numpy>=2.2.6",
-    "numba>=0.67.0",
+#    "numba>=0.67.0",
     "matplotlib>=3.10.9",
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
@@ -137,7 +144,7 @@ dev-complete = [
 ]
 
 [project.urls]
-github = "https://github.com/JoosFWMaas/AdsorPy"
+github = "https://github.com/JoostFWMaas/AdsorPy"
 Documentation = "https://joostfwmaas.github.io/AdsorPy"
 Changelog = "https://github.com/JoostFWMaas/AdsorPy/blob/main/CHANGELOG.md"
 homepage = "https://pypi.org/project/adsorpy/"
@@ -329,9 +336,17 @@ reportUnnecessaryTypeIgnoreComment = "warning"
 reportUnnecessaryComparison = "warning"  # These are usually included to prevent the user from breaking things.
 
 # Basedpyright options, comment these out when falling back on pyright:
-typeCheckingMode = "strict"  # Comment when using pyright.  Options are: "strict", "recommended", "all".
-failOnWarnings = false
+typeCheckingMode = "strict"  # Comment when using pyright.  Options (increasingly strict): "strict", "recommended", "all".
+failOnWarnings = false  # basedpyright by default allows warnings on check but fails warnings on CI. That is inconsistent behaviour, so this disables that.
 executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportUnnecessaryTypeIgnoreComment = "none" }]
 
 [tool.slotscheck]
 strict-imports = true
+
+[tool.pyside6-deploy]
+# Basic application configuration overrides
+title = "AdsorPy"
+input_file = "gui.py"
+#icon = "assets/something_something.ico"
+exec_directory = "build"
+project_dir = "./src/adsorpy"
