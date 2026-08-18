@@ -857,7 +857,7 @@ class Simulator:
                 new_data = (
                     mdx,
                     *cast("tuple[int, bool, int]", basic_data[:3]),  # type: ignore[redundant-cast]
-                    mirror,
+                    int(mirror),
                     basic_data[4],
                     *cast("tuple[np.float64, np.float64]", mirr_coords.ravel()),
                     mirror_molecule,

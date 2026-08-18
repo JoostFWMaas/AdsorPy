@@ -1,11 +1,20 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-cython"]
 build-backend = "hatchling.build"
+
+
+[tool.hatch.build.targets.wheel.hooks.cython]
+dependencies = ["hatch-cython", "numpy"]
+
+
+[tool.hatch.build.targets.wheel.hooks.cython.options]
+compile_py = false
+
 
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.3.1"  # Edit manually.
+version = "1.3.1-alpha.1"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -15,7 +24,7 @@ license-files = ["LICEN[CS]E.md"]
 classifiers = [
     # Project maturity:
     "Development Status :: 5 - Production/Stable",
-    "License :: OSI Approved :: MIT License",
+#    "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
     # Intended users of project:
     "Natural Language :: English",
@@ -58,7 +67,7 @@ keywords = [
 
 dependencies = [
     "numpy>=2.2.6",
-    "numba>=0.67.0",
+#    "numba>=0.67.0",
     "matplotlib>=3.10.9",
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
@@ -83,6 +92,7 @@ dependencies = [
     "ipaddress>=1.0.23",
     "ply>=3.11",
 ]
+
 
 [project.optional-dependencies]
 test = [
@@ -125,6 +135,7 @@ dev-misc = [
     "check-wheel-contents>=0.6.3",
     "pre-commit>=4.6.2",
     "nodeenv>=1.10.0",
+    "cibuildwheel>=2.23.4",
 ]
 gui-deps = [
     "pandas>=2.3.3",
@@ -136,23 +147,28 @@ dev-complete = [
     "adsorpy[test,lint,docs,envs,dev-misc,gui-deps]"
 ]
 
+
 [project.urls]
-github = "https://github.com/JoosFWMaas/AdsorPy"
+github = "https://github.com/JoostFWMaas/AdsorPy"
 Documentation = "https://joostfwmaas.github.io/AdsorPy"
 Changelog = "https://github.com/JoostFWMaas/AdsorPy/blob/main/CHANGELOG.md"
 homepage = "https://pypi.org/project/adsorpy/"
 issues = "https://github.com/JoostFWMaas/AdsorPy/issues"
 download = "https://pypi.org/project/adsorpy/#files"
 
+
 [tool.hatch.package_data]
 "adsorpy" = ["py.typed"]
+
 
 [tool.hatch.build]
 deterministic = true
 
+
 [tool.hatch.build.targets.wheel]
 sbom-files = ["sbom.cdx.json"]
 packages = ["src/adsorpy"]
+
 
 [tool.hatch.build.targets.sdist]
 include = [
@@ -163,11 +179,13 @@ include = [
     "sbom.cdx.json",
 ]
 
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
 qt_api = "pyside6"
+
 
 [tool.coverage.run]
 omit = [
@@ -180,6 +198,7 @@ omit = [
     "*/sensitivity.py", # Demonstrator, not included.
     "*/Scripts/*",
 ]
+
 
 [tool.coverage.report]
 #fail_under = 20
@@ -208,11 +227,13 @@ exclude_also = [
     "batch_simulation",
 ]
 
+
 [tool.coverage.paths]
 source = [
     "src/",  # Local path
     ".tox/*lib//site-packages/",  # Tox path
 ]
+
 
 [tool.mypy]
 mypy_path = ["."]
@@ -224,11 +245,13 @@ disallow_any_explicit = true
 exclude = ['/Scripts']
 plugins = ["pydantic.mypy"]
 
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
 disallow_subclassing_any = false
+
 
 [tool.flake8]
 max-line-length = 120
@@ -239,6 +262,7 @@ exclude = [
     "Lib",
 ]
 count = true
+
 
 [tool.isort]
 src_paths = ["src"]
@@ -261,13 +285,16 @@ known_local_folder = ["molcule_lib", "RSA_Calculator", "rsa_config"]
 [tool.black]
 line-length = 88
 
+
 [tool.uv]
 required-version = "0.12.5"
+
 
 [tool.ruff]
 line-length = 120
 include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]
 src = ["src"]
+
 
 [tool.ruff.format]
 quote-style = "double"
@@ -298,12 +325,15 @@ ignore = [
     "D213", # Conflicts with D212: multi-line summary first line.
 ]
 
+
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]  # Missing docstring in public package. Not needed, package is empty.
 "tests/*" = ["S101", "TC", "SLF001"]  # Assert should not be used in production code! But this is test code, so here it is expected.
 
+
 [tool.ruff.lint.flake8-type-checking]
 runtime-evaluated-decorators = ["pydantic.dataclasses.dataclass"]
+
 
 [tool.basedpyright]
 include = ["src", "tests"]
@@ -329,9 +359,23 @@ reportUnnecessaryTypeIgnoreComment = "warning"
 reportUnnecessaryComparison = "warning"  # These are usually included to prevent the user from breaking things.
 
 # Basedpyright options, comment these out when falling back on pyright:
-typeCheckingMode = "strict"  # Comment when using pyright.  Options are: "strict", "recommended", "all".
-failOnWarnings = false
+typeCheckingMode = "strict"  # Comment when using pyright.  Options (increasingly strict): "strict", "recommended", "all".
+failOnWarnings = false  # basedpyright by default allows warnings on check but fails warnings on CI. That is inconsistent behaviour, so this disables that.
 executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportUnnecessaryTypeIgnoreComment = "none" }]
+
 
 [tool.slotscheck]
 strict-imports = true
+
+
+[tool.pyside6-deploy]
+# Basic application configuration overrides
+title = "AdsorPy"
+input_file = "gui.py"
+#icon = "assets/something_something.ico"
+exec_directory = "build"
+project_dir = "./src/adsorpy"
+
+
+[tool.cibuildwheel]
+build-frontend = "build[uv]"

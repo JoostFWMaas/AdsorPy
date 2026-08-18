@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast
 
 import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff  # Install shapely via https://www.lfd.uci.edu/~gohlke/pythonlibs/#shapely
-from numba import njit, prange
+from adsorpy.compiled_squared_cdist import squared_cdist
+
+# from numba import njit, prange
 from shapely import STRtree
 from shapely.prepared import prep
 
@@ -37,23 +39,23 @@ if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
     P = ParamSpec("P")  # Helps with static type checkers.
 
 
-@njit("double[:, :](double[:, :], double[:, :])", parallel=True, cache=True)
-def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
-    """Calculate the square distance between two sets of coordinates.
-
-    :param coords1: The first set of coordinates.
-    :param coords2: The second set of coordinates.
-    :return: The squared distance array.
-    """
-    dim1: int = coords1.shape[1]
-    dim2: int = coords2.shape[1]
-    distances: np.ndarray[tuple[int, int], np.dtype[np.float64]] = np.empty((dim1, dim2), dtype=np.float64)
-    for ii in prange(dim1):
-        for jj in prange(dim2):
-            dx = coords1[0, ii] - coords2[0, jj]
-            dy = coords1[1, ii] - coords2[1, jj]
-            distances[ii, jj] = dx * dx + dy * dy
-    return distances
+# @njit("double[:, :](double[:, :], double[:, :])", parallel=True, cache=True)
+# def squared_cdist(coords1: CoordsArray, coords2: CoordsArray) -> np.ndarray[tuple[int, int], np.dtype[np.float64]]:
+#     """Calculate the square distance between two sets of coordinates.
+#
+#     :param coords1: The first set of coordinates.
+#     :param coords2: The second set of coordinates.
+#     :return: The squared distance array.
+#     """
+#     dim1: int = coords1.shape[1]
+#     dim2: int = coords2.shape[1]
+#     distances: np.ndarray[tuple[int, int], np.dtype[np.float64]] = np.empty((dim1, dim2), dtype=np.float64)
+#     for ii in prange(dim1):
+#         for jj in prange(dim2):
+#             dx = coords1[0, ii] - coords2[0, jj]
+#             dy = coords1[1, ii] - coords2[1, jj]
+#             distances[ii, jj] = dx * dx + dy * dy
+#     return distances
 
 
 def calculate_square_distance(
