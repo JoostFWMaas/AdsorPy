@@ -158,7 +158,7 @@ class RunSimulationInput(TypedDict, total=False):
     """Typed dictionary corresponding to the input of the run_simulation function."""
 
     rsa_config: RsaConfig | None
-    molecules_list: Polygon | list[Polygon] | GeoArray | None
+    molecules_list: list[Polygon] | GeoArray | None
     rotation_symmetries: int | list[int] | IdxArray | None
     reflection_symmetries: bool | list[bool] | BoolArray | None
     rotation_counts: int | list[int] | IdxArray | None
@@ -589,7 +589,7 @@ class ZoomableSvgWidget(QSvgWidget):
 
     # Unfortunately, load() is an overloaded method. Overriding will always result in a signature error.
     @override
-    def load(self, contents: bytes | str | Path | QByteArray | memoryview[int] | bytearray, /) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def load(self, contents: bytes | str | Path | QByteArray | memoryview[int] | bytearray) -> None:
         """Override native load to accept raw bytes, strings, or paths while caching data.
 
         :param contents: Raw SVG byte content, string path, or Pathlib instance.
@@ -889,12 +889,12 @@ class AppState(QObject, metaclass=AutoStateMeta):  # pyright: ignore[reportMissi
 
     seed_input: QLineEdit
     step_limit: QSpinBox
-    misc_params: MiscParameters
-    molecule_param_list: list[MoleculeParameters]
-    surface_params: SurfaceParameters
-    coverages: tuple[DistArray, ...]
-    fraction_of_covered_area: tuple[DistArray, ...]
-    gap_size_distribution: DistArray
+    misc_params: MiscParameters | None
+    molecule_param_list: list[MoleculeParameters] | None
+    surface_params: SurfaceParameters | None
+    coverages: tuple[DistArray, ...] | None
+    fraction_of_covered_area: tuple[DistArray, ...] | None
+    gap_size_distribution: DistArray | None
 
 
 class AdsorpyGUI(QMainWindow):
@@ -1009,8 +1009,8 @@ class AdsorpyGUI(QMainWindow):
         # Convert empty fields to None, or parse them to integers
         seed_val = int(seed_text) if seed_text else None
         misc_settings = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
-        surf_settings: SurfaceParameters = self.state.surface_params
-        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
+        surf_settings: SurfaceParameters = cast("SurfaceParameters", self.state.surface_params)
+        molecule_settings: list[MoleculeParameters] = cast("list[MoleculeParameters]", self.state.molecule_param_list)
 
         try:
             misc_adapter = TypeAdapter(MiscParameters)
@@ -1397,10 +1397,10 @@ class GeneralSettings(QWidget):
         misc_adapter = TypeAdapter(MiscParameters)
         misc_params = misc_adapter.dump_python(misc_params)
 
-        surf_settings: SurfaceParameters = self.state.surface_params
+        surf_settings: SurfaceParameters | None = self.state.surface_params
         surf_adapter = TypeAdapter(SurfaceParameters)
 
-        molecule_settings: list[MoleculeParameters] = self.state.molecule_param_list
+        molecule_settings: list[MoleculeParameters] | None = self.state.molecule_param_list
         mol_adapter = TypeAdapter(MoleculeParameters)
 
         defaultdict_of_lists: defaultdict[str, list[Polygon] | list[int] | list[bool]] = defaultdict(list)
@@ -1441,7 +1441,7 @@ class GeneralSettings(QWidget):
         dict_of_lists = replace_keys(defaultdict_of_lists)
         dict_of_lists = filter_dict_for_func(dict_of_lists)
 
-        surface_settings: SurfaceParameters = surf_adapter.dump_python(surf_settings)
+        surface_settings: SurfaceParameters | None = surf_adapter.dump_python(surf_settings)  # type: ignore[arg-type]
         surface_settings = SurfaceParameters() if surface_settings is None else surface_settings
         surface_settings.pop("seed") if "seed" in surface_settings else None
         return BatchSimulationInput(**misc_params, **surface_settings, **dict_of_lists)  # type: ignore[typeddict-item, no-any-return]
@@ -1450,10 +1450,10 @@ class GeneralSettings(QWidget):
         """Run exactly one instance of the simulation engine."""
         inputs = self._prepare_simulation_inputs()
         self.input_metadata = inputs
-        if inputs is None:
-            errmsg = "Simulation input is empty."
-            QMessageBox.critical(self, "Input Error", errmsg)
-            return
+        # if inputs is None:
+        #     errmsg = "Simulation input is empty."
+        #     QMessageBox.critical(self, "Input Error", errmsg)
+        #     return
 
         self.run_group.setEnabled(False)
         self.progress_bar.show()
@@ -1472,8 +1472,8 @@ class GeneralSettings(QWidget):
         inputs = self._prepare_simulation_inputs()
         self.input_metadata = inputs.copy()
         self.input_metadata["repeats"] = n_instances
-        if inputs is None:
-            return
+        # if inputs is None:
+        #     return
 
         self.run_group.setEnabled(False)
         self.progress_bar.show()
@@ -1521,7 +1521,7 @@ class GeneralSettings(QWidget):
         )  # typing: ignore[arg-type]
         task.kwargs["task_ref"] = task  # Dynamically inject the task reference into kwargs
 
-        if hasattr(self, "progress_bar") and self.progress_bar is not None:
+        if hasattr(self, "progress_bar"):
 
             def set_bar(val: int) -> None:
                 self.progress_bar.setValue(val)
@@ -1538,7 +1538,10 @@ class GeneralSettings(QWidget):
         self,
         simulation_outputs: tuple[list[int], DistArray, int | Generator, tuple[IdxArray, ...], IdxArray, Simulator],
     ) -> None:
-        """Run lightweight plotting pipeline back on the UI thread."""
+        """Run lightweight plotting pipeline back on the UI thread.
+
+        :returns: Simulation outputs.
+        """
         try:
             self.progress_bar.setValue(100)
             output = simulation_outputs[-1]
@@ -1705,14 +1708,15 @@ class GeneralSettings(QWidget):
                 return
             file_path = file_path.with_suffix(ext)
 
-        covs = self.state.coverages
-        fracs = self.state.fraction_of_covered_area
-        gaps = self.state.gap_size_distribution
+        covs = cast("tuple[DistArray]", self.state.coverages)
+        fracs = cast("tuple[DistArray]", self.state.fraction_of_covered_area)
+        gaps = cast("DistArray", self.state.gap_size_distribution)
 
         suffix_lower = file_path.suffix.lower()
 
-        meta = self.input_metadata
-        print(meta)
+        meta = self.input_metadata.copy()
+        if "molecules_list" in meta and meta["molecules_list"] is not None:
+            meta["molecules_list"] = [str(mol) for mol in meta["molecules_list"] if mol is not None]  # pyright: ignore[reportGeneralTypeIssues]
 
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1726,17 +1730,17 @@ class GeneralSettings(QWidget):
                         f.attrs[key] = str(val)
 
                     grp_a = f.create_group("Coverage")
-                    for i, arr in enumerate(covs):
-                        grp_a.create_dataset(f"col_{i}", data=arr, compression="gzip")
+                    for idx, arr in enumerate(covs):
+                        grp_a.create_dataset(f"col_{idx}", data=arr, compression="gzip")
 
                     grp_b = f.create_group("Fraction_of_covered_area")
-                    for i, arr in enumerate(fracs):
-                        grp_b.create_dataset(f"col_{i}", data=arr, compression="gzip")
+                    for idx, arr in enumerate(fracs):
+                        grp_b.create_dataset(f"col_{idx}", data=arr, compression="gzip")
 
                     f.create_dataset("Gap_size_distribution", data=gaps, compression="gzip")
 
             # -------------------------------------------------------------
-            # OPTION 2: JSON (.json) -> Plaintext serialization format
+            # OPTION 2: JSON (.json) -> Plaintext serialisation format
             # -------------------------------------------------------------
             elif ".json" in suffix_lower:
                 payload = {
@@ -1772,12 +1776,12 @@ class GeneralSettings(QWidget):
                         meta_io.write(f"{key}: {val}\n")
                     zf.writestr("metadata.txt", meta_io.getvalue())
 
-                    aaa_dict = {f"col_{i}": arr for i, arr in enumerate(covs)}
+                    aaa_dict = {f"col_{idx}": arr for idx, arr in enumerate(covs)}
                     aaa_io = io.StringIO()
                     pd.DataFrame(aaa_dict).to_csv(aaa_io, index=False)
                     zf.writestr("Coverage.csv", aaa_io.getvalue())
 
-                    bbb_dict = {f"col_{i}": arr for i, arr in enumerate(fracs)}
+                    bbb_dict = {f"col_{idx}": arr for idx, arr in enumerate(fracs)}
                     bbb_io = io.StringIO()
                     pd.DataFrame(bbb_dict).to_csv(bbb_io, index=False)
                     zf.writestr("Fraction_of_covered_area.csv", bbb_io.getvalue())
@@ -1958,8 +1962,9 @@ class MoleculeGeneration(QWidget):
         group_layout.addWidget(self.molecule_list_widget)
 
         self.delete_btn = QPushButton("Delete Selected Molecule")
-        """Action button triggering array removal operations from local caches."""
+        """Delete selected molecule from list of molecules."""
         self.delete_btn.clicked.connect(self.delete_molecule)
+        self.delete_btn.setToolTip("Delete selected molecule.")
         group_layout.addWidget(self.delete_btn)
 
         right_col.addWidget(group)
@@ -2008,6 +2013,9 @@ class MoleculeGeneration(QWidget):
             """
             if layout is None:
                 return
+
+            widget: QWidget | None
+            child_layout: QLayout | None
 
             while layout.count():
                 item = cast("QLayoutItem", layout.takeAt(0))
@@ -2308,8 +2316,8 @@ class MoleculeGeneration(QWidget):
                 case QLineEdit() | FilePickerWidget():
                     values[name] = widget.text()
 
-                case _:
-                    values[name] = None
+                # case _:
+                #     values[name] = None
 
         return values
 
