@@ -74,7 +74,10 @@ jobs:
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_ARCHS_MACOS: "universal2"
+          CIBW_ARCHS_WINDOWS: "AMD64 x86" # Explicitly targets 64-bit and 32-bit Windows
           CIBW_BEFORE_BUILD_WINDOWS: "if exist build rmdir /s /q build && if exist src\\adsorpy del /f /q src\\adsorpy\\*.pyd src\\adsorpy\\*.pyd.png src\\adsorpy\\*.exp src\\adsorpy\\*.lib"
+          DISTUTILS_USE_SDK: "1"
+          MSSdk: "1"
           SOURCE_DATE_EPOCH: "0"
           PYTHONHASHSEED: "0"
 
