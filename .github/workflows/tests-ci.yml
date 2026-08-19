@@ -86,7 +86,12 @@ jobs:
 
       - name: Install System Headless Graphics Libraries
         if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_on: timeout
+          command: sudo DEBIAN_FRONTEND=noninteractive apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y libegl1 libgl1
 
       - name: Run static checks
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.resolution-strategy == 'default'
