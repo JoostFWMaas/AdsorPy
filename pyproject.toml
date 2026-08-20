@@ -10,6 +10,18 @@ dependencies = ["hatch-cython", "numpy"]
 [tool.hatch.build.targets.wheel.hooks.cython.options]
 compile_py = false
 
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.windows]
+extra_compile_args = ["/openmp"]
+extra_link_args = ["/openmp"]
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.linux]
+extra_compile_args = ["-fopenmp"]
+extra_link_args = ["-fopenmp"]
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.darwin]
+extra_compile_args = ["-Xpreprocessor", "-fopenmp"]
+extra_link_args = ["-lomp"]
+
 
 [project]
 name = "adsorpy"
