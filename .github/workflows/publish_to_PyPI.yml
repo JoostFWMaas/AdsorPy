@@ -51,7 +51,23 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            arch: x64
+          - os: macos-latest
+            arch: universal2
+          # Separate Windows 64-bit
+          - os: windows-latest
+            arch: AMD64
+            msvc_arch: x64
+          # Separate Windows 32-bit
+          - os: windows-latest
+            arch: x86
+            msvc_arch: x86
+          # Separate Windows ARM64
+          - os: windows-latest
+            arch: ARM64
+            msvc_arch: x64_arm64
 
     steps:
       - name: Harden runner
@@ -69,17 +85,20 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
-      - name: Set up MSVC Developer Command Prompt
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+#      - name: Set up MSVC Developer Command Prompt
+#        if: runner.os == 'Windows'
+#        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+#        with:
+#          arch: x64_x86
 
       - name: Build wheels via cibuildwheel
         run: uvx cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_ARCHS_MACOS: "universal2"
-          CIBW_ARCHS_WINDOWS: "AMD64 x86" # Explicitly targets 64-bit and 32-bit Windows
+          CIBW_ARCHS_WINDOWS: ${{ matrix.arch }} # Dynamically matches the matrix row
           CIBW_BEFORE_BUILD_WINDOWS: "if exist build rmdir /s /q build && if exist src\\adsorpy del /f /q src\\adsorpy\\*.pyd src\\adsorpy\\*.pyd.png src\\adsorpy\\*.exp src\\adsorpy\\*.lib"
+          CIBW_TEST_SKIP: "*-win_arm64" # GitHub cannot test this because the runner.
           DISTUTILS_USE_SDK: "1"
           MSSdk: "1"
           SOURCE_DATE_EPOCH: "0"
@@ -88,7 +107,7 @@ jobs:
       - name: Upload OS-specific wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: cython-wheels-${{ matrix.os }}
+          name: cython-wheels-${{ matrix.os }}-${{ matrix.arch }}
           path: ./wheelhouse/*.whl
 
   # =========================================================================
