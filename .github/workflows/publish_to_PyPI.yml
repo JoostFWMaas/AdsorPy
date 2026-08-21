@@ -60,14 +60,17 @@ jobs:
           - os: windows-latest
             arch: AMD64
             msvc_arch: x64
+            hatch_plat: win-amd64
           # Separate Windows 32-bit
           - os: windows-latest
             arch: x86
             msvc_arch: x86
+            hatch_plat: win32
           # Separate Windows ARM64
           - os: windows-latest
             arch: ARM64
             msvc_arch: x64_arm64
+            hatch_plat: win-arm64
 
     steps:
       - name: Harden runner
@@ -103,6 +106,9 @@ jobs:
           MSSdk: "1"
           SOURCE_DATE_EPOCH: "0"
           PYTHONHASHSEED: "0"
+
+          CIBW_CONFIG_SETTINGS_WINDOWS: >-
+            ${{ matrix.hatch_plat && format('--global-option=--plat-name={0}', matrix.hatch_plat) || '' }}
 
       - name: Upload OS-specific wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
