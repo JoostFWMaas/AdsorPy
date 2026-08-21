@@ -107,8 +107,10 @@ jobs:
           SOURCE_DATE_EPOCH: "0"
           PYTHONHASHSEED: "0"
 
-          CIBW_CONFIG_SETTINGS_WINDOWS: >-
-            ${{ matrix.hatch_plat && format('--global-option=--plat-name={0}', matrix.hatch_plat) || '' }}
+#          CIBW_CONFIG_SETTINGS_WINDOWS: >-
+#            ${{ matrix.hatch_plat && format('--global-option=--plat-name={0}', matrix.hatch_plat) || '' }}
+
+          _PYTHON_HOST_PLATFORM: ${{ matrix.hatch_plat }}
 
       - name: Upload OS-specific wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
