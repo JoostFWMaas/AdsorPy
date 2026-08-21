@@ -85,11 +85,11 @@ jobs:
       - name: Setup uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
-#      - name: Set up MSVC Developer Command Prompt
-#        if: runner.os == 'Windows'
-#        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
-#        with:
-#          arch: x64_x86
+      - name: Set up MSVC Developer Command Prompt
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        with:
+          arch: ${{ matrix.msvc_arch }}
 
       - name: Build wheels via cibuildwheel
         run: uvx cibuildwheel --output-dir wheelhouse
