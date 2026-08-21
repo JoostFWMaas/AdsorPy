@@ -10,6 +10,7 @@ dependencies = ["hatch-cython", "numpy"]
 [tool.hatch.build.targets.wheel.hooks.cython.options]
 compile_py = false
 
+
 [tool.hatch.build.targets.wheel.hooks.cython.options.platform.windows]
 extra_compile_args = ["/openmp"]
 extra_link_args = ["/openmp"]
