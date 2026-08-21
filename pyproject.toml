@@ -10,18 +10,6 @@ dependencies = ["hatch-cython", "numpy"]
 [tool.hatch.build.targets.wheel.hooks.cython.options]
 compile_py = false
 
-compile_args = [
-  "-v",
-
-  { platforms = ["linux", "darwin"], arg = "-O3" },
-  { platforms = ["linux", "darwin"], arg = "-Wcpp" },
-
-  { platforms = ["windows"], arg = "/O2" },
-  { platforms = ["windows"], arg = "/GL" },
-
-  { platforms = "darwin", arch = "x86_64", arg = "-arch x86_64" },
-  { platforms = "darwin", arch = "arm64", arg = "-arch arm64" }
-]
 
 [tool.hatch.build.targets.wheel.hooks.cython.options.platform.windows]
 extra_compile_args = ["/openmp"]
