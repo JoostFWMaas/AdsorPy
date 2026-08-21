@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-cython", "Cython", "setuptools"]
+requires = ["hatchling", "hatch-cython"]
 build-backend = "hatchling.build"
 
 
