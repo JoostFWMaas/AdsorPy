@@ -99,7 +99,7 @@ jobs:
 
       - name: Set up MSVC Developer Command Prompt
         if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
+        uses: TheMrMilchmann/setup-msvc-dev@368ef7d1ee4d1171b31d4a7f67f4d954f903f5a9 # v4.1.0
         with:
           arch: ${{ matrix.msvc_arch }}
 
@@ -181,6 +181,7 @@ jobs:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
           UPLOAD: true
+          COMPONENT_ID: "QTsoFZ5Y3EFK"
           COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
           COMPONENT_VERSION: ${{ github.ref_name }}-gha${{github.run_number}}
           ENRICH: true
