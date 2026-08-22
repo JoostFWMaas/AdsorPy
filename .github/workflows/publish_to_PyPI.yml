@@ -261,13 +261,12 @@ jobs:
             env_dir="venv_test_${py_ver//./_}"
             uv venv "$env_dir" --python "$py_ver"
             
-            # Install the local wheel using uv pip straight into this specific environment
-            uv pip install --python "$env_dir" --no-index --find-links=dist/ adsorpy
+            # Install dependencies from PyPI but strictly prioritize your local wheels
+            uv pip install --python "$env_dir" --find-links=dist/ adsorpy
             
             # Execute python from within that exact environment to verify it works
             uv run --no-project --python "$env_dir" python -c "import adsorpy; print('Successfully verified version:', adsorpy.__version__)"
           done
-
 
       - name: Smoke test (sdist across all target Python versions)
         run: |
