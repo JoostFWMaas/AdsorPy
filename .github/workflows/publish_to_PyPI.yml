@@ -261,10 +261,10 @@ jobs:
             env_dir="venv_test_${py_ver//./_}"
             uv venv "$env_dir" --python "$py_ver"
             
-            # Install dependencies from PyPI but strictly prioritize your local wheels
+            # Install dependencies from PyPI but strictly prioritise local wheels
             uv pip install --python "$env_dir" --find-links=dist/ adsorpy
             
-            # Execute python from within that exact environment to verify it works
+            # Execute Python from within that exact environment to verify it works
             uv run --no-project --python "$env_dir" python -c "import adsorpy; print('Successfully verified version:', adsorpy.__version__)"
           done
 
@@ -285,10 +285,18 @@ jobs:
             echo " Testing Source Distribution (sdist) for Python $py_ver"
             echo "=========================================================="
             
-            # Source distributions compile from source, requiring a working C compiler/toolchain
-            uv run --no-project --python "$py_ver" pip install "$SDIST_FILE"
-            uv run --no-project --python "$py_ver" python -c "import ${{ env.PACKAGE_NAME }}; print('Successfully verified sdist version:', ${{ env.PACKAGE_NAME }}.__version__)"
+            # Create a dedicated, distinct virtual environment directory for this sdist test
+            sdist_env_dir="venv_sdist_${py_ver//./_}"
+            uv venv "$sdist_env_dir" --python "$py_ver"
+            
+            # Install the local sdist archive directly into the specific environment.
+            # This allows uv to pull all required package dependencies from PyPI.
+            uv pip install --python "$sdist_env_dir" "$SDIST_FILE"
+            
+            # Execute Python from within that exact environment to verify it works
+            uv run --no-project --python "$sdist_env_dir" python -c "import adsorpy; print('Successfully verified sdist version:', adsorpy.__version__)"
           done
+
 
       - name: Verify version matches tag
         run: |
