@@ -249,8 +249,11 @@ jobs:
       - name: Smoke test (wheel)
         run: |
           set -euo pipefail
-          uv run --no-project pip install dist/*.whl
-          uv run --no-project python -c "import ${{ env.PACKAGE_NAME }}; print(${{ env.PACKAGE_NAME }}.__version__)"
+          # Filter for Linux x86_64 wheels specifically
+          uv run --no-project pip install dist/*manylinux*.whl dist/*musllinux*.whl dist/*linux_x86_64*.whl || \
+          uv run --no-project pip install dist/*linux*.whl
+          
+          uv run --no-project python -c "import adsorpy; print(adsorpy.__version__)"
 
       - name: Smoke test (sdist)
         run: |
