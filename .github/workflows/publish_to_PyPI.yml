@@ -195,23 +195,12 @@ jobs:
       - name: Create working dist directory
         run: mkdir dist
 
-      - name: Download Linux wheels
+      - name: Download all compiled matrix wheels
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: cython-wheels-ubuntu-latest
+          pattern: cython-wheels-*
           path: dist
-
-      - name: Download Windows wheels
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: cython-wheels-windows-latest
-          path: dist
-
-      - name: Download macOS wheels
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: cython-wheels-macos-latest
-          path: dist
+          merge-multiple: true
 
       - name: Build sdist #1
         run: |
