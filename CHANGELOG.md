@@ -12,6 +12,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ## 1.3.1 - 2026-08-22
 ### Added
 ### Changed
+- Switch from ``numba`` to ``cython`` to make a GUI executable easier in the future. This changed the wheels significantly. Please open a ticket if this causes issues for you, and indicate which OS, architecture, and Python version you are using. 
 ### Fixed
 - Fix orientation of xz plot of the molecule orientation widget.
 ### Removed
