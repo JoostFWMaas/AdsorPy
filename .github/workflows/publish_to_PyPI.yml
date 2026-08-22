@@ -180,7 +180,7 @@ jobs:
         env:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
-          UPLOAD: true
+          UPLOAD: false # Set to true when I figure out how to include the provenance, or if false breaks uploading.
           COMPONENT_ID: "fnTHXhhCGZKB"
           COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
           COMPONENT_VERSION: ${{ github.ref_name }}-gha${{github.run_number}}
