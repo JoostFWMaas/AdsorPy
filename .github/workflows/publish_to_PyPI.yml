@@ -181,7 +181,7 @@ jobs:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
           UPLOAD: true
-          COMPONENT_ID: "jmtLHQbIeZLD"
+          COMPONENT_ID: "fnTHXhhCGZKB"
           COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
           COMPONENT_VERSION: ${{ github.ref_name }}-gha${{github.run_number}}
           ENRICH: true
