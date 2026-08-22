@@ -57,7 +57,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: deploy-docs
     environment:
       name: github-pages

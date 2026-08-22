@@ -120,7 +120,7 @@ jobs:
   ci-success:
     permissions: {}
     name: CI
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     needs: test
     if: success()
     steps:
