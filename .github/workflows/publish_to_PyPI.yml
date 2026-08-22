@@ -250,7 +250,6 @@ jobs:
         run: |
           set -euo pipefail
           
-          # Define the Python versions targeted in cibuildwheel configuration
           TARGET_VERSIONS=("3.10" "3.11" "3.12" "3.13" "3.14")
           
           for py_ver in "${TARGET_VERSIONS[@]}"; do
@@ -258,15 +257,16 @@ jobs:
             echo " Testing Wheel Installation for Python $py_ver"
             echo "=========================================================="
             
-            # Use uv to target the specific python version, and tell uv pip install 
-            # to search local dist/ directory to find the perfect wheel match automatically.
-            # --no-index blocks fetching wheels from PyPI.
-            uv run --no-project --python "$py_ver" uv pip install --no-index --find-links=dist/ adsorpy
+            # Create a dedicated, distinct virtual environment directory for this python variant
+            env_dir="venv_test_${py_ver//./_}"
+            uv venv "$env_dir" --python "$py_ver"
             
-            # Verify the package import and output version
-            uv run --no-project --python "$py_ver" python -c "import adsorpy; print('Successfully verified version:', adsorpy.__version__)"
+            # Install the local wheel using uv pip straight into this specific environment
+            uv pip install --python "$env_dir" --no-index --find-links=dist/ adsorpy
+            
+            # Execute python from within that exact environment to verify it works
+            uv run --no-project --python "$env_dir" python -c "import adsorpy; print('Successfully verified version:', adsorpy.__version__)"
           done
-
 
 
       - name: Smoke test (sdist across all target Python versions)
