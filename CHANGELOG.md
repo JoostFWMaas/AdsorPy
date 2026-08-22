@@ -3,8 +3,21 @@ All important changes to ``AdsorPy`` will be documented in this file.
 
 This format is based on [Keep a Changelog](http://keepachangelog.com/). This project adheres to [Semantic Versioning](http://semver.org/).
 
-
 ## [unreleased]
+### Added
+### Changed
+### Fixed
+### Removed
+
+## 1.3.1 - 2026-08-22
+### Added
+### Changed
+### Fixed
+- Fix orientation of xz plot of the molecule orientation widget.
+### Removed
+- Add molecule button without functionality. Another add molecule button was already in use.
+
+## 1.3.0 - 2026-08-12
 ### Added
 - Add ``adsorpy.gui`` as a visual layer on top of the ``adsorpy.run_simulation.run_simulation`` function using ``PySide6``.
 - Add custom ``SVG`` generation script to store saturated RSA plot data with template shapes and rotation/translation/reflection references. Significant improvement in plot speed, plots no longer appear to crash the visualiser.
