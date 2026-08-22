@@ -261,27 +261,28 @@ jobs:
             # Format the version string to match wheel tags (e.g., "3.10" -> "cp310")
             tag_version="cp${py_ver//./}"
             
-            # Find the specific Linux wheel for this Python version
-            # Uses a null-separated loop to avoid word-splitting issues with wildcards
+            # Find the specific glibc-compatible Linux wheel for this Python version
             WHEEL_FILE=""
             while IFS= read -r -d '' file; do
-              if [[ "$file" == *"$tag_version"* ]]; then
+              # Ensure the wheel matches the version tag AND is not a musllinux binary
+              if [[ "$file" == *"$tag_version"* && "$file" != *"musllinux"* ]]; then
                 WHEEL_FILE="$file"
                 break
               fi
             done < <(find dist -maxdepth 1 -name "*linux*.whl" -print0)
             
             if [ -z "$WHEEL_FILE" ]; then
-              echo "⚠️ No Linux wheel found matching version $tag_version ($py_ver). Skipping."
+              echo "⚠️ No compatible manylinux wheel found matching version $tag_version ($py_ver). Skipping."
               continue
             fi
             
-            echo "Found matching wheel: $WHEEL_FILE"
+            echo "Found compatible wheel: $WHEEL_FILE"
             
             # Use uv to dynamically pull the right Python runtime and test the wheel isolated
             uv run --no-project --python "$py_ver" pip install "$WHEEL_FILE"
             uv run --no-project --python "$py_ver" python -c "import adsorpy; print('Successfully verified version:', adsorpy.__version__)"
           done
+
 
       - name: Smoke test (sdist across all target Python versions)
         run: |
