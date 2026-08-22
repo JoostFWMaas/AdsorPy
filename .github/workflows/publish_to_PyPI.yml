@@ -302,27 +302,30 @@ jobs:
         run: |
           set -euo pipefail
           
-          # Use uv run to execute script inside the 3.13 test environment folder 
-          # created by earlier wheel smoke-testing step
           uv run --no-project --python venv_test_3_13 python - <<EOF
           import re
           import sys
           from packaging.version import Version
           import adsorpy
 
+          # Raw string evaluation from GHA environment variables
           expected_raw = "${GITHUB_REF_NAME}"
           actual = Version(adsorpy.__version__)
-          expected = re.sub(r"^v", "", expected_raw)
-          expected = expected.replace("-alpha.", "a").replace("-beta.", "b").replace("-rc.", "rc")
-          expected = re.sub(r"\+.*$", "", expected)
-          expected = Version(expected)
+          
+          # Strip leading 'v' and cleanse tag formatting into standard PEP 440 forms
+          expected_clean = re.sub(r"^v", "", expected_raw)
+          expected_clean = expected_clean.replace("-alpha.", "a").replace("-beta.", "b").replace("-rc.", "rc")
+          
+          # Remove local build metadata identifiers (+test.30) for localized exact version tracking
+          expected_clean = re.sub(r"\+.*$", "", expected_clean)
+          expected = Version(expected_clean)
 
           if actual != expected:
-              print(f"Version mismatch: {actual} != {expected} (from {expected_raw})")
+              print(f"❌ Version mismatch! Environment code: {actual} | Target Tag: {expected} (parsed from {expected_raw})")
               sys.exit(1)
-          print(f"Version OK: {actual}")
+              
+          print(f"✅ Version Match Success: {actual}")
           EOF
-
 
       - name: Generate base64 subject hashes
         id: hash
