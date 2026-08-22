@@ -301,14 +301,17 @@ jobs:
       - name: Verify version matches tag
         run: |
           set -euo pipefail
-          python - <<EOF
+          
+          # Use uv run to execute script inside the 3.13 test environment folder 
+          # created by earlier wheel smoke-testing step
+          uv run --no-project --python venv_test_3_13 python - <<EOF
           import re
           import sys
           from packaging.version import Version
-          import ${{ env.PACKAGE_NAME }}
+          import adsorpy
 
           expected_raw = "${GITHUB_REF_NAME}"
-          actual = Version(${{ env.PACKAGE_NAME }}.__version__)
+          actual = Version(adsorpy.__version__)
           expected = re.sub(r"^v", "", expected_raw)
           expected = expected.replace("-alpha.", "a").replace("-beta.", "b").replace("-rc.", "rc")
           expected = re.sub(r"\+.*$", "", expected)
@@ -319,6 +322,7 @@ jobs:
               sys.exit(1)
           print(f"Version OK: {actual}")
           EOF
+
 
       - name: Generate base64 subject hashes
         id: hash
