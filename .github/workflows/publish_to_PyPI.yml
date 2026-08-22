@@ -257,16 +257,28 @@ jobs:
             echo " Testing Wheel Installation for Python $py_ver"
             echo "=========================================================="
             
-            # Create a dedicated, distinct virtual environment directory for this python variant
             env_dir="venv_test_${py_ver//./_}"
             uv venv "$env_dir" --python "$py_ver"
             
-            # Install dependencies from PyPI but strictly prioritise local wheels
-            uv pip install --python "$env_dir" --find-links=dist/ adsorpy
+            # Format target platform tag (e.g. "3.13" -> "cp313")
+            tag_version="cp${py_ver//./}"
             
-            # Execute Python from within that exact environment to verify it works
+            # Find the strict local file path instead of requesting the name text string
+            WHEEL_FILE=$(find dist -maxdepth 1 -name "*${tag_version}*manylinux*.whl" | head -n 1)
+            
+            if [ -z "$WHEEL_FILE" ]; then
+               echo "⚠️ No local manylinux wheel found for $tag_version. Falling back to general search."
+               WHEEL_FILE=$(find dist -maxdepth 1 -name "*${tag_version}*linux*.whl" | head -n 1)
+            fi
+            
+            echo "Installing explicit local file: $WHEEL_FILE"
+            
+            # Force reinstall directly using the local file path to completely overwrite 1.3.0
+            uv pip install --python "$env_dir" --force-reinstall "$WHEEL_FILE"
+            
             uv run --no-project --python "$env_dir" python -c "import adsorpy; print('Successfully verified version:', adsorpy.__version__)"
           done
+
 
       - name: Smoke test (sdist across all target Python versions)
         run: |
@@ -289,13 +301,14 @@ jobs:
             sdist_env_dir="venv_sdist_${py_ver//./_}"
             uv venv "$sdist_env_dir" --python "$py_ver"
             
-            # Install the local sdist archive directly into the specific environment.
-            # This allows uv to pull all required package dependencies from PyPI.
-            uv pip install --python "$sdist_env_dir" "$SDIST_FILE"
+            # Added --force-reinstall to completely overwrite any cached versions 
+            # and force a clean, from-source compilation of your package file
+            uv pip install --python "$sdist_env_dir" --force-reinstall "$SDIST_FILE"
             
             # Execute Python from within that exact environment to verify it works
             uv run --no-project --python "$sdist_env_dir" python -c "import adsorpy; print('Successfully verified sdist version:', adsorpy.__version__)"
           done
+
 
 
       - name: Verify version matches tag
