@@ -44,7 +44,7 @@ jobs:
   build_wheels:
     needs: tag-check
     if: needs.tag-check.outputs.match == 'true'
-    name: Build wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }}-${{ matrix.arch }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -181,7 +181,7 @@ jobs:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
           UPLOAD: true
-          COMPONENT_ID: "QTsoFZ5Y3EFK"
+          COMPONENT_ID: "jmtLHQbIeZLD"
           COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
           COMPONENT_VERSION: ${{ github.ref_name }}-gha${{github.run_number}}
           ENRICH: true
