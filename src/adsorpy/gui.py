@@ -1395,7 +1395,7 @@ class GeneralSettings(QWidget):
             return BatchSimulationInput()
 
         misc_adapter = TypeAdapter(MiscParameters)
-        misc_params = misc_adapter.dump_python(misc_params)
+        misc_params = misc_adapter.validate_python(misc_params)
 
         surf_settings: SurfaceParameters | None = self.state.surface_params
         surf_adapter = TypeAdapter(SurfaceParameters)
@@ -1407,9 +1407,9 @@ class GeneralSettings(QWidget):
         molecule_settings = [] if molecule_settings is None else molecule_settings
 
         for dict_in_list in molecule_settings:
-            checked_dict = mol_adapter.dump_python(dict_in_list)
+            checked_dict = mol_adapter.validate_python(dict_in_list)
             for key, value in checked_dict.items():
-                defaultdict_of_lists[key].append(value)
+                defaultdict_of_lists[key].append(value)  # type: ignore[arg-type]
 
         key_to_fix = "polygon"
         if key_to_fix in defaultdict_of_lists:
@@ -1441,8 +1441,10 @@ class GeneralSettings(QWidget):
         dict_of_lists = replace_keys(defaultdict_of_lists)
         dict_of_lists = filter_dict_for_func(dict_of_lists)
 
-        surface_settings: SurfaceParameters | None = surf_adapter.dump_python(surf_settings)  # type: ignore[arg-type]
-        surface_settings = SurfaceParameters() if surface_settings is None else surface_settings
+        surface_settings: SurfaceParameters = (
+            surf_adapter.validate_python(surf_settings) if surf_settings is not None else SurfaceParameters()
+        )
+        # surface_settings = SurfaceParameters() if surface_settings is None else surface_settings
         surface_settings.pop("seed") if "seed" in surface_settings else None
         return BatchSimulationInput(**misc_params, **surface_settings, **dict_of_lists)  # type: ignore[typeddict-item, no-any-return]
 
