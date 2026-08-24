@@ -4,6 +4,9 @@ isolated_build = true
 recreate = true
 labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
+
+# Quick reference: for all tests in clean environments, ``uvx tox run -r``
+# For linting only: ``uvx tox run -m static -r``
 [env_run_base]
 pass_env = [
     "CI",

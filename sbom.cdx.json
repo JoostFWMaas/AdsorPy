@@ -5,7 +5,7 @@
   "metadata": {
     "component": {
       "type": "library",
-      "name": "my-package",
+      "name": "adsorpy",
       "version": "0.0.0-placeholder"
     }
   },
