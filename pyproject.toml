@@ -119,6 +119,7 @@ test = [
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
     "pyvirtualdisplay>=1.3; sys_platform == 'linux'",
     "easyprocess>=1.1; sys_platform == 'linux'",
+    "pytest-env>=1.7.0",
 ]
 lint = [
     "mypy==2.3.1",
@@ -198,6 +199,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
 qt_api = "pyside6"
+env = ["QT_QPA_PLATFORM=offscreen"]
 
 
 [tool.coverage.run]
