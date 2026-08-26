@@ -18,115 +18,123 @@ import webbrowser
 import zipfile
 from collections import defaultdict
 
-import h5py
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
-from dask.distributed import Future
-from matplotlib import patches
-from pydantic_core import core_schema
-from PySide6.QtCore import QByteArray, QMarginsF
-from PySide6.QtGui import QPageLayout
-from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
-from shiboken6 import Shiboken
+try:
+    import h5py
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import seaborn as sns
+    from dask.distributed import Future
+    from matplotlib import patches
+    from pydantic_core import core_schema
+    from PySide6.QtCore import QByteArray, QMarginsF
+    from PySide6.QtGui import QPageLayout
+    from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
+    from shiboken6 import Shiboken
 
-if sys.version_info >= (3, 11):
-    from datetime import UTC, datetime  # For datetime stamping and seed generation.
-    from typing import Unpack
-else:
-    from datetime import datetime
+    if sys.version_info >= (3, 11):
+        from datetime import UTC, datetime  # For datetime stamping and seed generation.
+        from typing import Unpack
+    else:
+        from datetime import datetime
 
-    from typing_extensions import Unpack
+        from typing_extensions import Unpack
 
-if sys.version_info >= (3, 12):
-    from typing import TypedDict, override
-else:
-    from typing_extensions import TypedDict, override
+    if sys.version_info >= (3, 12):
+        from typing import TypedDict, override
+    else:
+        from typing_extensions import TypedDict, override
 
-from itertools import count
-from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    ClassVar,
-    Generic,
-    Literal,
-    ParamSpec,
-    TypeAlias,
-    TypeGuard,
-    TypeVar,
-    cast,
-    get_origin,
-    get_type_hints,
-)
+    from itertools import count
+    from pathlib import Path
+    from typing import (
+        TYPE_CHECKING,
+        ClassVar,
+        Generic,
+        Literal,
+        ParamSpec,
+        TypeAlias,
+        TypeGuard,
+        TypeVar,
+        cast,
+        get_origin,
+        get_type_hints,
+    )
 
-import numpy as np
-from dask.delayed import delayed
-from dask.distributed import Client, as_completed
-from pydantic import (
-    ConfigDict,
-    NonNegativeInt,
-    PositiveFloat,
-    PositiveInt,
-    TypeAdapter,
-    ValidationError,
-    with_config,
-)
-from PySide6.QtCore import (
-    QObject,
-    QRect,
-    QRegularExpression,
-    QRunnable,
-    QSettings,
-    Qt,
-    QThreadPool,
-    Signal,
-    Slot,
-)
-from PySide6.QtGui import (
-    QAction,
-    QDoubleValidator,
-    QDropEvent,
-    QGuiApplication,
-    QIcon,
-    QIntValidator,
-    QPageSize,
-    QPainter,
-    QPdfWriter,
-    QPixmap,
-    QRegularExpressionValidator,
-    QResizeEvent,
-    QWheelEvent,
-)
-from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import (
-    QAbstractItemView,
-    QApplication,
-    QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
-    QFileDialog,
-    QFrame,
-    QGridLayout,
-    QGroupBox,
-    QHBoxLayout,
-    QLabel,
-    QLayout,
-    QLayoutItem,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QMainWindow,
-    QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QScrollArea,
-    QSpinBox,
-    QSplitter,
-    QTabWidget,
-    QVBoxLayout,
-    QWidget,
-)
+    import numpy as np
+    from dask.delayed import delayed
+    from dask.distributed import Client, as_completed
+    from pydantic import (
+        ConfigDict,
+        NonNegativeInt,
+        PositiveFloat,
+        PositiveInt,
+        TypeAdapter,
+        ValidationError,
+        with_config,
+    )
+    from PySide6.QtCore import (
+        QObject,
+        QRect,
+        QRegularExpression,
+        QRunnable,
+        QSettings,
+        Qt,
+        QThreadPool,
+        Signal,
+        Slot,
+    )
+    from PySide6.QtGui import (
+        QAction,
+        QDoubleValidator,
+        QDropEvent,
+        QGuiApplication,
+        QIcon,
+        QIntValidator,
+        QPageSize,
+        QPainter,
+        QPdfWriter,
+        QPixmap,
+        QRegularExpressionValidator,
+        QResizeEvent,
+        QWheelEvent,
+    )
+    from PySide6.QtSvgWidgets import QSvgWidget
+    from PySide6.QtWidgets import (
+        QAbstractItemView,
+        QApplication,
+        QCheckBox,
+        QComboBox,
+        QDoubleSpinBox,
+        QFileDialog,
+        QFrame,
+        QGridLayout,
+        QGroupBox,
+        QHBoxLayout,
+        QLabel,
+        QLayout,
+        QLayoutItem,
+        QLineEdit,
+        QListWidget,
+        QListWidgetItem,
+        QMainWindow,
+        QMessageBox,
+        QProgressBar,
+        QPushButton,
+        QScrollArea,
+        QSpinBox,
+        QSplitter,
+        QTabWidget,
+        QVBoxLayout,
+        QWidget,
+    )
+except ImportError as e:
+    print("\n[Error] GUI requirements are missing!", file=sys.stderr)
+    print("Please install the GUI sub-requirements using:\n", file=sys.stderr)
+    print("    pip install adsorpy[gui-deps]\n", file=sys.stderr)
+    print(f"Details: {e}", file=sys.stderr)
+    sys.exit(1)
+
 from shapely import Polygon, from_geojson
 from shapely.geometry import mapping
 
@@ -495,7 +503,7 @@ class MoleculeParameters(TypedDict):
     rot_sym: NonNegativeInt
     rot_cnt: PositiveInt
     polygon: PydanticPolygon
-    settings: dict[str, float | int | str | list[str] | None]
+    settings: dict[str, float | int | str]
 
 
 class SurfaceParameters(TypedDict, total=False):
@@ -2298,28 +2306,25 @@ class MoleculeGeneration(QWidget):
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
 
-    def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
+    def get_param_values(self) -> dict[str, float | int | str]:
         """Extract current user inputs from widgets back into a data dictionary.
 
         :return: Dictionary containing the key-value pairs of the parameters.
         """
-        values: dict[str, float | int | str | list[str] | None] = {}
+        values: dict[str, float | int | str] = {}
 
         for name, widget in cast("ItemsView[str, InputWidget]", self.param_widgets.items()):
             # If the widget is disabled, the optional checkbox was unchecked -> value is None
             if not widget.isEnabled():
                 continue
-
             # Extract value based on the PySide6/PyQt6 widget type
-            match widget:
+            # Ignore the error because this match is exhaustive!
+            match widget:  # type: ignore[exhaustive-match]
                 case QSpinBox() | QDoubleSpinBox():
                     values[name] = widget.value()
 
                 case QLineEdit() | FilePickerWidget():
                     values[name] = widget.text()
-
-                # case _:
-                #     values[name] = None
 
         return values
 

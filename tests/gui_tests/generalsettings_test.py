@@ -1,6 +1,7 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the GeneralSettings class of the `gui.py` module."""
+
 # import sys
 from typing import ParamSpec
 
@@ -169,6 +170,7 @@ def test_on_simulation_complete(qtbot: QtBot, subtests: pytest.Subtests) -> None
 
     mock_coverage = [0.5]
     mock_fraction = [0.3]
+
     def mock_plot(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
         """Mock plot function."""
 
@@ -186,7 +188,6 @@ def test_on_simulation_complete(qtbot: QtBot, subtests: pytest.Subtests) -> None
             self.analyse_gap_size = mock_analyse_gap_size
 
     mock_output = (MockSimulator(),)
-
 
     general_settings._on_simulation_complete(mock_output)  # pyright: ignore[reportArgumentType]
 
@@ -235,6 +236,7 @@ def test_on_simulation_complete_error(qtbot: QtBot, subtests: pytest.Subtests, m
 
     mock_coverage = ["Error"]
     mock_fraction = ["Also wrong"]
+
     def mock_plot(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
         """Mock plot function."""
 
@@ -254,6 +256,7 @@ def test_on_simulation_complete_error(qtbot: QtBot, subtests: pytest.Subtests, m
     mock_output = (MockSimulator(),)
 
     error_called = False
+
     def mock_error(_: Exception) -> None:
         """Mock the error function but return nothing.
 
@@ -264,12 +267,12 @@ def test_on_simulation_complete_error(qtbot: QtBot, subtests: pytest.Subtests, m
         nonlocal error_called
         error_called = True
 
-
     monkeypatch.setattr(general_settings, "error", mock_error)
     general_settings._on_simulation_complete(mock_output)  # pyright: ignore[reportArgumentType]
 
     assert error_called, "The error function should have been called."
     assert not general_settings.progress_bar.isVisible(), "Progress bar must start invisible."
+
 
 def test_on_simulation_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     """Test the on_simulation_error function of the GUI.
@@ -282,6 +285,7 @@ def test_on_simulation_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     general_settings = GeneralSettings(gui.state)
 
     error_called = False
+
     def mock_error(_: Exception) -> None:
         """Mock the error function but return nothing.
 
@@ -295,7 +299,6 @@ def test_on_simulation_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     monkeypatch.setattr(general_settings, "error", mock_error)
     general_settings.run_group.setDisabled(True)
     assert not general_settings.run_group.isEnabled(), "Sanity check: this should be set as disabled."
-
 
     test_exception = Exception()
     general_settings._on_simulation_error(test_exception)
@@ -315,6 +318,7 @@ def test_export_results(qtbot: QtBot, subtests: pytest.Subtests, monkeypatch: Mo
     general_settings = GeneralSettings(gui.state)
 
     warning_called = False
+
     def mock_warning(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
         """Mock warning function.
 

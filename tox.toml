@@ -1,13 +1,14 @@
-min_version = "4.60.0"
-env_list = ["py310", "py311", "py312", "py313", "py314", "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
+min_version = "4.60.1"
+env_list = [{ prefix = "py3", start = 10, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
 isolated_build = true
 recreate = true
-labels = { test = ["py310", "py311", "py312", "py313", "py314"], static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
+labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
 
 # Quick reference: for all tests in clean environments, ``uvx tox run -r``
 # For linting only: ``uvx tox run -m static -r``
 [env_run_base]
+labels = ["test"]
 pass_env = [
     "CI",
     "GITHUB_*",
@@ -17,7 +18,7 @@ pass_env = [
 ]
 deps = ["-e .[test]"]
 commands = [["pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
-    ["codecov"],
+    [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
 ]
 
 [env.ruff]
@@ -28,7 +29,7 @@ commands = [["ruff", "check", "src", "tests"]]
 [env.mypy]
 skip_install = true
 deps = ["mypy", "numpy", "pydantic"]
-commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--allow-subclassing-any", "--exclude", "/scripts/", "src", "tests"],
+commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--allow-subclassing-any", "--exclude", "/scripts/", "src", "tests", "--native-parser", "--show-error-end", "--show-error-code-links", "--show-error-context", "--enable-error-code", "exhaustive-match"],
 ]
 
 [env.basedpyright]
