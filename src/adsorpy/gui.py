@@ -1786,19 +1786,19 @@ class GeneralSettings(QWidget):
                         meta_io.write(f"{key}: {val}\n")
                     zf.writestr("metadata.txt", meta_io.getvalue())
 
-                    aaa_dict = {f"col_{idx}": arr for idx, arr in enumerate(covs)}
-                    aaa_io = io.StringIO()
-                    pd.DataFrame(aaa_dict).to_csv(aaa_io, index=False)
-                    zf.writestr("Coverage.csv", aaa_io.getvalue())
+                    coverage_dict = {f"col_{idx}": arr for idx, arr in enumerate(covs)}
+                    coverage_io = io.StringIO()
+                    pd.DataFrame(coverage_dict).to_csv(coverage_io, index=False)
+                    zf.writestr("Coverage.csv", coverage_io.getvalue())
 
-                    bbb_dict = {f"col_{idx}": arr for idx, arr in enumerate(fracs)}
-                    bbb_io = io.StringIO()
-                    pd.DataFrame(bbb_dict).to_csv(bbb_io, index=False)
-                    zf.writestr("Fraction_of_covered_area.csv", bbb_io.getvalue())
+                    frac_cov_dict = {f"col_{idx}": arr for idx, arr in enumerate(fracs)}
+                    frac_cov_io = io.StringIO()
+                    pd.DataFrame(frac_cov_dict).to_csv(frac_cov_io, index=False)
+                    zf.writestr("Fraction_of_covered_area.csv", frac_cov_io.getvalue())
 
-                    ccc_io = io.StringIO()
-                    pd.DataFrame({"gap_size_distribution": gaps}).to_csv(ccc_io, index=False)
-                    zf.writestr("Gap_size_distribution.csv", ccc_io.getvalue())
+                    gapsize_io = io.StringIO()
+                    pd.DataFrame({"gap_size_distribution": gaps}).to_csv(gapsize_io, index=False)
+                    zf.writestr("Gap_size_distribution.csv", gapsize_io.getvalue())
 
             QMessageBox.information(self, "Success", f"Results successfully exported to:\n{file_path.name}")
 
@@ -2419,8 +2419,6 @@ class MoleculeGeneration(QWidget):
             if not is_valid_param(key) or key not in self.param_widgets:
                 errmsg: str = f"Key does not exist: {key}"
                 raise KeyError(errmsg)
-            if val is None:
-                continue
             current_param: InputWidget = self.param_widgets[key]  # pyright: ignore[reportTypedDictNotRequiredAccess]
             set_content(current_param, val)
 

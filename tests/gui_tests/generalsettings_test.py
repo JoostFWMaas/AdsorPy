@@ -2,27 +2,31 @@
 # SPDX-License-Identifier: MIT
 """Test the GeneralSettings class of the `gui.py` module."""
 
-# import sys
+import json
+import pickle
+import sys
+import zipfile
+from pathlib import Path
 from typing import ParamSpec
 
-# from dask import distributed
-#
-# if sys.version_info >= (3, 11):
-#     from typing import Self
-# else:
-#     from typing_extensions import Self
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from PySide6.QtCore import QRunnable, QThreadPool
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 from pytestqt.qtbot import QtBot
 from shapely import Point, Polygon
 
 from adsorpy.gui import (
     AdsorpyGUI,
+    BatchSimulationInput,
     GeneralSettings,
     PydanticPolygon,
     SurfaceParameters,
@@ -306,11 +310,10 @@ def test_on_simulation_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     assert general_settings.run_group.isEnabled(), "This should have been re-enabled."
 
 
-def test_export_results(qtbot: QtBot, subtests: pytest.Subtests, monkeypatch: MonkeyPatch) -> None:
+def test_export_results_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     """Test the export_results function.
 
     :param qtbot: Simulates user input.
-    :param subtests: Subtest method to treat assertions as separate tests.
     :param monkeypatch: MonkeyPatch object to mock attributes.
     """
     gui = AdsorpyGUI()
@@ -331,4 +334,234 @@ def test_export_results(qtbot: QtBot, subtests: pytest.Subtests, monkeypatch: Mo
     monkeypatch.setattr(QMessageBox, "warning", mock_warning)
 
     general_settings.export_results()
-    assert warning_called, "The warning function should have been called."
+    assert warning_called, "The warning function should have been called because the gap size dist is empty."
+
+
+@pytest.fixture
+def mock_widget(qtbot: QtBot) -> GeneralSettings:
+    """Mock widget function to generate mock widget for metadata and other info.
+
+    :param qtbot: Simulates user input.
+    :returns: Mocked GeneralSettings.
+    """
+    gui = AdsorpyGUI()
+    qtbot.addWidget(gui)
+    general_settings = GeneralSettings(gui.state)
+    general_settings.state.gap_size_distribution = np.linspace(0, 1)
+    general_settings.state.coverages = (np.arange(2), np.linspace(3, 7, num=2))  # pyright: ignore[reportAttributeAccessIssue]
+    general_settings.state.fraction_of_covered_area = (np.arange(2), np.linspace(0, 3, num=2))  # pyright: ignore[reportAttributeAccessIssue]
+    general_settings.input_metadata = BatchSimulationInput(repeats=10)
+    return general_settings
+
+
+def test_export_user_cancels_dialogue(mock_widget: GeneralSettings, monkeypatch: MonkeyPatch) -> None:
+    """Test whether cancelled dialogue is handled correctly.
+
+    :param mock_widget: Mock GeneralSettings.
+    :param monkeypatch: MonkeyPatch object to mock attributes.
+    """
+
+    # Shorthand mock return value
+    def mock_dialogue(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
+        """Mock dialogue function.
+
+        :param _: Input arguments, ignored.
+        :param __: Input kwargs, ignored.
+        """
+        return "", "JSON Data Interchange (*.json);;"
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_dialogue)
+
+    # Track if QMessageBox.information was called
+    info_called = False
+
+    def mock_info(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
+        """Mock info function.
+
+        :param _: Ignored args.
+        :param __: Ignored kwargs.
+        """
+        nonlocal info_called
+        info_called = True
+
+    monkeypatch.setattr(QMessageBox, "information", mock_info)
+
+    mock_widget.export_results()
+    assert not info_called, "Should exit early without success message"
+
+
+def test_export_json_format(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Test whether JSON is exported correctly.
+
+    :param mock_widget: Mock GeneralSettings.
+    :param tmp_path: Path to the temporary folder.
+    :param monkeypatch: MonkeyPatch object.
+    """
+    target_path = tmp_path / "temp_output.json"
+
+    # Mock QFileDialog to automatically select our temp file path
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_, **__: (str(target_path), "JSON Data Interchange (*.json);;"),  # pyright: ignore[reportUnknownLambdaType]
+    )
+
+    # Mock QMessageBox popups so they don't block execution
+    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: None)  # pyright: ignore[reportUnknownLambdaType]
+
+    # Run execution loop
+    mock_widget.export_results()
+
+    # Read back format validation
+    assert target_path.exists()
+    with target_path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    assert "repeats" in data["metadata"]
+    assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert "Gap_size_distribution" in data
+    np.testing.assert_array_equal(data["Gap_size_distribution"][:], mock_widget.state.gap_size_distribution)
+
+
+def test_export_hdf5_format(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Test whether hdf5 exported correctly.
+
+    :param mock_widget: Mock GeneralSettings.
+    :param tmp_path: Path to the temporary folder.
+    :param monkeypatch: MonkeyPatch object.
+    """
+    h5py = pytest.importorskip("h5py")
+    target_path = tmp_path / "temp_output.h5"
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_: (str(target_path), "Hierarchical Data Format (*.h5);;"),  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_: None)  # pyright: ignore[reportUnknownLambdaType]
+
+    mock_widget.export_results()
+
+    assert target_path.exists()
+    with h5py.File(str(target_path), "r") as f:
+        assert "repeats" in f.attrs
+        assert f.attrs["repeats"] == str(mock_widget.input_metadata["repeats"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert "Gap_size_distribution" in f
+        np.testing.assert_array_equal(f["Gap_size_distribution"][:], mock_widget.state.gap_size_distribution)
+
+
+class SafeTestUnpickler(pickle.Unpickler):
+    """Safely unpickle the test data."""
+
+    @override
+    def find_class(self, module: str, name: str) -> object:
+        """Find the class in a module.
+
+        :param module: The name of the module to find.
+        :param name: The name of the class to find.
+        :returns: The class to find.
+        :raises pickle.UnpicklingError: If unable to unpickle a class safely.
+        """
+        if module == "builtins" or module.startswith("numpy"):
+            __import__(module)
+            return getattr(sys.modules[module], name)
+
+        errmsg = f"Global '{module}.{name}' is forbidden in tests."
+        raise pickle.UnpicklingError(errmsg)
+
+
+def test_export_pickle_format(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Test whether pickle is exported correctly.
+
+    :param mock_widget: Mock GeneralSettings.
+    :param tmp_path: Path to the temporary folder.
+    :param monkeypatch: MonkeyPatch object.
+    """
+    target_path = tmp_path / "temp_output.pkl"
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_: (str(target_path), "Python Pickle Binary (*.pkl);;"),  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_: None)  # pyright: ignore[reportUnknownLambdaType]
+
+    mock_widget.export_results()
+
+    assert target_path.exists()
+    with target_path.open("rb") as f:
+        data = SafeTestUnpickler(f).load()
+
+    assert "repeats" in data["metadata"]
+    assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert "Gap_size_distribution" in data
+    np.testing.assert_array_equal(data["Gap_size_distribution"][:], mock_widget.state.gap_size_distribution)
+
+
+def test_export_zip_csv_format(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Test whether zipped csv is exported correctly.
+
+    :param mock_widget: Mock GeneralSettings.
+    :param tmp_path: Path to the temporary folder.
+    :param monkeypatch: MonkeyPatch object.
+    """
+    target_path = tmp_path / "temp_output.zip"
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_: (str(target_path), "Zipped Comma Separated Values (*.zip);;"),  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_: None)  # pyright: ignore[reportUnknownLambdaType]
+
+    mock_widget.export_results()
+
+    assert target_path.exists()
+    assert zipfile.is_zipfile(target_path)
+
+    with zipfile.ZipFile(target_path, "r") as zf:
+        files = zf.namelist()
+        assert "metadata.txt" in files
+        assert "Coverage.csv" in files
+        assert "Gap_size_distribution.csv" in files
+
+        # Read file out of memory safely to confirm structural formatting
+        meta_txt = zf.read("metadata.txt").decode("utf-8")
+        assert "repeats: 10" in meta_txt
+
+
+def test_export_handles_io_exceptions(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Test whether the export function handles exceptions correctly.
+
+    :param mock_widget: Mock GeneralSettings.
+    :param tmp_path: Path to the temporary folder.
+    :param monkeypatch: MonkeyPatch object.
+    """
+    target_path = tmp_path / "forbidden_directory" / "temp_output.json"
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_: (str(target_path), "JSON Data Interchange (*.json);;"),  # pyright: ignore[reportUnknownLambdaType]
+    )
+
+    # Intercept Path.mkdir block to fake an OS-level permissions failure
+    errmsg = "Permission denied."
+
+    def mock_mkdir_fail(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
+        """Mock mkdir fail.
+
+        :param _: Ignored args.
+        :param _: Ignored kwargs.
+        :raises OSError: Permission denied.
+        """
+        raise OSError(errmsg)
+
+    monkeypatch.setattr(Path, "mkdir", mock_mkdir_fail)
+
+    critical_messages = []
+    monkeypatch.setattr(QMessageBox, "critical", lambda _parent, _title, msg: critical_messages.append(msg))  # pyright: ignore[reportUnknownLambdaType]
+
+    mock_widget.export_results()
+
+    assert len(critical_messages) == 1
+    assert errmsg in critical_messages[0]
