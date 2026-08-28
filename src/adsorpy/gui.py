@@ -1660,6 +1660,7 @@ class GeneralSettings(QWidget):
             # Bottom double-length plot (Row 1, spans both Columns 0 and 1)
             ax3 = fig.add_subplot(gs[:, 1])
             ax3.set_title("Gap size distribution")
+            ax3.set_ylabel("Gap size (Å)")
             sns.violinplot(gapsize_distribution, ax=ax3, color="0.8")
             svg_buffer = io.BytesIO()
             plt.savefig(svg_buffer, format="svg", bbox_inches="tight")
