@@ -13,6 +13,8 @@ on:
     - cron: '28 10 * * 5'
   push:
     branches: [ "main" ]
+  release:
+    types: [published]
 
 # Declare default permissions as read only.
 permissions: read-all

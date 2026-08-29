@@ -18,19 +18,6 @@ import webbrowser
 import zipfile
 from collections import defaultdict
 
-import h5py
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
-from dask.distributed import Future
-from matplotlib import patches
-from pydantic_core import core_schema
-from PySide6.QtCore import QByteArray, QMarginsF
-from PySide6.QtGui import QPageLayout
-from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
-from shiboken6 import Shiboken
-
 if sys.version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
     from typing import Unpack
@@ -60,9 +47,10 @@ from typing import (
     get_type_hints,
 )
 
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import numpy as np
-from dask.delayed import delayed
-from dask.distributed import Client, as_completed
+from matplotlib import patches
 from pydantic import (
     ConfigDict,
     NonNegativeInt,
@@ -72,7 +60,10 @@ from pydantic import (
     ValidationError,
     with_config,
 )
+from pydantic_core import core_schema
 from PySide6.QtCore import (
+    QByteArray,
+    QMarginsF,
     QObject,
     QRect,
     QRegularExpression,
@@ -90,6 +81,7 @@ from PySide6.QtGui import (
     QGuiApplication,
     QIcon,
     QIntValidator,
+    QPageLayout,
     QPageSize,
     QPainter,
     QPdfWriter,
@@ -98,6 +90,7 @@ from PySide6.QtGui import (
     QResizeEvent,
     QWheelEvent,
 )
+from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -129,6 +122,22 @@ from PySide6.QtWidgets import (
 )
 from shapely import Polygon, from_geojson
 from shapely.geometry import mapping
+from shiboken6 import Shiboken
+
+try:
+    import h5py
+    import pandas as pd
+    import seaborn as sns
+    from dask.delayed import delayed
+    from dask.distributed import Client, Future, as_completed
+
+except ImportError as e:
+    print("\n[Error] GUI requirements are missing!", file=sys.stderr)
+    print("Please install the GUI sub-requirements using:\n", file=sys.stderr)
+    print("    pip install adsorpy[gui-deps]\n", file=sys.stderr)
+    print(f"Details: {e}", file=sys.stderr)
+    raise
+
 
 from adsorpy import __version__, molecule_lib
 from adsorpy.run_simulation import run_simulation, show_surface
@@ -465,6 +474,19 @@ ParamName = Literal[
 ]
 
 
+class SymmetryWidgets(TypedDict):
+    """Typed dictionary for the molecule symmetry widgets.
+
+    :ivar rot_sym: Rotation symmetry.
+    :ivar refl_sym: Reflection symmetry.
+    :ivar rot_cnt: Rotation count.
+    """
+
+    rot_sym: QSpinBox
+    refl_sym: QCheckBox
+    rot_cnt: QSpinBox
+
+
 def is_valid_param(name: str) -> TypeGuard[ParamName]:
     """Check if a parameter name is valid.
 
@@ -495,7 +517,7 @@ class MoleculeParameters(TypedDict):
     rot_sym: NonNegativeInt
     rot_cnt: PositiveInt
     polygon: PydanticPolygon
-    settings: dict[str, float | int | str | list[str] | None]
+    settings: dict[str, float | int | str]
 
 
 class SurfaceParameters(TypedDict, total=False):
@@ -1395,7 +1417,7 @@ class GeneralSettings(QWidget):
             return BatchSimulationInput()
 
         misc_adapter = TypeAdapter(MiscParameters)
-        misc_params = misc_adapter.dump_python(misc_params)
+        misc_params = misc_adapter.validate_python(misc_params)
 
         surf_settings: SurfaceParameters | None = self.state.surface_params
         surf_adapter = TypeAdapter(SurfaceParameters)
@@ -1407,9 +1429,9 @@ class GeneralSettings(QWidget):
         molecule_settings = [] if molecule_settings is None else molecule_settings
 
         for dict_in_list in molecule_settings:
-            checked_dict = mol_adapter.dump_python(dict_in_list)
+            checked_dict = mol_adapter.validate_python(dict_in_list)
             for key, value in checked_dict.items():
-                defaultdict_of_lists[key].append(value)
+                defaultdict_of_lists[key].append(value)  # type: ignore[arg-type]
 
         key_to_fix = "polygon"
         if key_to_fix in defaultdict_of_lists:
@@ -1441,8 +1463,10 @@ class GeneralSettings(QWidget):
         dict_of_lists = replace_keys(defaultdict_of_lists)
         dict_of_lists = filter_dict_for_func(dict_of_lists)
 
-        surface_settings: SurfaceParameters | None = surf_adapter.dump_python(surf_settings)  # type: ignore[arg-type]
-        surface_settings = SurfaceParameters() if surface_settings is None else surface_settings
+        surface_settings: SurfaceParameters = (
+            surf_adapter.validate_python(surf_settings) if surf_settings is not None else SurfaceParameters()
+        )
+        # surface_settings = SurfaceParameters() if surface_settings is None else surface_settings
         surface_settings.pop("seed") if "seed" in surface_settings else None
         return BatchSimulationInput(**misc_params, **surface_settings, **dict_of_lists)  # type: ignore[typeddict-item, no-any-return]
 
@@ -1637,6 +1661,7 @@ class GeneralSettings(QWidget):
             # Bottom double-length plot (Row 1, spans both Columns 0 and 1)
             ax3 = fig.add_subplot(gs[:, 1])
             ax3.set_title("Gap size distribution")
+            ax3.set_ylabel("Gap size (Å)")
             sns.violinplot(gapsize_distribution, ax=ax3, color="0.8")
             svg_buffer = io.BytesIO()
             plt.savefig(svg_buffer, format="svg", bbox_inches="tight")
@@ -1776,19 +1801,19 @@ class GeneralSettings(QWidget):
                         meta_io.write(f"{key}: {val}\n")
                     zf.writestr("metadata.txt", meta_io.getvalue())
 
-                    aaa_dict = {f"col_{idx}": arr for idx, arr in enumerate(covs)}
-                    aaa_io = io.StringIO()
-                    pd.DataFrame(aaa_dict).to_csv(aaa_io, index=False)
-                    zf.writestr("Coverage.csv", aaa_io.getvalue())
+                    coverage_dict = {f"col_{idx}": arr for idx, arr in enumerate(covs)}
+                    coverage_io = io.StringIO()
+                    pd.DataFrame(coverage_dict).to_csv(coverage_io, index=False)
+                    zf.writestr("Coverage.csv", coverage_io.getvalue())
 
-                    bbb_dict = {f"col_{idx}": arr for idx, arr in enumerate(fracs)}
-                    bbb_io = io.StringIO()
-                    pd.DataFrame(bbb_dict).to_csv(bbb_io, index=False)
-                    zf.writestr("Fraction_of_covered_area.csv", bbb_io.getvalue())
+                    frac_cov_dict = {f"col_{idx}": arr for idx, arr in enumerate(fracs)}
+                    frac_cov_io = io.StringIO()
+                    pd.DataFrame(frac_cov_dict).to_csv(frac_cov_io, index=False)
+                    zf.writestr("Fraction_of_covered_area.csv", frac_cov_io.getvalue())
 
-                    ccc_io = io.StringIO()
-                    pd.DataFrame({"gap_size_distribution": gaps}).to_csv(ccc_io, index=False)
-                    zf.writestr("Gap_size_distribution.csv", ccc_io.getvalue())
+                    gapsize_io = io.StringIO()
+                    pd.DataFrame({"gap_size_distribution": gaps}).to_csv(gapsize_io, index=False)
+                    zf.writestr("Gap_size_distribution.csv", gapsize_io.getvalue())
 
             QMessageBox.information(self, "Success", f"Results successfully exported to:\n{file_path.name}")
 
@@ -2178,11 +2203,11 @@ class MoleculeGeneration(QWidget):
 
     def _build_symmetry_controls(self) -> None:
         """Assemble the geometric shape matrix transformation property grid layouts."""
-        self.refl_sym: bool = False
+        self.refl_sym_default: bool = False
         """Default value of reflection symmetry."""
-        self.rot_sym: int = 1
+        self.rot_sym_default: int = 1
         """Default value of rotation symmetry."""
-        self.rot_cnt: int = 360
+        self.rot_cnt_default: int = 360
         """Default value of rotation count."""
 
         symmetry_options_layout = QGridLayout()
@@ -2190,38 +2215,40 @@ class MoleculeGeneration(QWidget):
         refl_sym_tooltip_text = "Set checked if the molecule has reflection symmetry (symmetric group Cn → Dn)."
         refl_sym_label.setToolTip(refl_sym_tooltip_text)
 
-        self.refl_sym_checkbox = QCheckBox()
+        self.refl_sym = QCheckBox()
         """Reflection symmetry checkbox, corresponding to True (checked) or False (unchecked)."""
-        self.refl_sym_checkbox.setChecked(self.refl_sym)
-        self.refl_sym_checkbox.setToolTip(refl_sym_tooltip_text)
+        self.refl_sym.setChecked(self.refl_sym_default)
+        self.refl_sym.setToolTip(refl_sym_tooltip_text)
 
         self.rot_sym_label = QLabel("Rotation symmetry")
         """Rotation symmetry label."""
 
-        self.rot_sym_spinbox = QSpinBox()
+        self.rot_sym = QSpinBox()
         """Rotation symmetry spinbox, for non-negative integers."""
-        self.rot_sym_spinbox.setMinimum(0)
-        self.rot_sym_spinbox.setValue(self.rot_sym)
-        self._update_symmetry_tooltip(self.refl_sym)
-        self.refl_sym_checkbox.toggled.connect(self._update_symmetry_tooltip)
+        self.rot_sym.setMinimum(0)
+        self.rot_sym.setValue(self.rot_sym_default)
+        self._update_symmetry_tooltip(self.refl_sym_default)
+        self.refl_sym.toggled.connect(self._update_symmetry_tooltip)
 
         rot_cnt_label = QLabel("Rotation count")
         rot_cnt_tooltip_text = "Number of rotations to be used for the molecule. The step size is 360/n°."
         rot_cnt_label.setToolTip(rot_cnt_tooltip_text)
 
-        self.rot_cnt_spinbox = QSpinBox()
+        self.rot_cnt = QSpinBox()
         """Rotation count spinbox, for positive (non-zero) integers."""
-        self.rot_cnt_spinbox.setMinimum(1)
-        self.rot_cnt_spinbox.setMaximum(99999)
-        self.rot_cnt_spinbox.setValue(self.rot_cnt)
-        self.rot_cnt_spinbox.setToolTip(rot_cnt_tooltip_text)
+        self.rot_cnt.setMinimum(1)
+        self.rot_cnt.setMaximum(99999)
+        self.rot_cnt.setValue(self.rot_cnt_default)
+        self.rot_cnt.setToolTip(rot_cnt_tooltip_text)
+
+        self.symmetry_widgets = SymmetryWidgets(rot_sym=self.rot_sym, refl_sym=self.refl_sym, rot_cnt=self.rot_cnt)
 
         symmetry_options_layout.addWidget(refl_sym_label, 0, 0)
-        symmetry_options_layout.addWidget(self.refl_sym_checkbox, 0, 1)
+        symmetry_options_layout.addWidget(self.refl_sym, 0, 1)
         symmetry_options_layout.addWidget(self.rot_sym_label, 1, 0)
-        symmetry_options_layout.addWidget(self.rot_sym_spinbox, 1, 1)
+        symmetry_options_layout.addWidget(self.rot_sym, 1, 1)
         symmetry_options_layout.addWidget(rot_cnt_label, 2, 0)
-        symmetry_options_layout.addWidget(self.rot_cnt_spinbox, 2, 1)
+        symmetry_options_layout.addWidget(self.rot_cnt, 2, 1)
 
         self.param_layout.addLayout(symmetry_options_layout)
 
@@ -2269,7 +2296,7 @@ class MoleculeGeneration(QWidget):
             Special case: 0 for circle symmetry ({circle_group}).""",
         )
 
-        for widget in [self.rot_sym_label, self.rot_sym_spinbox]:
+        for widget in [self.rot_sym_label, self.rot_sym]:
             widget.setToolTip(rot_sym_tooltip_text)
 
     def launch_first_time_loader(self) -> None:
@@ -2296,28 +2323,25 @@ class MoleculeGeneration(QWidget):
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
 
-    def get_param_values(self) -> dict[str, float | int | str | list[str] | None]:
+    def get_param_values(self) -> dict[str, float | int | str]:
         """Extract current user inputs from widgets back into a data dictionary.
 
         :return: Dictionary containing the key-value pairs of the parameters.
         """
-        values: dict[str, float | int | str | list[str] | None] = {}
+        values: dict[str, float | int | str] = {}
 
         for name, widget in cast("ItemsView[str, InputWidget]", self.param_widgets.items()):
             # If the widget is disabled, the optional checkbox was unchecked -> value is None
             if not widget.isEnabled():
                 continue
-
             # Extract value based on the PySide6/PyQt6 widget type
-            match widget:
+            # Ignore the error because this match is exhaustive!
+            match widget:  # type: ignore[exhaustive-match]
                 case QSpinBox() | QDoubleSpinBox():
                     values[name] = widget.value()
 
                 case QLineEdit() | FilePickerWidget():
                     values[name] = widget.text()
-
-                # case _:
-                #     values[name] = None
 
         return values
 
@@ -2376,9 +2400,9 @@ class MoleculeGeneration(QWidget):
             label=label,
             polygon=PydanticPolygon(result),
             settings=molecule_dict,
-            refl_sym=self.refl_sym_checkbox.isChecked(),
-            rot_sym=self.rot_sym_spinbox.value(),
-            rot_cnt=self.rot_cnt_spinbox.value(),
+            refl_sym=self.refl_sym.isChecked(),
+            rot_sym=self.rot_sym.value(),
+            rot_cnt=self.rot_cnt.value(),
         )
 
         self.mol_params_list.append(mol_params)
@@ -2412,13 +2436,21 @@ class MoleculeGeneration(QWidget):
             if not is_valid_param(key) or key not in self.param_widgets:
                 errmsg: str = f"Key does not exist: {key}"
                 raise KeyError(errmsg)
-            if val is None:
-                continue
             current_param: InputWidget = self.param_widgets[key]  # pyright: ignore[reportTypedDictNotRequiredAccess]
             set_content(current_param, val)
 
             if key in self.opt_checkboxes:
                 self.opt_checkboxes[key].setChecked(True)
+
+        for symmetry_name, symmetry_widget in self.symmetry_widgets.items():
+            sym_val: int | bool = self.mol_params_list[current_idx][
+                cast("Literal['rot_sym', 'refl_sym', 'rot_cnt']", symmetry_name)
+            ]
+            if isinstance(sym_val, bool):  # Must check bool, not int, because bool is a subtype of int for Python.
+                cast("QCheckBox", symmetry_widget).setChecked(sym_val)
+            else:
+                cast("QSpinBox", symmetry_widget).setValue(sym_val)
+
         self.show_molecule_checkbox.setChecked(True)
 
 

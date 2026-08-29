@@ -1,9 +1,13 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the functions of the `gui.py` module."""
-
+import importlib
 import json
+import re
+import sys
 from collections.abc import Callable
+from importlib.metadata import requires
+from types import ModuleType
 
 import pytest
 import shapely.errors
@@ -167,3 +171,35 @@ def test_from_geojson_str_to_polygon_errors() -> None:
 
     with pytest.raises(ValueError, match=r"Polygon is invalid. Exterior coordinates: .*"):
         from_geojson_str_to_polygon(polygonstr)
+
+
+def get_gui_dependencies() -> list[str]:
+    """Extract dependency names safely from the installed package metadata.
+
+    :returns: A list of optional dependency names.
+    """
+    raw_requirements: list[str] = requires("adsorpy") or []
+    gui_dependencies_name = "gui-deps"
+
+    clean_deps: list[str] = []
+    for req in raw_requirements:
+        if re.search(rf"extra\s*==\s*['\"]{gui_dependencies_name}['\"]", req):
+            # Extract only the alphabetic module name at the very beginning
+            match = re.match(r"^([a-zA-Z0-9_-]+)", req)
+            if match:
+                clean_deps.append(match.group(1))
+
+    return clean_deps
+
+
+@pytest.mark.parametrize("missing_dep", get_gui_dependencies())
+def test_missing_gui_imports(monkeypatch: pytest.MonkeyPatch, missing_dep: str) -> None:
+    """Test whether missing imports are handled correctly.
+
+    :param monkeypatch: Pytest monkeypatch fixture to mock parameters.
+    :param missing_dep: The optional dependency name to remove and check.
+    """
+    monkeypatch.delitem(sys.modules, missing_dep, raising=False)
+
+    with pytest.raises(ImportError, match=missing_dep):
+        importlib.reload(ModuleType(missing_dep))
