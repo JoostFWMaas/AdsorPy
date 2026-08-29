@@ -18,125 +18,126 @@ import webbrowser
 import zipfile
 from collections import defaultdict
 
+if sys.version_info >= (3, 11):
+    from datetime import UTC, datetime  # For datetime stamping and seed generation.
+    from typing import Unpack
+else:
+    from datetime import datetime
+
+    from typing_extensions import Unpack
+
+if sys.version_info >= (3, 12):
+    from typing import TypedDict, override
+else:
+    from typing_extensions import TypedDict, override
+
+from itertools import count
+from pathlib import Path
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    ParamSpec,
+    TypeAlias,
+    TypeGuard,
+    TypeVar,
+    cast,
+    get_origin,
+    get_type_hints,
+)
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import patches
+from pydantic import (
+    ConfigDict,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    TypeAdapter,
+    ValidationError,
+    with_config,
+)
+from pydantic_core import core_schema
+from PySide6.QtCore import (
+    QByteArray,
+    QMarginsF,
+    QObject,
+    QRect,
+    QRegularExpression,
+    QRunnable,
+    QSettings,
+    Qt,
+    QThreadPool,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import (
+    QAction,
+    QDoubleValidator,
+    QDropEvent,
+    QGuiApplication,
+    QIcon,
+    QIntValidator,
+    QPageLayout,
+    QPageSize,
+    QPainter,
+    QPdfWriter,
+    QPixmap,
+    QRegularExpressionValidator,
+    QResizeEvent,
+    QWheelEvent,
+)
+from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QLayoutItem,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
+from shapely import Polygon, from_geojson
+from shapely.geometry import mapping
+from shiboken6 import Shiboken
+
 try:
     import h5py
-    import matplotlib as mpl
-    import matplotlib.pyplot as plt
     import pandas as pd
     import seaborn as sns
-    from dask.distributed import Future
-    from matplotlib import patches
-    from pydantic_core import core_schema
-    from PySide6.QtCore import QByteArray, QMarginsF
-    from PySide6.QtGui import QPageLayout
-    from PySide6.QtSvg import QSvgGenerator, QSvgRenderer
-    from shiboken6 import Shiboken
-
-    if sys.version_info >= (3, 11):
-        from datetime import UTC, datetime  # For datetime stamping and seed generation.
-        from typing import Unpack
-    else:
-        from datetime import datetime
-
-        from typing_extensions import Unpack
-
-    if sys.version_info >= (3, 12):
-        from typing import TypedDict, override
-    else:
-        from typing_extensions import TypedDict, override
-
-    from itertools import count
-    from pathlib import Path
-    from typing import (
-        TYPE_CHECKING,
-        ClassVar,
-        Generic,
-        Literal,
-        ParamSpec,
-        TypeAlias,
-        TypeGuard,
-        TypeVar,
-        cast,
-        get_origin,
-        get_type_hints,
-    )
-
-    import numpy as np
     from dask.delayed import delayed
-    from dask.distributed import Client, as_completed
-    from pydantic import (
-        ConfigDict,
-        NonNegativeInt,
-        PositiveFloat,
-        PositiveInt,
-        TypeAdapter,
-        ValidationError,
-        with_config,
-    )
-    from PySide6.QtCore import (
-        QObject,
-        QRect,
-        QRegularExpression,
-        QRunnable,
-        QSettings,
-        Qt,
-        QThreadPool,
-        Signal,
-        Slot,
-    )
-    from PySide6.QtGui import (
-        QAction,
-        QDoubleValidator,
-        QDropEvent,
-        QGuiApplication,
-        QIcon,
-        QIntValidator,
-        QPageSize,
-        QPainter,
-        QPdfWriter,
-        QPixmap,
-        QRegularExpressionValidator,
-        QResizeEvent,
-        QWheelEvent,
-    )
-    from PySide6.QtSvgWidgets import QSvgWidget
-    from PySide6.QtWidgets import (
-        QAbstractItemView,
-        QApplication,
-        QCheckBox,
-        QComboBox,
-        QDoubleSpinBox,
-        QFileDialog,
-        QFrame,
-        QGridLayout,
-        QGroupBox,
-        QHBoxLayout,
-        QLabel,
-        QLayout,
-        QLayoutItem,
-        QLineEdit,
-        QListWidget,
-        QListWidgetItem,
-        QMainWindow,
-        QMessageBox,
-        QProgressBar,
-        QPushButton,
-        QScrollArea,
-        QSpinBox,
-        QSplitter,
-        QTabWidget,
-        QVBoxLayout,
-        QWidget,
-    )
+    from dask.distributed import Client, Future, as_completed
+
 except ImportError as e:
     print("\n[Error] GUI requirements are missing!", file=sys.stderr)
     print("Please install the GUI sub-requirements using:\n", file=sys.stderr)
     print("    pip install adsorpy[gui-deps]\n", file=sys.stderr)
     print(f"Details: {e}", file=sys.stderr)
-    sys.exit(1)
+    raise
 
-from shapely import Polygon, from_geojson
-from shapely.geometry import mapping
 
 from adsorpy import __version__, molecule_lib
 from adsorpy.run_simulation import run_simulation, show_surface
