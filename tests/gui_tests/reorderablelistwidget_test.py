@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 """Test the ReorderableListWidget class of the `gui.py` module."""
 
-from typing import ParamSpec
 from unittest.mock import patch
 
 import pytest
@@ -14,8 +13,6 @@ from PySide6.QtWidgets import QListWidget, QListWidgetItem
 from pytestqt.qtbot import QtBot
 
 from adsorpy.gui import ReorderableListWidget
-
-P = ParamSpec("P")
 
 
 def test_reorderable_list_widget_initialisation(qtbot: QtBot) -> None:

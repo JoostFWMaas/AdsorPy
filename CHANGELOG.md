@@ -1,18 +1,22 @@
 # Change Log
-All important changes to ``AdsorPy`` will be documented in this file.
+All important changes to ``adsorpy`` will be documented in this file.
 
 This format is based on [Keep a Changelog](http://keepachangelog.com/). This project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [unreleased]
 ### Added
+- Add angstrom (Å) scale indicator to gap size distribution plot of GUI.
 ### Changed
+- Molecule footprints are now shown automatically in the GUI (if valid).
 ### Fixed
+- Rotation, reflection, and counts are now shown correctly when looking at added molecules in GUI.
 ### Removed
+- Remove show molecule button from GUI. Molecule is now shown automatically when valid.
 
 ## 1.3.1 - 2026-08-22
 ### Added
 ### Changed
-- Switch from ``numba`` to ``cython`` to make a GUI executable easier in the future. This changed the wheels significantly. Please open a ticket if this causes issues for you, and indicate which OS, architecture, and Python version you are using. 
+- Switch from ``numba`` to ``cython`` to make a GUI executable easier in the future. This changed the wheels significantly. Please open a ticket if this causes issues for you, and indicate which OS, architecture, and Python version you are using.
 ### Fixed
 - Fix orientation of xz plot of the molecule orientation widget.
 ### Removed

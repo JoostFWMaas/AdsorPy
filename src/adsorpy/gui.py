@@ -1832,8 +1832,13 @@ class MoleculeGeneration(QWidget):
     """Molecule layout configuration dashboard tab view.
 
     Handles dynamic generation of geometric molecule polygon shapes via reflective
-    library lookups, updates parameters on the fly, and lists them inside a tracking layout.
+    library lookups (taking parameters from ``molecules_lib``),
+    updates parameters on the fly, and lists them inside a tracking layout.
+
+    :cvar plot_flag_changed: Emits when a molecule should (or should not) be plotted.
     """
+
+    plot_flag_changed = Signal(bool)
 
     def __init__(self, state: AppState) -> None:
         """Initialise settings storage engines and compile separate view columns.
@@ -1843,14 +1848,21 @@ class MoleculeGeneration(QWidget):
         super().__init__()
 
         self.param_widgets: ParamWidgets = {}
-        """"Parameter widgets derived from molecule function signatures."""
+        """Parameter widgets derived from molecule function signatures."""
         self.opt_checkboxes: dict[str, QCheckBox] = {}
-        """"Optional checkbox widgets derived from molecule function signatures."""
+        """Optional checkbox widgets derived from molecule function signatures."""
         self._settings = QSettings(type(self).__name__)
         """Persistent platform configuration handle cached between user runtime sessions."""
 
         self.state = state
         """Shared application state cache container."""
+
+        self._show_molecule_flag: bool = False
+        """Will the molecule be shown in plot?"""
+        self.plot_flag_changed.connect(self.plot_molecule)
+
+        self.svg_widget = ZoomableSvgWidget()
+        """Custom structural viewport rendering vector polygon outlines."""
 
         # Initialise data storage metrics
         self._init_data_storage()
@@ -1862,6 +1874,23 @@ class MoleculeGeneration(QWidget):
 
         # Assemble components into the splitter layout interface
         self._assemble_layout(left_container, scroll_area, right_container)
+
+    @property
+    def show_molecule_flag(self) -> bool:
+        """Molecule plot flag value.
+
+        :returns: True to show molecule, False to clear it.
+        """
+        return self._show_molecule_flag
+
+    @show_molecule_flag.setter
+    def show_molecule_flag(self, flag: bool) -> None:
+        """Set the flag.
+
+        :param flag: True to show molecule, False to clear it.
+        """
+        self._show_molecule_flag = flag
+        self.plot_flag_changed.emit(flag)
 
     def _init_data_storage(self) -> None:
         """Initialise internal state tracking arrays and counting iterations."""
@@ -1878,14 +1907,14 @@ class MoleculeGeneration(QWidget):
         The molecules are kept in a dropdown menu based on a filtered list of the molecule functions.
         Parameters are taken from type hints. Type hints determine whether a box is a spinbox, textbox, optional, etc.
 
-        :return: A populated structural container pane acting as the configuration panel.
+        :returns: A populated structural container pane acting as the configuration panel.
         """
         container = QWidget()
         self.controls_layout = QVBoxLayout(container)
         """Layout frame coordinating selection toggles and molecule configuration property fields."""
 
         self.func_dropdown = QComboBox()
-        """Selection field populated with valid introspected molecule generator workflows."""
+        """Selection field populated with valid introspected molecule footprint functions."""
         self.controls_layout.addWidget(QLabel("Select molecule"), alignment=Qt.AlignmentFlag.AlignTop)
         self.controls_layout.addWidget(self.func_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
@@ -1913,7 +1942,6 @@ class MoleculeGeneration(QWidget):
         if target_index == 0:
             # Force execution since setCurrentIndex(0) won't trigger a change event
             self.build_param_inputs(self.func_dropdown.currentText())
-            self.plot_molecule()
         else:
             self.func_dropdown.setCurrentIndex(target_index)
 
@@ -1929,7 +1957,6 @@ class MoleculeGeneration(QWidget):
         :param name: The name of the dropdown option.
         """
         self.build_param_inputs(name)
-        self.plot_molecule()
 
     @staticmethod
     def _discover_molecule_generators() -> dict[str, Callable[P_mol, Polygon]]:
@@ -1959,8 +1986,6 @@ class MoleculeGeneration(QWidget):
         container_layout = QGridLayout(scroll_container)
         container_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.svg_widget = ZoomableSvgWidget()
-        """Custom structural viewport rendering vector polygon outlines."""
         self.svg_widget.setMinimumSize(600, 600)
         self.svg_widget.renderer().setAspectRatioMode(Qt.AspectRatioMode.KeepAspectRatio)
 
@@ -2077,6 +2102,8 @@ class MoleculeGeneration(QWidget):
         sig = inspect.signature(func)
         param_docs = extract_param_docs(func)
 
+        self.show_molecule_flag = False
+
         if func_name == "first_time_loader":
             launch_loader_button = QPushButton("Launch first time loader")
             launch_loader_button.setToolTip("Start the first_time_loader script in a separate window.")
@@ -2140,6 +2167,8 @@ class MoleculeGeneration(QWidget):
         self.param_layout.addWidget(_make_horizontal_line())
         self._build_action_buttons()
 
+        self.show_molecule_flag = func_name not in ("first_time_loader", "xyz_reader")
+
     @staticmethod
     def _create_param_widget(
         annotation: str,
@@ -2153,7 +2182,7 @@ class MoleculeGeneration(QWidget):
         :raises TypeError: If an unmapped or exotic data structure type is processed.
         """
         default_max: int = 999
-        widget: InputWidget
+        # widget: InputWidget
         match annotation:
             case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
                 widget = QDoubleSpinBox()
@@ -2255,11 +2284,6 @@ class MoleculeGeneration(QWidget):
     def _build_action_buttons(self) -> None:
         """Map active interactive preview checkboxes and form processing buttons."""
         molecule_buttons = QHBoxLayout()
-        self.show_molecule_checkbox = QCheckBox("Plot Molecule")
-        """Checkbox whether to show the molecule."""
-        self.show_molecule_checkbox.setToolTip("Plot the molecule")
-        self.show_molecule_checkbox.toggled.connect(self.plot_molecule)
-        molecule_buttons.addWidget(self.show_molecule_checkbox)
 
         for widget_object in cast("ValuesView[InputWidget]", self.param_widgets.values()):
             if not isinstance(widget_object, QLineEdit | QDoubleSpinBox | QSpinBox):
@@ -2322,6 +2346,7 @@ class MoleculeGeneration(QWidget):
                 set_content(self.param_widgets[first_time_key], first_time_value)  # pyright: ignore[reportTypedDictNotRequiredAccess]
                 if first_time_key in self.opt_checkboxes:
                     self.opt_checkboxes[first_time_key].setChecked(True)
+        self.show_molecule_flag = True
 
     def get_param_values(self) -> dict[str, float | int | str]:
         """Extract current user inputs from widgets back into a data dictionary.
@@ -2354,9 +2379,13 @@ class MoleculeGeneration(QWidget):
         """
         QMessageBox.critical(self, "Input Error", msg)
 
-    def plot_molecule(self) -> None:
-        """Plot the molecule."""
-        if not self.show_molecule_checkbox.isChecked():
+    def plot_molecule(self, plot_flag: bool) -> None:
+        """Plot the molecule.
+
+        :param plot_flag: Show plot if True, clear plot if False.
+        """
+        if not plot_flag:
+            self.svg_widget.load(io.BytesIO().getvalue())  # Load an empty byte array to clear the view.
             return
         molecule_func = self.generators[self.func_dropdown.currentText()]
         molecule_dict = self.get_param_values()
@@ -2450,8 +2479,7 @@ class MoleculeGeneration(QWidget):
                 cast("QCheckBox", symmetry_widget).setChecked(sym_val)
             else:
                 cast("QSpinBox", symmetry_widget).setValue(sym_val)
-
-        self.show_molecule_checkbox.setChecked(True)
+        self.show_molecule_flag = True
 
 
 class SurfaceGeneration(QWidget):

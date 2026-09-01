@@ -7,9 +7,11 @@ from __future__ import annotations
 import inspect
 from itertools import count
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
+from pydantic import BaseModel, ValidationError
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -32,14 +34,17 @@ from adsorpy.gui import (
 
 
 @pytest.fixture
-def molecule_tab(qtbot: QtBot) -> MoleculeGeneration:
+def molecule_tab(qtbot: QtBot, monkeypatch: MonkeyPatch) -> MoleculeGeneration:
     """Instantiate the MoleculeGeneration tab using a real AppState context.
 
     :param qtbot: Qt instance to mock interaction.
+    :param monkeypatch: MonkeyPatch instance to mock functions.
+    :returns: MoleculeGeneration tab instance.
     """
     state = AppState()
     tab = MoleculeGeneration(state)
     qtbot.addWidget(tab)
+    monkeypatch.setattr(tab, "plot_molecule", Mock())  # pyright: ignore[reportUnknownLambdaType]
     return tab
 
 
@@ -51,13 +56,8 @@ def test_initial_structural_layout_states(molecule_tab: MoleculeGeneration) -> N
     assert molecule_tab.main_splitter.count() == 3  # noqa: PLR2004
     assert molecule_tab.main_splitter.orientation() == Qt.Orientation.Horizontal
 
-    # # Check default combo box configuration entries
-    # expected_items = sorted(["hexagonal", "square", "honeycomb"])
-    # actual_items = [molecule_tab.surface_dropdown.itemText(i) for i in range(molecule_tab.surface_dropdown.count())]
-    # assert actual_items == expected_items
 
-
-def test_data_storage_initializes_empty_metrics(molecule_tab: MoleculeGeneration) -> None:
+def test_data_storage_initialises_empty_metrics(molecule_tab: MoleculeGeneration) -> None:
     """Verify list managers and counting sequences initialise cleanly on startup."""
     assert isinstance(molecule_tab.mol_list_counter, count)
     assert next(molecule_tab.mol_list_counter) == 0
@@ -87,15 +87,7 @@ def test_discover_molecule_generators_filters_library_signatures(
     """Verify reflection lookup scans module keys, ignoring hidden files and invalid types."""
     generators = molecule_tab._discover_molecule_generators()
 
-    temp_generators = {
-        name: func
-        for name, func in molecule_lib.__dict__.items()
-        if inspect.isfunction(func)
-        # and not key.startswith("_")
-        # and func.__module__ == molecule_lib.__name__
-        # and inspect.signature(func).return_annotation in {"Polygon", "dict[str, str | float | list[str] | None]"}
-    }
-    # temp_generators = dict(sorted(temp_generators.items()))
+    temp_generators = {name: func for name, func in molecule_lib.__dict__.items() if inspect.isfunction(func)}
 
     assert temp_generators, "Unfiltered generator list is empty."
     assert generators, "Generator list is empty."
@@ -121,19 +113,21 @@ def test_discover_molecule_generators_filters_library_signatures(
 
 def test_delete_previous_layout_clears_widgets_and_nested_layouts(
     molecule_tab: MoleculeGeneration,
-    qtbot: QtBot,
 ) -> None:
     """Verify recursive traversal tears down layout structures without creating memory leaks."""
     # Build a sample mock layout hierarchy inside our parameter layout holder
     # Assert widgets are added and valid
-    assert molecule_tab.param_layout.count(), "The molecule parameter layout is empty!"
+    assert molecule_tab.param_layout.count(), "The molecule parameter layout is empty."
     # Act: Trigger the deep layout demolition pass
     molecule_tab._delete_previous_layout()
     # Assert: The outer layout framework should be completely flushed clean
     assert molecule_tab.param_layout.count() == 0
 
 
-def test_build_param_inputs_creates_labeled_grid_elements(molecule_tab: MoleculeGeneration, qtbot: QtBot) -> None:
+def test_build_param_inputs_creates_labeled_grid_elements(
+    molecule_tab: MoleculeGeneration,
+    monkeypatch: MonkeyPatch,
+) -> None:
     """Verify reflection engine extracts arguments to compile type-safe input controls."""
 
     # Define a custom molecule generation function to inspect
@@ -148,8 +142,10 @@ def test_build_param_inputs_creates_labeled_grid_elements(molecule_tab: Molecule
         :returns: A polygon of some kind.
         """
 
-    molecule_tab.generators = {"custom_mol": temp_generator}  # pyright: ignore[reportAttributeAccessIssue]
-    molecule_tab.func_dropdown.addItems(["custom_mol"])
+    temp_mol_name = "custom_mol"
+
+    molecule_tab.generators = {temp_mol_name: temp_generator}  # pyright: ignore[reportAttributeAccessIssue]
+    molecule_tab.func_dropdown.addItems([temp_mol_name])
 
     # Inject mock parameter document descriptions and global layout helpers
     mock_docs = {"distance": "The spatial span boundary metric."}
@@ -167,19 +163,16 @@ def test_build_param_inputs_creates_labeled_grid_elements(molecule_tab: Molecule
         patch.object(molecule_tab, "_build_action_buttons") as mock_act,
     ):
         # Execute form compilation loop
-        molecule_tab.build_param_inputs("custom_mol")
+        molecule_tab.build_param_inputs(temp_mol_name)
 
-        # 1. Assert helper control decorators triggered down the execution pipeline
         mock_sym.assert_called_once()
         mock_act.assert_called_once()
 
-        # 2. Check that active tracking dictionaries populated with correct instances
         assert "distance" in molecule_tab.param_widgets
         assert isinstance(molecule_tab.param_widgets["distance"], QDoubleSpinBox)
         assert "ignore_atoms" in molecule_tab.param_widgets
         assert isinstance(molecule_tab.param_widgets["ignore_atoms"], QLineEdit)
 
-        # 3. Check optional checkbox toggles are managed correctly
         assert "ignore_atoms" in molecule_tab.opt_checkboxes
         checkbox = molecule_tab.opt_checkboxes["ignore_atoms"]
         assert isinstance(checkbox, QCheckBox)
@@ -261,11 +254,168 @@ def test_build_bad_param_inputs_raises_error(molecule_tab: MoleculeGeneration, q
             },
         ),
         patch("adsorpy.gui._make_horizontal_line", return_value=QWidget()),
-        # patch.object(molecule_tab, "_build_symmetry_controls") as mock_sym,
-        # patch.object(molecule_tab, "_build_action_buttons") as mock_act,
     ):
         # Execute form compilation loop
 
         expected_msg = "Unsupported parameter annotation: 'Any | None'."
         with pytest.raises(TypeError, match=expected_msg):
             molecule_tab.build_param_inputs("custom_mol")
+
+
+def generate_pydantic_error() -> ValidationError:
+    """Generate a pydantic validation error.
+
+    :returns: ValidationError.
+    :raises AssertionError: If a ValidationError is not returned.
+    """
+
+    class MockModel(BaseModel):
+        must_be_int: int
+
+    try:
+        MockModel(must_be_int="not_an_int")  # type: ignore[arg-type]
+    except ValidationError as e:
+        return e
+    errmsg = "Failed to generate a ValidationError context."
+    raise AssertionError(errmsg)
+
+
+def test_add_molecule_success(molecule_tab: MoleculeGeneration, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that a successful molecule generation updates UI components and tracking state."""
+    molecule_name = "dogbonium"
+    molecule_tab.func_dropdown.setCurrentText(molecule_name)
+    refl_flag = True
+    molecule_tab.refl_sym.setChecked(refl_flag)
+    rot_sym = 4
+    molecule_tab.rot_sym.setValue(rot_sym)
+
+    molecule_tab.mol_list_counter = count(start=1)
+    molecule_tab.mol_params_list = []
+
+    molecule_tab.add_molecule()
+
+    assert molecule_name in molecule_tab.output_label.text()
+    assert molecule_tab.molecule_list_widget.count() == 1
+    assert molecule_tab.molecule_list_widget.item(0).text() == f"{molecule_name} #1"
+
+    assert len(molecule_tab.mol_params_list) == 1
+    stored_param = molecule_tab.mol_params_list[0]
+    assert stored_param["index"] == 1
+    assert stored_param["function_name"] == molecule_name
+    assert stored_param["label"] == f"{molecule_name} #1"
+    assert stored_param["refl_sym"] is refl_flag
+    assert stored_param["rot_sym"] == rot_sym
+    assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list
+
+
+def test_add_molecule_validation_error(molecule_tab: MoleculeGeneration, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify that a Pydantic ValidationError stops execution and bubbles via the error tracker."""
+    molecule_name = "xyz_reader"
+    molecule_tab.func_dropdown.setCurrentText(molecule_name)
+    molecule_tab.molecule_list_widget.clear()
+    molecule_tab.mol_params_list = []
+
+    expected_error = generate_pydantic_error()
+    mock_generator_func = Mock(side_effect=expected_error)
+    molecule_tab.generators = {molecule_name: mock_generator_func}  # pyright: ignore[reportAttributeAccessIssue]
+
+    mock_error_channel = Mock()
+    monkeypatch.setattr(molecule_tab, "get_param_values", Mock(return_value={}))
+    monkeypatch.setattr(molecule_tab, "error", mock_error_channel)
+
+    molecule_tab.add_molecule()
+
+    mock_generator_func.assert_called_once()
+    mock_error_channel.assert_called_once_with(str(expected_error))
+
+    assert molecule_tab.molecule_list_widget.count() == 0
+    assert not len(molecule_tab.mol_params_list)
+    assert molecule_tab.output_label.text() == ""
+
+
+@pytest.mark.parametrize(
+    ("dropdown_text", "expected_func_key"),
+    [
+        ("first_time_loader", "xyz_reader"),
+        ("xyz_reader", "xyz_reader"),
+    ],
+)
+def test_add_molecule_fallback_routing(
+    molecule_tab: MoleculeGeneration,
+    monkeypatch: pytest.MonkeyPatch,
+    dropdown_text: str,
+    expected_func_key: str,
+) -> None:
+    """Verify that special generator naming triggers appropriate fallback routing aliases."""
+    molecule_tab.func_dropdown.setCurrentText(dropdown_text)
+    molecule_tab.mol_list_counter = count(start=1)
+
+    mock_generator_func = Mock(return_value=[])
+    molecule_tab.generators = {expected_func_key: mock_generator_func}  # pyright: ignore[reportAttributeAccessIssue]
+
+    monkeypatch.setattr(molecule_tab, "get_param_values", Mock(return_value={}))
+
+    molecule_tab.add_molecule()
+
+    mock_generator_func.assert_called_once()
+
+
+def test_delete_molecule_success(molecule_tab: MoleculeGeneration, monkeypatch: MonkeyPatch) -> None:
+    """Verify that deleting a selected molecule updates UI elements and tracking lists."""
+    # 1. Arrange baseline state with two mock items
+    name1 = "molecule_a #1"
+    name2 = "molecule_b #2"
+
+    molecule_tab.molecule_list_widget.addItem(name1)
+    molecule_tab.molecule_list_widget.addItem(name2)
+
+    # Mirror items in the tracking data structures
+    param_mock_a = Mock()
+    param_mock_b = Mock()
+
+    monkeypatch.setattr(molecule_tab, "show_molecule_settings", Mock())
+
+    molecule_tab.mol_params_list = [param_mock_a, param_mock_b]
+    molecule_tab.state.molecule_param_list = molecule_tab.mol_params_list
+
+    molecule_tab.molecule_list_widget.setCurrentRow(1)
+    assert molecule_tab.molecule_list_widget.currentRow() == 1
+
+    molecule_tab.delete_molecule()
+
+    # Verify tracking collections have been purged of the accurate item index
+    assert len(molecule_tab.mol_params_list) == 1
+    assert molecule_tab.mol_params_list[0] is param_mock_a
+    assert molecule_tab.state.molecule_param_list == [param_mock_a]
+
+    # Verify UI tracking list component was updated
+    assert molecule_tab.molecule_list_widget.count() == 1
+    assert molecule_tab.molecule_list_widget.item(0).text() == name1
+
+    # Verify status label messages and selection state clearances
+    assert molecule_tab.output_label.text() == "Molecule deleted"
+    assert molecule_tab.molecule_list_widget.currentRow() == -1
+
+
+def test_delete_molecule_no_selection_returns_early(molecule_tab: MoleculeGeneration) -> None:
+    """Verify that trying to delete a molecule when nothing is selected returns immediately."""
+    # 1. Arrange a baseline state with items, but do NOT select anything
+    molecule_tab.molecule_list_widget.addItem("molecule_a #1")
+
+    param_mock = Mock()
+    molecule_tab.mol_params_list = [param_mock]
+    molecule_tab.state.molecule_param_list = molecule_tab.mol_params_list
+    molecule_tab.output_label.setText("Initial State")
+
+    # Set selection state explicitly to -1 (nothing selected)
+    molecule_tab.molecule_list_widget.setCurrentRow(-1)
+
+    molecule_tab.delete_molecule()
+
+    # Verify data layers remain completely untouched
+    assert len(molecule_tab.mol_params_list) == 1
+    assert molecule_tab.state.molecule_param_list == [param_mock]
+
+    # Verify UI items and notification labels did not shift
+    assert molecule_tab.molecule_list_widget.count() == 1
+    assert molecule_tab.output_label.text() == "Initial State"
