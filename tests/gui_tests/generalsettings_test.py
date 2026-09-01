@@ -7,14 +7,13 @@ import pickle
 import sys
 import zipfile
 from pathlib import Path
-from typing import ParamSpec
 
 if sys.version_info >= (3, 12):
     from typing import override
 else:
     from typing_extensions import override
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import numpy as np
 import pytest
@@ -31,22 +30,6 @@ from adsorpy.gui import (
     PydanticPolygon,
     SurfaceParameters,
 )
-
-P = ParamSpec("P")
-
-
-# Define a mock function to inspect with different signature criteria.
-def run_simulation(
-    no_default_param: object,
-    standard_param: str = "default_val",
-    *_: P.args,  # type: ignore[valid-type]
-    **__: P.kwargs,  # type: ignore[valid-type]
-) -> None:
-    """Pretend to run a simulation with standard parameters.
-
-    :param no_default_param: Parameter without a default value.
-    :param standard_param: Standard parameter to use with a default value.
-    """
 
 
 def test_get_run_sim_default_success() -> None:
@@ -166,6 +149,7 @@ def test_on_simulation_complete(qtbot: QtBot, subtests: pytest.Subtests) -> None
     general_settings = GeneralSettings(gui.state)
     general_settings.show()  # This parent must be made visible first.
 
+    # Initial state checks
     assert not general_settings.coverage_label.isVisible(), "Label should be invisible initially."
     assert not general_settings.covered_area_label.isVisible()
     assert not general_settings.progress_bar.isVisible(), "Progress bar must start invisible."
@@ -175,23 +159,13 @@ def test_on_simulation_complete(qtbot: QtBot, subtests: pytest.Subtests) -> None
     mock_coverage = [0.5]
     mock_fraction = [0.3]
 
-    def mock_plot(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
-        """Mock plot function."""
+    mock_simulator = Mock()
+    mock_simulator.coverage = mock_coverage
+    mock_simulator.fraction_of_covered_area = mock_fraction
+    mock_simulator.svgplot_covered_grid = Mock()
+    mock_simulator.analyse_gap_size = Mock()
 
-    def mock_analyse_gap_size(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
-        """Mock analyse gap size function."""
-
-    class MockSimulator:
-        """Mock Simulator class."""
-
-        def __init__(self) -> None:
-            """Initialise mock Simulator."""
-            self.coverage = mock_coverage
-            self.fraction_of_covered_area = mock_fraction
-            self.svgplot_covered_grid = mock_plot
-            self.analyse_gap_size = mock_analyse_gap_size
-
-    mock_output = (MockSimulator(),)
+    mock_output = (mock_simulator,)
 
     general_settings._on_simulation_complete(mock_output)  # pyright: ignore[reportArgumentType]
 
@@ -201,7 +175,6 @@ def test_on_simulation_complete(qtbot: QtBot, subtests: pytest.Subtests) -> None
     with subtests.test(msg="Covered area label text"):
         assert general_settings.covered_area_label.text() == f"Fraction of covered area: {np.sum(mock_fraction):.4f}"
 
-    # Test widget visibility
     with subtests.test(msg="Coverage label visibility"):
         assert general_settings.coverage_label.isVisible(), "Coverage label must be visible."
 
@@ -213,7 +186,6 @@ def test_on_simulation_complete(qtbot: QtBot, subtests: pytest.Subtests) -> None
             "Progress bar must hide when finished (``finally`` block)."
         )
 
-    # Test progress bar value
     with subtests.test(msg="Progress bar final value"):
         complete = 100
         assert general_settings.progress_bar.value() == complete, "Value should be 100 when complete."
@@ -232,50 +204,32 @@ def test_on_simulation_complete_error(qtbot: QtBot, subtests: pytest.Subtests, m
     general_settings = GeneralSettings(gui.state)
     general_settings.show()  # This parent must be made visible first.
 
+    # Assert initial UI visibility states
     assert not general_settings.coverage_label.isVisible(), "Label should be invisible initially."
     assert not general_settings.covered_area_label.isVisible()
     assert not general_settings.progress_bar.isVisible(), "Progress bar must start invisible."
 
     general_settings.progress_bar.show()
 
-    mock_coverage = ["Error"]
-    mock_fraction = ["Also wrong"]
+    mock_simulator = Mock()
+    mock_simulator.coverage = ["Error"]
+    mock_simulator.fraction_of_covered_area = ["Also wrong"]
+    mock_simulator.svgplot_covered_grid = Mock()
+    mock_simulator.analyse_gap_size = Mock()
 
-    def mock_plot(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
-        """Mock plot function."""
+    mock_output = (mock_simulator,)
+    mock_error_method = Mock()
 
-    def mock_analyse_gap_size(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
-        """Mock analyse gap size function."""
+    monkeypatch.setattr(general_settings, "error", mock_error_method)
 
-    class MockSimulator:
-        """Mock Simulator class."""
-
-        def __init__(self) -> None:
-            """Initialise mock Simulator."""
-            self.coverage = mock_coverage
-            self.fraction_of_covered_area = mock_fraction
-            self.svgplot_covered_grid = mock_plot
-            self.analyse_gap_size = mock_analyse_gap_size
-
-    mock_output = (MockSimulator(),)
-
-    error_called = False
-
-    def mock_error(_: Exception) -> None:
-        """Mock the error function but return nothing.
-
-        Sets a flag denoting the calling of the function.
-
-        :param _: Input error.
-        """
-        nonlocal error_called
-        error_called = True
-
-    monkeypatch.setattr(general_settings, "error", mock_error)
     general_settings._on_simulation_complete(mock_output)  # pyright: ignore[reportArgumentType]
 
-    assert error_called, "The error function should have been called."
-    assert not general_settings.progress_bar.isVisible(), "Progress bar must start invisible."
+    mock_error_method.assert_called_once()
+    assert not general_settings.progress_bar.isVisible(), "Progress bar must be hidden following a crash."
+
+    args, _ = mock_error_method.call_args
+    passed_message = args[0]
+    assert "Simulation completion failed" in passed_message or isinstance(passed_message, str)
 
 
 def test_on_simulation_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
@@ -288,25 +242,22 @@ def test_on_simulation_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     qtbot.addWidget(gui)
     general_settings = GeneralSettings(gui.state)
 
-    error_called = False
+    mock_error_method = Mock()
+    monkeypatch.setattr(general_settings, "error", mock_error_method)
 
-    def mock_error(_: Exception) -> None:
-        """Mock the error function but return nothing.
-
-        Sets a flag denoting the calling of the function.
-
-        :param _: Input error.
-        """
-        nonlocal error_called
-        error_called = True
-
-    monkeypatch.setattr(general_settings, "error", mock_error)
     general_settings.run_group.setDisabled(True)
     assert not general_settings.run_group.isEnabled(), "Sanity check: this should be set as disabled."
 
-    test_exception = Exception()
+    test_exception = Exception("Simulation crashed")
     general_settings._on_simulation_error(test_exception)
-    assert error_called, "The error function has to have been called."
+
+    mock_error_method.assert_called_once()
+
+    args, _ = mock_error_method.call_args
+    passed_message = args[0]
+
+    assert "Simulation engine error:" in passed_message
+    assert "Simulation crashed" in passed_message
     assert general_settings.run_group.isEnabled(), "This should have been re-enabled."
 
 
@@ -320,21 +271,12 @@ def test_export_results_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     qtbot.addWidget(gui)
     general_settings = GeneralSettings(gui.state)
 
-    warning_called = False
-
-    def mock_warning(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
-        """Mock warning function.
-
-        :param _: Input args.
-        :param __: Input kwargs.
-        """
-        nonlocal warning_called
-        warning_called = True
-
+    mock_warning = Mock()
     monkeypatch.setattr(QMessageBox, "warning", mock_warning)
 
     general_settings.export_results()
-    assert warning_called, "The warning function should have been called because the gap size dist is empty."
+
+    mock_warning.assert_called_once()
 
 
 @pytest.fixture
@@ -360,34 +302,16 @@ def test_export_user_cancels_dialogue(mock_widget: GeneralSettings, monkeypatch:
     :param mock_widget: Mock GeneralSettings.
     :param monkeypatch: MonkeyPatch object to mock attributes.
     """
+    mock_save_dialog = Mock(return_value=("", "JSON Data Interchange (*.json);;"))
+    mock_info_box = Mock()
 
-    # Shorthand mock return value
-    def mock_dialogue(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
-        """Mock dialogue function.
-
-        :param _: Input arguments, ignored.
-        :param __: Input kwargs, ignored.
-        """
-        return "", "JSON Data Interchange (*.json);;"
-
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_dialogue)
-
-    # Track if QMessageBox.information was called
-    info_called = False
-
-    def mock_info(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
-        """Mock info function.
-
-        :param _: Ignored args.
-        :param __: Ignored kwargs.
-        """
-        nonlocal info_called
-        info_called = True
-
-    monkeypatch.setattr(QMessageBox, "information", mock_info)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
 
     mock_widget.export_results()
-    assert not info_called, "Should exit early without success message"
+
+    mock_save_dialog.assert_called_once()
+    mock_info_box.assert_not_called()
 
 
 def test_export_json_format(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
@@ -399,15 +323,14 @@ def test_export_json_format(mock_widget: GeneralSettings, tmp_path: Path, monkey
     """
     target_path = tmp_path / "temp_output.json"
 
+    mock_save_dialog = Mock(return_value=(str(target_path.with_suffix("")), "JSON Data Interchange (*.json);;"))
+
     # Mock QFileDialog to automatically select our temp file path
-    monkeypatch.setattr(
-        QFileDialog,
-        "getSaveFileName",
-        lambda *_, **__: (str(target_path), "JSON Data Interchange (*.json);;"),  # pyright: ignore[reportUnknownLambdaType]
-    )
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
 
     # Mock QMessageBox popups so they don't block execution
-    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: None)  # pyright: ignore[reportUnknownLambdaType]
+    mock_info_box = Mock()
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
 
     # Run execution loop
     mock_widget.export_results()
@@ -432,16 +355,18 @@ def test_export_hdf5_format(mock_widget: GeneralSettings, tmp_path: Path, monkey
     h5py = pytest.importorskip("h5py")
     target_path = tmp_path / "temp_output.h5"
 
-    monkeypatch.setattr(
-        QFileDialog,
-        "getSaveFileName",
-        lambda *_: (str(target_path), "Hierarchical Data Format (*.h5);;"),  # pyright: ignore[reportUnknownLambdaType]
-    )
-    monkeypatch.setattr(QMessageBox, "information", lambda *_: None)  # pyright: ignore[reportUnknownLambdaType]
+    mock_save_dialog = Mock(return_value=(str(target_path.with_suffix("")), "Hierarchical Data Format (*.h5);;"))
+    mock_info_box = Mock()
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
 
     mock_widget.export_results()
 
+    mock_save_dialog.assert_called_once()
+    mock_info_box.assert_called_once()
     assert target_path.exists()
+
     with h5py.File(str(target_path), "r") as f:
         assert "repeats" in f.attrs
         assert f.attrs["repeats"] == str(mock_widget.input_metadata["repeats"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
@@ -478,19 +403,23 @@ def test_export_pickle_format(mock_widget: GeneralSettings, tmp_path: Path, monk
     """
     target_path = tmp_path / "temp_output.pkl"
 
-    monkeypatch.setattr(
-        QFileDialog,
-        "getSaveFileName",
-        lambda *_: (str(target_path), "Python Pickle Binary (*.pkl);;"),  # pyright: ignore[reportUnknownLambdaType]
-    )
-    monkeypatch.setattr(QMessageBox, "information", lambda *_: None)  # pyright: ignore[reportUnknownLambdaType]
+    mock_save_dialog = Mock(return_value=(str(target_path.with_suffix("")), "Python Pickle Binary (*.pkl);;"))
+    mock_info_box = Mock()
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
 
     mock_widget.export_results()
 
+    # 3. Assertions
+    mock_save_dialog.assert_called_once()
+    mock_info_box.assert_called_once()
     assert target_path.exists()
+
     with target_path.open("rb") as f:
         data = SafeTestUnpickler(f).load()
 
+    assert "metadata" in data
     assert "repeats" in data["metadata"]
     assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
     assert "Gap_size_distribution" in data
@@ -506,15 +435,18 @@ def test_export_zip_csv_format(mock_widget: GeneralSettings, tmp_path: Path, mon
     """
     target_path = tmp_path / "temp_output.zip"
 
-    monkeypatch.setattr(
-        QFileDialog,
-        "getSaveFileName",
-        lambda *_: (str(target_path), "Zipped Comma Separated Values (*.zip);;"),  # pyright: ignore[reportUnknownLambdaType]
+    mock_save_dialog = Mock(
+        return_value=(str(target_path.with_suffix("")), "Zipped Comma Separated Values (*.zip);;"),
     )
-    monkeypatch.setattr(QMessageBox, "information", lambda *_: None)  # pyright: ignore[reportUnknownLambdaType]
+    mock_info_box = Mock()
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
 
     mock_widget.export_results()
 
+    mock_save_dialog.assert_called_once()
+    mock_info_box.assert_called_once()
     assert target_path.exists()
     assert zipfile.is_zipfile(target_path)
 
@@ -537,31 +469,51 @@ def test_export_handles_io_exceptions(mock_widget: GeneralSettings, tmp_path: Pa
     :param monkeypatch: MonkeyPatch object.
     """
     target_path = tmp_path / "forbidden_directory" / "temp_output.json"
-
-    monkeypatch.setattr(
-        QFileDialog,
-        "getSaveFileName",
-        lambda *_: (str(target_path), "JSON Data Interchange (*.json);;"),  # pyright: ignore[reportUnknownLambdaType]
-    )
-
-    # Intercept Path.mkdir block to fake an OS-level permissions failure
     errmsg = "Permission denied."
 
-    def mock_mkdir_fail(*_: P.args, **__: P.kwargs) -> None:  # type: ignore[valid-type]
-        """Mock mkdir fail.
+    mock_save_dialog = Mock(return_value=(str(target_path), "JSON Data Interchange (*.json);;"))
+    mock_mkdir_fail = Mock(side_effect=OSError(errmsg))
+    mock_critical = Mock()
 
-        :param _: Ignored args.
-        :param _: Ignored kwargs.
-        :raises OSError: Permission denied.
-        """
-        raise OSError(errmsg)
-
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
     monkeypatch.setattr(Path, "mkdir", mock_mkdir_fail)
-
-    critical_messages = []
-    monkeypatch.setattr(QMessageBox, "critical", lambda _parent, _title, msg: critical_messages.append(msg))  # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QMessageBox, "critical", mock_critical)
 
     mock_widget.export_results()
 
-    assert len(critical_messages) == 1
-    assert errmsg in critical_messages[0]
+    mock_save_dialog.assert_called_once()
+    mock_mkdir_fail.assert_called_once()
+    mock_critical.assert_called_once()
+
+    args, _ = mock_critical.call_args
+    displayed_message = args[-1]  # The final positional argument is the error message body.
+    assert errmsg in displayed_message
+
+
+def test_export_bad_format_error(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Test whether malformed format raises error.
+
+    :param mock_widget: Mock GeneralSettings.
+    :param tmp_path: Path to the temporary folder.
+    :param monkeypatch: MonkeyPatch object.
+    """
+    target_path = tmp_path / "temp_output"
+
+    mock_save_dialog = Mock(
+        return_value=(str(target_path.with_suffix("")), "How did you do this? (*.);;"),
+    )
+    mock_info_box = Mock()
+    mock_warning_box = Mock()
+    mock_critical_box = Mock()
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
+    monkeypatch.setattr(QMessageBox, "warning", mock_warning_box)
+    monkeypatch.setattr(QMessageBox, "critical", mock_critical_box)
+
+    mock_widget.export_results()
+
+    mock_save_dialog.assert_called_once()
+    mock_warning_box.assert_called_once()
+    mock_info_box.assert_not_called()
+    mock_critical_box.assert_not_called()

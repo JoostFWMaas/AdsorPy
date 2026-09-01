@@ -5,9 +5,11 @@
 import json
 import re
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from typing import ParamSpec
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from pydantic import ValidationError
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QResizeEvent
@@ -16,6 +18,8 @@ from pytestqt.qtbot import QtBot
 
 import adsorpy
 from adsorpy.gui import AdsorpyGUI, AppState, MoleculeParameters, SurfaceParameters
+
+P = ParamSpec("P")
 
 
 @pytest.fixture
@@ -243,9 +247,7 @@ def test_save_settings_json_success(
 
 
 @patch("PySide6.QtWidgets.QFileDialog.getSaveFileName")
-@patch("PySide6.QtWidgets.QMessageBox.critical")
 def test_save_settings_json_validation_error(
-    mock_msg_box: MagicMock,
     mock_file_dialog: MagicMock,
     app: AdsorpyGUI,
 ) -> None:
@@ -301,8 +303,6 @@ def test_load_settings_json_success(
     mock_validate_python.side_effect = [mock_misc, MagicMock(), MagicMock()]
 
     app._load_settings_json()
-
-    # app.state.seed_input.setText.assert_called_once_with(1234)
 
 
 @patch("PySide6.QtWidgets.QFileDialog.getOpenFileName")
@@ -369,3 +369,40 @@ def test_resize_event_calls_super(app: AdsorpyGUI) -> None:
     with patch("PySide6.QtWidgets.QMainWindow.resizeEvent") as mock_super_resize:
         app.resizeEvent(resize_event)
         mock_super_resize.assert_called_once_with(resize_event)
+
+
+def test_cancel_save_settings_json(app: AdsorpyGUI, monkeypatch: MonkeyPatch) -> None:
+    """Verify that cancelling the saving results in an immediate return."""
+    mock_get_save = Mock(return_value=("", ""))
+    mock_info = Mock()
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save)
+    monkeypatch.setattr(QMessageBox, "information", mock_info)
+
+    app._save_settings_json()
+
+    mock_get_save.assert_called_once()
+    mock_info.assert_not_called()
+
+
+@pytest.mark.filterwarnings("ignore:Pydantic serializer warnings")  # These are intended to be triggered.
+def test_save_settings_json_error(app: AdsorpyGUI, monkeypatch: MonkeyPatch) -> None:
+    """Test whether the save settings JSON function handles ValidationError correctly."""
+    bad_input = "NOT_AN_INTEGER"
+    monkeypatch.setattr(app.state.step_limit, "value", Mock(return_value=bad_input))
+
+    monkeypatch.setattr(app.state, "surface_params", "Invalid string instead of SurfaceParameters object")
+    mock_get_save = Mock(return_value=("va", "lid"))
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save)
+
+    mock_critical = Mock()
+    monkeypatch.setattr(QMessageBox, "critical", mock_critical)
+
+    app._save_settings_json()
+
+    mock_critical.assert_called_once()
+
+    call_args = mock_critical.call_args[0]
+    assert "Structure or type constraints were broken" in call_args[2]
+    assert "validation error" in call_args[2], "Pydantic ValidationError was not raised."
+    assert bad_input in call_args[2], "Source of error was not identified."

@@ -1,13 +1,13 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
 """Test the functions of the `gui.py` module."""
+
 import importlib
 import json
 import re
 import sys
 from collections.abc import Callable
 from importlib.metadata import requires
-from types import ModuleType
 
 import pytest
 import shapely.errors
@@ -199,7 +199,11 @@ def test_missing_gui_imports(monkeypatch: pytest.MonkeyPatch, missing_dep: str) 
     :param monkeypatch: Pytest monkeypatch fixture to mock parameters.
     :param missing_dep: The optional dependency name to remove and check.
     """
-    monkeypatch.delitem(sys.modules, missing_dep, raising=False)
+    monkeypatch.setitem(sys.modules, missing_dep, None)
+    monkeypatch.delitem(sys.modules, "adsorpy.gui", raising=False)
+    dask_imports = [name for name in sys.modules if missing_dep in name]
+    for sub_dep in dask_imports:
+        monkeypatch.setitem(sys.modules, sub_dep, None)
 
     with pytest.raises(ImportError, match=missing_dep):
-        importlib.reload(ModuleType(missing_dep))
+        importlib.import_module("adsorpy.gui")

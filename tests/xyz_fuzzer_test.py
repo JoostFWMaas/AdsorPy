@@ -63,7 +63,7 @@ def valid_xyz_inputs(
 def invalid_xyz_inputs(
     draw: Callable[[SearchStrategy[T]], T],
 ) -> tuple[
-    np.ndarray[tuple[int], np.dtype[np.str_]],
+    StrArray,
     np.ndarray[tuple[int, Literal[1, 2, 3, 4, 5]], np.dtype[np.float64]],
     int | None,
 ]:

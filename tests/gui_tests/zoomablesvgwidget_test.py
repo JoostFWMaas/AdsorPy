@@ -2,27 +2,19 @@
 # SPDX-License-Identifier: MIT
 """Test the ZoomableSvgWidget class of the `gui.py` module."""
 
-import sys
 import uuid
 from pathlib import Path
-from typing import Literal, ParamSpec
-
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    from typing_extensions import override
+from unittest.mock import Mock
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QResizeEvent, QWheelEvent
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QScrollArea
-from pytestqt.qtbot import QtBot, QWidget
+from pytestqt.qtbot import QtBot
 
 from adsorpy.gui import ZoomableSvgWidget
-
-P = ParamSpec("P")
 
 VALID_SVG_BYTES: bytes = (
     b'<svg xmlns="https://w3.org" viewBox="0 0 20 20" width="20" height="20">'
@@ -137,28 +129,19 @@ def test_load_handles_error_correctly(qtbot: QtBot, monkeypatch: MonkeyPatch, tm
 
     :param qtbot: The pytest-qt robot fixture managing UI lifecycles.
     """
-    widget: ZoomableSvgWidget = ZoomableSvgWidget()
+    widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
     unique_filename = f"missing_{uuid.uuid4()}.svg"
     fake_file_path = tmp_path / unique_filename
 
-    warning_triggered = False
-
-    def mock_warning(
-        *_: P.args,  # type: ignore[valid-type]
-        **__: P.kwargs,  # type: ignore[valid-type]
-    ) -> Literal[QMessageBox.StandardButton.Ok]:  # type: ignore[valid-type]
-        nonlocal warning_triggered
-        warning_triggered = True
-        return QMessageBox.StandardButton.Ok
-
+    mock_warning = Mock(return_value=QMessageBox.StandardButton.Ok)
     monkeypatch.setattr(QMessageBox, "warning", mock_warning)
 
     with qtbot.waitSignal(widget.graphics_changed, timeout=1000) as blocker:
         widget.load(fake_file_path)
 
-    assert warning_triggered is True, "The warning dialog was never opened."
+    mock_warning.assert_called_once()
     assert blocker.args[0] is False, "The graphics_changed signal should have emitted False."  # pyright: ignore[reportOptionalSubscript]
     assert widget._current_svg_bytes is None, "The byte cache was not cleared."
 
@@ -175,22 +158,31 @@ def test_export_graphics_success_formats(
     :param qtbot: The pytest-qt robot fixture managing UI lifecycles.
     :param monkeypatch: The pytest mock manager engine handling runtime dependency injection.
     """
-    widget: ZoomableSvgWidget = ZoomableSvgWidget()
+    widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
     widget.load(VALID_SVG_BYTES)
 
-    destination_file: Path = tmp_path / f"output_export{extension}"
+    destination_file: Path = tmp_path / "output_export"
 
-    mock_file_dialog: tuple[str, str] = (str(destination_file), f"Format File (*{extension})")
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_, **__: mock_file_dialog)  # pyright: ignore[reportUnknownLambdaType]
+    mock_save_dialog = Mock(return_value=(str(destination_file), f"Format File (*{extension})"))
+    mock_info_box = Mock()
+    mock_warning_box = Mock()
 
-    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: None)  # pyright: ignore[reportUnknownLambdaType]
-    monkeypatch.setattr(QMessageBox, "warning", lambda *_, **__: None)  # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
+    monkeypatch.setattr(QMessageBox, "warning", mock_warning_box)
 
     qtbot.mouseClick(widget.save_button, Qt.MouseButton.LeftButton)
 
-    assert destination_file.exists() is True
-    assert destination_file.stat().st_size > 0
+    mock_save_dialog.assert_called_once()
+    mock_info_box.assert_called_once()
+    mock_warning_box.assert_not_called()
+
+    assert not destination_file.exists(), "File should not exist without its correct extension path."
+
+    final_output_path = destination_file.with_suffix(extension)
+    assert final_output_path.exists(), "The extension was not appended automatically."
+    assert final_output_path.stat().st_size > 0, "The exported file payload size is zero bytes."
 
 
 def test_export_graphics_filesystem_failure_displays_critical_dialog(
@@ -199,46 +191,35 @@ def test_export_graphics_filesystem_failure_displays_critical_dialog(
     tmp_path: Path,
 ) -> None:
     """Verify that disk I/O errors are caught by the exception block and report via critical dialogue."""
-    widget: ZoomableSvgWidget = ZoomableSvgWidget()
+    widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
     widget.load(VALID_SVG_BYTES)
 
-    # Use a normal file path string that looks valid to your widget logic
     target_path = tmp_path / "test_output.svg"
+    errmsg = "Simulated Disk I/O Failure"
 
-    mock_file_dialog: tuple[str, str] = (str(target_path), "Scalable Vector Graphics (*.svg)")
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *_, **__: mock_file_dialog)  # pyright: ignore[reportUnknownLambdaType]
+    mock_save_dialog = Mock(return_value=(str(target_path), "Scalable Vector Graphics (*.svg)"))
+    mock_io_error = Mock(side_effect=OSError(errmsg))
+    mock_critical = Mock()
+    mock_info = Mock()
 
-    # FORCE any file write attempt on Path objects to immediately raise an IOError
-    def mock_write_bytes(self: Path, data: bytes) -> None:
-        errmsg = "Simulated Disk I/O Failure"
-        raise OSError(errmsg)
-
-    def mock_open_failed(self: Path) -> None:
-        errmsg = "Simulated Disk Open Failure"
-        raise OSError(errmsg)
-
-    monkeypatch.setattr(Path, "write_bytes", mock_write_bytes)
-    monkeypatch.setattr(Path, "open", mock_open_failed)
-
-    critical_triggered: bool = False
-
-    def mock_critical(parent: QWidget, title: str, text: str) -> None:
-        nonlocal critical_triggered
-        # Check if "Export Failed" or "Error" is in either the title or text body
-        if "Export" in title or "Error" in title or "Fail" in title:
-            critical_triggered = True
-
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(Path, "write_bytes", mock_io_error)
+    monkeypatch.setattr(Path, "open", mock_io_error)
     monkeypatch.setattr(QMessageBox, "critical", mock_critical)
+    monkeypatch.setattr(QMessageBox, "information", mock_info)
 
-    # Suppress the success dialogue just in case it's still called somewhere
-    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: QMessageBox.StandardButton.Ok)  # pyright: ignore[reportUnknownLambdaType]
-
-    # Act
     qtbot.mouseClick(widget.save_button, Qt.MouseButton.LeftButton)
 
-    # Assert
-    assert critical_triggered is True, "The critical error dialog was never triggered during file write failure!"
+    mock_save_dialog.assert_called_once()
+    mock_critical.assert_called_once()
+    mock_info.assert_not_called()
+
+    args, _ = mock_critical.call_args
+    _parent, title, displayed_message = args
+
+    assert any(word in title for word in ["Export", "Error", "Fail"]), f"Unexpected dialog title: {title}"
+    assert errmsg in displayed_message
 
 
 @pytest.mark.parametrize(("delta", "scale_multiplier"), [(120, 1.15), (-120, 1.0 / 1.15)])
@@ -354,15 +335,7 @@ def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
     """
     scroll_area, widget = scrollable_widget_setup
 
-    event_forwarded: bool = False
-
-    def mock_send_event(receiver: QWidget, event: QEvent) -> bool:
-        nonlocal event_forwarded
-        if receiver == scroll_area.viewport():
-            event_forwarded = True
-        return True
-
-    # Intercept Qt's application message distribution tracking manager system call
+    mock_send_event = Mock(return_value=True)
     monkeypatch.setattr(QApplication, "sendEvent", mock_send_event)
 
     normal_scroll_event = QWheelEvent(
@@ -377,7 +350,8 @@ def test_wheel_event_fallback_without_modifiers_bubbles_to_viewport(
     )
 
     widget.wheelEvent(normal_scroll_event)
-    assert event_forwarded is True
+
+    mock_send_event.assert_called_once_with(scroll_area.viewport(), normal_scroll_event)
 
 
 def test_export_graphics_invalid_renderer(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
@@ -389,35 +363,29 @@ def test_export_graphics_invalid_renderer(qtbot: QtBot, monkeypatch: MonkeyPatch
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
-    class MockRenderer(QSvgRenderer):
-        def __init__(self) -> None:
-            super().__init__()
+    mock_renderer = Mock(spec=QSvgRenderer)
+    mock_renderer.isValid.return_value = False
 
-        @override
-        def isValid(self) -> Literal[False]:
-            return False
+    mock_renderer_method = Mock(return_value=mock_renderer)
+    monkeypatch.setattr(widget, "renderer", mock_renderer_method)
 
-    monkeypatch.setattr(widget, "renderer", MockRenderer)
-
-    warning_triggered = False
-
-    def mock_warning(
-        parent: object,
-        title: str,
-        text: str,
-        *_: P.args,  # type: ignore[valid-type]
-        **__: P.kwargs,  # type: ignore[valid-type]
-    ) -> Literal[QMessageBox.StandardButton.Ok]:  # type: ignore[valid-type]
-        nonlocal warning_triggered
-        warning_triggered = True
-        assert title == "Export Error"
-        assert "No valid SVG data loaded." in text
-        return QMessageBox.StandardButton.Ok
+    mock_warning = Mock(return_value=QMessageBox.StandardButton.Ok)
+    mock_save_dialog = Mock(return_value=("", ""))
 
     monkeypatch.setattr(QMessageBox, "warning", mock_warning)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
 
     widget.export_graphics()
-    assert warning_triggered is True
+
+    mock_renderer_method.assert_called_once()
+    mock_warning.assert_called_once()
+    mock_save_dialog.assert_not_called()  # Proves the early exit was triggered
+
+    args, _ = mock_warning.call_args
+    _parent, title, text = args[:3]
+
+    assert title == "Export Error"
+    assert "No valid SVG data loaded." in text
 
 
 def test_export_graphics_user_cancels(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
@@ -429,27 +397,19 @@ def test_export_graphics_user_cancels(qtbot: QtBot, monkeypatch: MonkeyPatch) ->
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
-    class MockRenderer(QSvgRenderer):
-        def __init__(self) -> None:
-            super().__init__()
+    mock_renderer = Mock(spec=QSvgRenderer)
+    mock_renderer.isValid.return_value = True
 
-        @override
-        def isValid(self) -> Literal[True]:
-            return True
+    mock_renderer_method = Mock(return_value=mock_renderer)
+    monkeypatch.setattr(widget, "renderer", mock_renderer_method)
 
-    monkeypatch.setattr(widget, "renderer", MockRenderer)
-
-    file_dialog_called = False
-
-    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
-        nonlocal file_dialog_called
-        file_dialog_called = True
-        return "", ""  # empty path means cancelled.
-
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
+    mock_save_dialog = Mock(return_value=("", ""))
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
 
     widget.export_graphics()
-    assert file_dialog_called is True
+
+    mock_renderer_method.assert_called_once()
+    mock_save_dialog.assert_called_once()
 
 
 def test_export_graphics_svg_fallback_generation(qtbot: QtBot, monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
@@ -461,40 +421,31 @@ def test_export_graphics_svg_fallback_generation(qtbot: QtBot, monkeypatch: Monk
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
-    class MockRenderer(QSvgRenderer):
-        def __init__(self) -> None:
-            super().__init__()
+    mock_renderer = Mock(spec=QSvgRenderer)
+    mock_renderer.isValid.return_value = True
+    mock_renderer.viewBoxF.return_value = QRectF(0.0, 0.0, 100.0, 100.0)
+    mock_renderer.viewBox.return_value = QRect(0, 0, 100, 100)
+    mock_renderer.render.return_value = True
 
-        @override
-        def isValid(self) -> Literal[True]:
-            return True
-
-        @override
-        def viewBoxF(self) -> QRectF:
-            return QRectF(0.0, 0.0, 100.0, 100.0)
-
-        @override
-        def viewBox(self) -> QRect:
-            return QRectF(0.0, 0.0, 100.0, 100.0).toRect()
-
-        def render(self, *_: P.args, **__: P.kwargs) -> Literal[True]:  # type: ignore[valid-type]
-            return True
-
-    monkeypatch.setattr(widget, "renderer", MockRenderer)
+    mock_renderer_method = Mock(return_value=mock_renderer)
+    monkeypatch.setattr(widget, "renderer", mock_renderer_method)
 
     widget._current_svg_bytes = None
     output_file = tmp_path / "fallback.svg"
 
-    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
-        return str(output_file), "Scalable Vector Graphics (*.svg)"
+    mock_save_dialog = Mock(return_value=(str(output_file), "Scalable Vector Graphics (*.svg)"))
+    mock_info_box = Mock(return_value=QMessageBox.StandardButton.Ok)
 
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
-
-    monkeypatch.setattr(QMessageBox, "information", lambda *_, **__: QMessageBox.StandardButton.Ok)  # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "information", mock_info_box)
 
     widget.export_graphics()
 
-    assert output_file.exists() is True
+    mock_renderer_method.assert_called_once()
+    mock_save_dialog.assert_called_once()
+    mock_info_box.assert_called_once()
+
+    assert output_file.exists()
     assert output_file.stat().st_size > 0
 
 
@@ -507,36 +458,29 @@ def test_export_graphics_invalid_filter_error(qtbot: QtBot, monkeypatch: MonkeyP
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
 
-    class MockRenderer:
-        def isValid(self) -> Literal[True]:  # noqa: N802
-            return True
+    mock_renderer = Mock()
+    mock_renderer.isValid.return_value = True
 
-    monkeypatch.setattr(widget, "renderer", MockRenderer)
+    mock_renderer_method = Mock(return_value=mock_renderer)
+    monkeypatch.setattr(widget, "renderer", mock_renderer_method)
 
-    def mock_get_save_filename(*_: P.args, **__: P.kwargs) -> tuple[str, str]:  # type: ignore[valid-type]
-        return str(Path("/mock/path/my_drawing")), "Unknown Filter Type (*.xyz)"
+    mock_save_dialog = Mock(return_value=(str(Path("/mock/path/my_drawing")), "Unknown Filter Type (*.xyz)"))
+    mock_warning_box = Mock(return_value=QMessageBox.StandardButton.Ok)
 
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_get_save_filename)
-
-    warning_triggered = False
-
-    def mock_warning(
-        parent: object,
-        title: str,
-        text: str,
-        *_: P.args,  # type: ignore[valid-type]
-        **__: P.kwargs,  # type: ignore[valid-type]
-    ) -> Literal[QMessageBox.StandardButton.Ok]:  # type: ignore[valid-type]
-        nonlocal warning_triggered
-        warning_triggered = True
-        assert title == "Export Error"
-        assert "Invalid file extension." in text
-        return QMessageBox.StandardButton.Ok
-
-    monkeypatch.setattr(QMessageBox, "warning", mock_warning)
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", mock_save_dialog)
+    monkeypatch.setattr(QMessageBox, "warning", mock_warning_box)
 
     widget.export_graphics()
-    assert warning_triggered is True
+
+    mock_renderer_method.assert_called_once()
+    mock_save_dialog.assert_called_once()
+    mock_warning_box.assert_called_once()
+
+    args, _ = mock_warning_box.call_args
+    _parent, title, text = args[:3]
+
+    assert title == "Export Error"
+    assert "Invalid file extension." in text
 
 
 def test_wheel_event_ignores_unhandled_scroll_without_parent(qtbot: QtBot) -> None:
