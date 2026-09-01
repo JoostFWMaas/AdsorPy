@@ -176,7 +176,7 @@ jobs:
           key: uv-${{ hashFiles('uv.lock') }}
 
       - name: Generate SBOM
-        uses: sbomify/sbomify-action@ddf6a0d3d75b645153ad1ad60034b3fe2cb1eb63 # v26.7.0
+        uses: sbomify/sbomify-action@ed3f547023f5a3cc82025a85f568f6baff4bda3f # v26.8.0
         env:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
@@ -526,7 +526,7 @@ jobs:
           path: release-assets/
 
       - name: Create GitHub Release (immutable)
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: release-assets/*
           generate_release_notes: true
