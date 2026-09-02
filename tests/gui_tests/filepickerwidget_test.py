@@ -27,7 +27,7 @@ def clean_qsettings() -> Generator[None, None, None]:
     settings.clear()
 
 
-def test_file_picker_initialization(qtbot: QtBot, subtests: pytest.Subtests) -> None:
+def test_file_picker_initialisation(qtbot: QtBot, subtests: pytest.Subtests) -> None:
     """Verify default widget state and layout components.
 
     :param qtbot: The pytest-qt robot fixture used to manage GUI lifecycle.

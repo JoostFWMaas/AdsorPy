@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Test the BackgroundTask and BackgroundTaskSignals classes of the `gui.py` module."""
 
-from typing import Any
-
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from PySide6.QtCore import QThreadPool
 from pytestqt.qtbot import QtBot
 
@@ -12,12 +11,22 @@ from adsorpy.gui import BackgroundTask
 
 
 def sample_successful_job(a: int, b: int, message: str = "done") -> str:
-    """Make standard mock calculation payload."""
+    """Make standard mock calculation payload.
+
+    Multiplies a and b, appends the message.
+    :param a: The first value.
+    :param b: The second value.
+    :param message: The message to add to the return string.
+    :returns: '{a * b} - {message}' f-string.
+    """
     return f"{a * b} - {message}"
 
 
 def sample_failing_job() -> None:
-    """Make standard mock logic loop engineered to force a target exception."""
+    """Make standard mock logic loop engineered to force a target exception.
+
+    :raises ValueError: Always.
+    """
     errmsg = "Simulation payload misconfiguration"
     raise ValueError(errmsg)
 
@@ -27,7 +36,7 @@ def test_background_task_success_path(qtbot: QtBot) -> None:
 
     :param qtbot: The pytest-qt robot fixture managing UI thread synchronisation.
     """
-    task: BackgroundTask[Any, str] = BackgroundTask(sample_successful_job, 10, 5, message="complete")
+    task = BackgroundTask(sample_successful_job, 10, 5, message="complete")
 
     # Corrected: Call waitSignal directly on the PySide signal attribute
     with qtbot.waitSignal(task.signals.finished, timeout=2000) as blocker:
@@ -42,7 +51,7 @@ def test_background_task_error_catch_path(qtbot: QtBot) -> None:
 
     :param qtbot: The pytest-qt robot fixture managing UI thread synchronisation.
     """
-    task: BackgroundTask[Any, None] = BackgroundTask(sample_failing_job)
+    task: BackgroundTask[[], None] = BackgroundTask(sample_failing_job)
 
     with qtbot.waitSignal(task.signals.error, timeout=2000) as blocker:
         QThreadPool.globalInstance().start(task)
@@ -62,13 +71,24 @@ def test_background_task_unhandled_exception_bubbles() -> None:
     By calling task.run() synchronously, the internal try/except contract is tested
     without polluting or crashing the global Qt background thread pool worker.
     """
+    errmsg = "Somehow, this error appeared."
 
     def sample_runtime_crash() -> None:
-        errmsg = "Unexpected dict failure mapping metrics"
-        raise KeyError(errmsg)
+        """Sample error code.
 
-    task: BackgroundTask[Any, None] = BackgroundTask(sample_runtime_crash)
+        :raises AssertionError: Always.
+        """
+        raise AssertionError(errmsg)  # Reasonably, code should never contain an assertion error.
 
-    # Assert that the unhandled KeyError bubbles up normally when executing the task logic
-    with pytest.raises(KeyError, match="Unexpected dict failure mapping metrics"):
+    task: BackgroundTask[[], None] = BackgroundTask(sample_runtime_crash)
+
+    # Assert that the unhandled AssertionError bubbles up normally when executing the task logic.
+    with pytest.raises(AssertionError, match=errmsg):
         task.run()
+
+
+def test_background_task_emit_error(monkeypatch: MonkeyPatch) -> None:
+    """Test whether ``BackgroundTask`` emits an error correctly.
+
+    :param monkeypatch: Pytest fixture to mock parameters.
+    """

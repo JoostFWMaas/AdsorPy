@@ -114,3 +114,25 @@ def test_drop_event_no_signal_if_position_unchanged(qtbot: QtBot) -> None:
     # Using waitSignal with a negative timeout throws a timeout exception if the signal fires
     with pytest.raises(qtbot.TimeoutError), qtbot.waitSignal(widget.itemsMoved, timeout=200):
         widget.dropEvent(mock_event)
+
+
+def test_drop_event_early_return_no_selection(qtbot: QtBot) -> None:
+    """Verify that dropping an item back into its original index does not emit the signal.
+
+    :param qtbot: The pytest-qt robot fixture used to manage GUI lifecycle.
+    """
+    widget: ReorderableListWidget = ReorderableListWidget()
+    qtbot.addWidget(widget)
+
+    # Mock a drop event without an initial position.
+    mock_event: QDropEvent = QDropEvent(
+        widget.rect().center(),
+        Qt.DropAction.MoveAction,
+        widget.mimeData([]),
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+    # Using waitSignal with a negative timeout throws a timeout exception if the signal fires
+    with pytest.raises(qtbot.TimeoutError), qtbot.waitSignal(widget.itemsMoved, timeout=200):
+        widget.dropEvent(mock_event)

@@ -27,8 +27,8 @@ deps = ["ruff"]
 commands = [["ruff", "check", "src", "tests"]]
 
 [env.mypy]
-skip_install = true
-deps = ["mypy", "numpy", "pydantic"]
+#skip_install = true
+deps = ["mypy", "[test]"]
 commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--allow-subclassing-any", "--exclude", "/scripts/", "src", "tests", "--native-parser", "--show-error-end", "--show-error-code-links", "--show-error-context", "--enable-error-code", "exhaustive-match"],
 ]
 

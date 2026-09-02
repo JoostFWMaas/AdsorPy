@@ -1147,7 +1147,7 @@ class MoleculeViewer(QDialog):
             height=svg.Length(100, "%"),
             viewBox=svg.ViewBoxSpec(0, 0, width, height),
             preserveAspectRatio=svg.PreserveAspectRatio(),
-            elements=cast("list[svg.Element]", elements),  # type: ignore[redundant-cast]
+            elements=cast("list[svg.Element]", elements),
         )  # TODO: Notify svg package author of pyright error:
         # error: Argument of type "list[Line | Text | Polygon | Circle | Rect]" cannot be assigned to parameter
         # "elements" of type "list[Element] | None" in function "__init__"

@@ -587,25 +587,6 @@ def _select_and_run(
     return all_flux, phis
 
 
-# @overload
-# def show_surface(
-#     rsa_config: RsaConfig | None = None,
-#     lattice_type: str = "triangular",
-#     site_count: int | None = None,
-#     lattice_a: float | None = None,
-#     # boundary_condition: str | None = None,
-#     seed: int | Generator | None = None,
-#     # site_x_coords: DistArray | None = None,
-#     # site_y_coords: DistArray | None = None,
-#     # bounding_x_coord: float | None = None,
-#     # bounding_y_coord: float | None = None,
-#     svg_flag: bool = False,
-#     filepath: str | Path | io.BytesIO = "",
-#     ax: Axes,
-#     dark_mode_bool: bool = False,
-# ) -> Axes: ...
-
-
 def show_surface(
     rsa_config: RsaConfig | None = None,
     lattice_type: str = "triangular",
@@ -619,9 +600,9 @@ def show_surface(
     # bounding_y_coord: float | None = None,
     svg_flag: bool = False,
     filepath: str | Path | io.BytesIO = "",
-    ax: Tax = None,
+    ax: Tax | None = None,
     dark_mode_bool: bool = False,
-) -> Tax:
+) -> Tax | None:
     """Show the simulation surface.
 
     :param rsa_config: Input parameters defined in the config.
