@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpacerItem,
+    QSpinBox,
     QWidget,
 )
 from pytestqt.qtbot import QtBot
@@ -32,6 +33,7 @@ from pytestqt.qtbot import QtBot
 from adsorpy import molecule_lib
 from adsorpy.gui import (
     AppState,
+    FilePickerWidget,
     MoleculeGeneration,
     ReorderableListWidget,
     ZoomableSvgWidget,
@@ -251,7 +253,8 @@ def test_build_bad_param_inputs_raises_critical_dialogue(molecule_tab_factory: p
 
 
 def test_build_param_inputs_trips_future_annotation_check(
-    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch,
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
 ) -> None:
     """Simulate a library function that is missing the __future__ annotations import to verify it suggests the fix."""
     molecule_tab = molecule_tab_factory()
@@ -636,7 +639,8 @@ def test_sync_list_order_with_hypothesis(
 
 
 def test_build_left_panel_with_target_index_0(
-    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch,
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
 ) -> None:
     """Test that the ``build_param_inputs`` function is called when the target index is 0."""
     molecule_tab = molecule_tab_factory()
@@ -660,3 +664,76 @@ def test_delete_previous_layout(molecule_tab_factory: partial[MoleculeGeneration
     assert molecule_tab.param_layout.count(), "Layout should not start empty."
     molecule_tab._delete_previous_layout()
     assert not molecule_tab.param_layout.count(), "Layout should have been cleared."
+
+
+def test_create_param_widget(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+) -> None:
+    """Verify that specific type annotations result in correct behaviour."""
+    molecule_tab = molecule_tab_factory()
+
+    all_param_types = {
+        "float": (0.0, QDoubleSpinBox),
+        "PositiveFloat": (1.0, QDoubleSpinBox),
+        "NonNegativeFloat": (2.0, QDoubleSpinBox),
+        "float | None": (3.0, QDoubleSpinBox),
+        "int": (4, QSpinBox),
+        "PositiveInt": (5, QSpinBox),
+        "FilePath": ("6", FilePickerWidget),
+        "str | list[str] | None": ("7", QLineEdit),
+    }
+
+    for param_input, (param_default, param_type) in all_param_types.items():
+        with subtests.test(param_name=param_input):
+            assert isinstance(molecule_tab._create_param_widget(param_input, param_default), param_type)
+
+
+def test_create_param_widget_error(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+) -> None:
+    """Verify that incorrect type annotations result in a raised TypeError."""
+    molecule_tab = molecule_tab_factory()
+    annotation = "InvalidType"
+    with pytest.raises(TypeError, match=f"Unsupported parameter annotation: '{annotation}'."):
+        molecule_tab._create_param_widget(annotation, "")
+
+
+def test_get_param_values(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+) -> None:
+    """Test whether the get param values function works correctly."""
+    molecule_tab = molecule_tab_factory()
+    disabled_widget = QLineEdit()
+    disabled_widget.setDisabled(True)
+    spinbox = QSpinBox()
+    value = 1
+    spinbox.setValue(value)
+    lineedit = QLineEdit()
+    text = "success"
+    lineedit.setText(text)
+    input_dict = {
+        "spinbox": spinbox,
+        "lineedit": lineedit,
+        "disabled_widget": disabled_widget,
+    }
+
+    monkeypatch.setattr(molecule_tab, "param_widgets", input_dict)
+    output = molecule_tab.get_param_values()
+
+    assert "spinbox" in output
+    assert "lineedit" in output
+    assert "disabled_widget" not in output
+    assert output["spinbox"] == value
+    assert output["lineedit"] == text
+
+
+def test_error(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch) -> None:
+    """Test whether the error function works correctly."""
+    molecule_tab = molecule_tab_factory()
+    mock_error = Mock()
+    input_message = "Test message"
+    monkeypatch.setattr(QMessageBox, "critical", mock_error)
+
+    molecule_tab.error(input_message)
+
+    mock_error.assert_called_once_with(molecule_tab, "Input Error", input_message)

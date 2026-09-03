@@ -2048,14 +2048,11 @@ class MoleculeGeneration(QWidget):
     def _delete_previous_layout(self) -> None:
         """Recursively delete the layout of the previous molecule parameters."""
 
-        def clear_layout(layout: QLayout | None) -> None:
+        def clear_layout(layout: QLayout) -> None:
             """Clear the layout by deleting its widgets or traversing its child layouts.
 
             :param layout: The layout to clear.
             """
-            if layout is None:
-                return
-
             widget: QWidget | None
             child_layout: QLayout | None
 

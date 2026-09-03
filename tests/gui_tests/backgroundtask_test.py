@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Test the BackgroundTask and BackgroundTaskSignals classes of the `gui.py` module."""
 
+from unittest.mock import Mock
+
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from PySide6.QtCore import QThreadPool
@@ -92,3 +94,15 @@ def test_background_task_emit_error(monkeypatch: MonkeyPatch) -> None:
 
     :param monkeypatch: Pytest fixture to mock parameters.
     """
+    test_error = ValueError("Simulation function crashed.")
+    mock_func = Mock(side_effect=test_error)
+
+    task: BackgroundTask[[], None] = BackgroundTask(mock_func)
+
+    mock_signals = Mock()
+    monkeypatch.setattr(task, "signals", mock_signals)
+
+    task.run()
+
+    mock_signals.error.emit.assert_called_once_with(test_error)
+    mock_signals.finished.emit.assert_not_called()
