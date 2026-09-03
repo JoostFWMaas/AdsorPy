@@ -527,6 +527,7 @@ def test_export_bad_format_error(mock_widget: GeneralSettings, tmp_path: Path, m
 
 def test_change_bulk_run_value(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
     """Validate that the bulk run textbox and value are updated correctly."""
+    mock_widget._change_bulk_run_value(1)
     old_text = mock_widget.bulk_run_button.text()
     old_value = mock_widget._settings.value("repeat_count")
 
