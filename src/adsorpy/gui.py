@@ -265,7 +265,7 @@ class FilePickerWidget(QWidget):
 
         :return: Text of the box being edited.
         """
-        return cast("str", self.line_edit.text())
+        return self.line_edit.text()
 
 
 def set_content(
@@ -764,9 +764,16 @@ class ZoomableSvgWidget(QSvgWidget):
         :param event: QWheelEvent for when scrolling occurs.
         """
         modifiers = event.modifiers()
-        scroll_area = self.parent()
-        while scroll_area and not isinstance(scroll_area, QScrollArea):
-            scroll_area = scroll_area.parent()
+        scroll_elder = self.parent()
+
+        while scroll_elder is not None and not isinstance(scroll_elder, QScrollArea):  # Find the scrollable ancestor.
+            scroll_elder = scroll_elder.parent()
+
+        if scroll_elder is None:
+            errmsg = "Widget has no valid QScrollArea parent/grandparent/ancestor."
+            raise ValueError(errmsg)
+
+        scroll_area = scroll_elder
 
         if modifiers == Qt.KeyboardModifier.ControlModifier:
             delta = event.angleDelta().y()
@@ -799,10 +806,8 @@ class ZoomableSvgWidget(QSvgWidget):
                 h_bar.setValue(h_bar.value() - steps)
             event.accept()
 
-        elif scroll_area:
-            QApplication.sendEvent(scroll_area.viewport(), event)
         else:
-            event.ignore()
+            QApplication.sendEvent(scroll_area.viewport(), event)
 
 
 class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc]
@@ -1176,19 +1181,11 @@ class GeneralSettings(QWidget):
         centre_scroll.setWidgetResizable(True)
         centre_scroll.setWidget(svg_widget)
 
-        self.state.surface_paramsChanged.connect(self._on_surface_changed)  # pyright: ignore[reportAttributeAccessIssue]
-        self.state.molecule_param_listChanged.connect(self._on_molecules_changed)  # pyright: ignore[reportAttributeAccessIssue]
+        self.state.surface_paramsChanged.connect(self._on_surface_changed)  # type: ignore[attr-defined]
+        self.state.molecule_param_listChanged.connect(self._on_molecules_changed)  # type: ignore[attr-defined]
         self.input_metadata: BatchSimulationInput = BatchSimulationInput()
         """Dict of input values, to be stored as metadata."""
 
-        # Clean up scroll area borders to integrate smoothly with the splitter look
-        # centre_scroll.setFrameShape(QScrollArea.FrameShape.NoFrame)
-
-        # Create the Right Panel: Create a panel for listing generated arrays/molecules
-        # right_panel = self._init_management_panel() # Or: right_panel = QWidget()
-        # right_panel = QWidget()
-
-        # Unify sub-panels using exact splitter framework layout method
         self._assemble_layout(left=left_panel, center=centre_scroll)
 
     def _fetch_setting(self, name: str, default: T_inv, return_type: type[T_inv] | None = None) -> T_inv:
@@ -1409,12 +1406,7 @@ class GeneralSettings(QWidget):
             how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()
             seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
 
-        try:
-            misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
-        except ValidationError as e:
-            errmsg = f"Invalid parameters provided:\n{e}"
-            self.error(errmsg)
-            return BatchSimulationInput()
+        misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
 
         misc_adapter = TypeAdapter(MiscParameters)
         misc_params = misc_adapter.validate_python(misc_params)
@@ -1525,10 +1517,10 @@ class GeneralSettings(QWidget):
 
             workers = max(1, multiprocessing.cpu_count() - 1)
 
-            with Client(n_workers=workers, threads_per_worker=1, processes=True) as client:
+            with Client(n_workers=workers, threads_per_worker=1, processes=True) as client:  # type: ignore[no-untyped-call]
                 futures: list[Future[RunResult]] = client.compute(tasks)  # pyright: ignore[reportAssignmentType]
 
-                for idx, _ in enumerate(as_completed(futures), start=1):
+                for idx, _ in enumerate(as_completed(futures), start=1):  # type: ignore[no-untyped-call]
                     if task_ref is not None:
                         percentage = int((idx / total_runs) * 100)
                         task_ref.signals.progress.emit(percentage)
@@ -1847,7 +1839,7 @@ class MoleculeGeneration(QWidget):
         """
         super().__init__()
 
-        self.param_widgets: ParamWidgets = {}
+        self.param_widgets: ParamWidgets = ParamWidgets()
         """Parameter widgets derived from molecule function signatures."""
         self.opt_checkboxes: dict[str, QCheckBox] = {}
         """Optional checkbox widgets derived from molecule function signatures."""
@@ -2056,14 +2048,11 @@ class MoleculeGeneration(QWidget):
     def _delete_previous_layout(self) -> None:
         """Recursively delete the layout of the previous molecule parameters."""
 
-        def clear_layout(layout: QLayout | None) -> None:
+        def clear_layout(layout: QLayout) -> None:
             """Clear the layout by deleting its widgets or traversing its child layouts.
 
             :param layout: The layout to clear.
             """
-            if layout is None:
-                return
-
             widget: QWidget | None
             child_layout: QLayout | None
 
@@ -2113,7 +2102,7 @@ class MoleculeGeneration(QWidget):
         self.param_widgets = {}
         self.opt_checkboxes = {}
 
-        widget_type_hints: dict[str, InputWidget] = get_type_hints(ParamWidgets)
+        widget_type_hints: dict[str, type[InputWidget]] = get_type_hints(ParamWidgets)
 
         param_grid = QGridLayout()
         for idx, (name, param) in enumerate(sig.parameters.items()):
@@ -2185,24 +2174,24 @@ class MoleculeGeneration(QWidget):
         # widget: InputWidget
         match annotation:
             case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
-                widget = QDoubleSpinBox()
+                float_widget = QDoubleSpinBox()
                 min_float_val: float = -999.0
                 if annotation == "PositiveFloat":
                     min_float_val = 0.0001
                     if not isinstance(default, inspect.Parameter.empty):
-                        widget.setValue(1.0)
+                        float_widget.setValue(1.0)
                 elif annotation == "NonNegativeFloat":
                     min_float_val = 0.0
-                widget.setRange(min_float_val, default_max)
-                widget.setDecimals(4)
-                widget.setSingleStep(0.1)
-                return widget
+                float_widget.setRange(min_float_val, default_max)
+                float_widget.setDecimals(4)
+                float_widget.setSingleStep(0.1)
+                return float_widget
 
             case "int" | "PositiveInt":
                 min_int_val: int = 1 if annotation == "PositiveInt" else -999
-                widget = QSpinBox()
-                widget.setRange(min_int_val, default_max)
-                return widget
+                int_widget = QSpinBox()
+                int_widget.setRange(min_int_val, default_max)
+                return int_widget
 
             case "FilePath":
                 return FilePickerWidget()
@@ -2360,8 +2349,7 @@ class MoleculeGeneration(QWidget):
             if not widget.isEnabled():
                 continue
             # Extract value based on the PySide6/PyQt6 widget type
-            # Ignore the error because this match is exhaustive!
-            match widget:  # type: ignore[exhaustive-match]
+            match widget:
                 case QSpinBox() | QDoubleSpinBox():
                     values[name] = widget.value()
 
@@ -2640,15 +2628,7 @@ class SurfaceGeneration(QWidget):
                 return
             seed = int(seed_text)
 
-        # Validate lattice spacing
-        lattice_text = self.lattice_input.value()
-        lattice: float | None = None
-        if lattice_text:
-            try:
-                lattice = float(lattice_text)
-            except ValueError as e:
-                self.error(str(e))
-                return
+        lattice = self.lattice_input.value()
 
         lattice_type = cast(
             "Literal['hexagonal', 'triangular', 'honeycomb', 'square']",
@@ -2797,7 +2777,7 @@ def main() -> int:
     gui = AdsorpyGUI()
     gui.resize(1600, 900)
     gui.show()
-    return cast("int", app.exec())
+    return app.exec()
 
 
 if __name__ == "__main__":

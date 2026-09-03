@@ -417,6 +417,7 @@ def test_export_graphics_svg_fallback_generation(qtbot: QtBot, monkeypatch: Monk
 
     :param qtbot: Simulates user input.
     :param monkeypatch: The pytest mock engine handling runtime dependency injection.
+    :param tmp_path: Temporary directory path provided by pytest.
     """
     widget = ZoomableSvgWidget()
     qtbot.addWidget(widget)
@@ -483,7 +484,7 @@ def test_export_graphics_invalid_filter_error(qtbot: QtBot, monkeypatch: MonkeyP
     assert "Invalid file extension." in text
 
 
-def test_wheel_event_ignores_unhandled_scroll_without_parent(qtbot: QtBot) -> None:
+def test_wheel_event_unhandled_scroll_without_parent_raises_error(qtbot: QtBot) -> None:
     """Test that a standard wheel scroll event is ignored if there is no parent QScrollArea."""
     widget = ZoomableSvgWidget(parent=None)
     qtbot.addWidget(widget)
@@ -502,6 +503,5 @@ def test_wheel_event_ignores_unhandled_scroll_without_parent(qtbot: QtBot) -> No
     wheel_event.accept()
     assert wheel_event.isAccepted() is True
 
-    widget.wheelEvent(wheel_event)
-
-    assert wheel_event.isAccepted() is False, "The event should have called event.ignore()"
+    with pytest.raises(ValueError, match=r"Widget has no valid QScrollArea parent/grandparent/ancestor."):
+        widget.wheelEvent(wheel_event)

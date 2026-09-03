@@ -5,12 +5,16 @@
 from __future__ import annotations
 
 import inspect
+from functools import partial
 from itertools import count
+from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, PropertyMock, patch
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 from pydantic import BaseModel, ValidationError
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -20,6 +24,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpacerItem,
+    QSpinBox,
     QWidget,
 )
 from pytestqt.qtbot import QtBot
@@ -27,38 +33,52 @@ from pytestqt.qtbot import QtBot
 from adsorpy import molecule_lib
 from adsorpy.gui import (
     AppState,
+    FilePickerWidget,
     MoleculeGeneration,
     ReorderableListWidget,
     ZoomableSvgWidget,
 )
 
 
-@pytest.fixture
-def molecule_tab(qtbot: QtBot, monkeypatch: MonkeyPatch) -> MoleculeGeneration:
-    """Instantiate the MoleculeGeneration tab using a real AppState context.
+def make_isolated_tab(qtbot: QtBot, monkeypatch: MonkeyPatch) -> MoleculeGeneration:
+    """Create a totally fresh tab using prefilled pytest hooks.
 
-    :param qtbot: Qt instance to mock interaction.
-    :param monkeypatch: MonkeyPatch instance to mock functions.
+    :param qtbot: Simulate user input.
+    :param monkeypatch: Pytest fixture to mock parameters.
     :returns: MoleculeGeneration tab instance.
     """
     state = AppState()
     tab = MoleculeGeneration(state)
     qtbot.addWidget(tab)
-    monkeypatch.setattr(tab, "plot_molecule", Mock())  # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(tab, "plot_molecule", Mock())
     return tab
 
 
-def test_initial_structural_layout_states(molecule_tab: MoleculeGeneration) -> None:
+@pytest.fixture
+def molecule_tab_factory(qtbot: QtBot, monkeypatch: MonkeyPatch) -> partial[MoleculeGeneration]:
+    """Create factory function for molecule tab.
+
+    :param qtbot: Simulate user input.
+    :param monkeypatch: Pytest fixture to mock parameters.
+    :returns: Partial MoleculeGeneration tab instance.
+    """
+    return partial(make_isolated_tab, qtbot=qtbot, monkeypatch=monkeypatch)
+
+
+def test_initial_structural_layout_states(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify that layout panels, dropdown configurations, and splitters load correctly.
 
     :param molecule_tab: MoleculeGeneration widget.
     """
+    molecule_tab = molecule_tab_factory()
+
     assert molecule_tab.main_splitter.count() == 3  # noqa: PLR2004
     assert molecule_tab.main_splitter.orientation() == Qt.Orientation.Horizontal
 
 
-def test_data_storage_initialises_empty_metrics(molecule_tab: MoleculeGeneration) -> None:
+def test_data_storage_initialises_empty_metrics(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify list managers and counting sequences initialise cleanly on startup."""
+    molecule_tab = molecule_tab_factory()
     assert isinstance(molecule_tab.mol_list_counter, count)
     assert next(molecule_tab.mol_list_counter) == 0
     assert molecule_tab.mol_params_list == []
@@ -66,8 +86,9 @@ def test_data_storage_initialises_empty_metrics(molecule_tab: MoleculeGeneration
     assert isinstance(molecule_tab.opt_checkboxes, dict)
 
 
-def test_panels_assemble_structural_widgets_correctly(molecule_tab: MoleculeGeneration) -> None:
+def test_panels_assemble_structural_widgets_correctly(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify three distinct control layouts organise inside expected parent wrappers."""
+    molecule_tab = molecule_tab_factory()
     # Validate Left Panel components
     assert isinstance(molecule_tab.func_dropdown, QComboBox)
 
@@ -81,10 +102,11 @@ def test_panels_assemble_structural_widgets_correctly(molecule_tab: MoleculeGene
 
 
 def test_discover_molecule_generators_filters_library_signatures(
-    molecule_tab: MoleculeGeneration,
+    molecule_tab_factory: partial[MoleculeGeneration],
     subtests: pytest.Subtests,
 ) -> None:
     """Verify reflection lookup scans module keys, ignoring hidden files and invalid types."""
+    molecule_tab = molecule_tab_factory()
     generators = molecule_tab._discover_molecule_generators()
 
     temp_generators = {name: func for name, func in molecule_lib.__dict__.items() if inspect.isfunction(func)}
@@ -112,9 +134,10 @@ def test_discover_molecule_generators_filters_library_signatures(
 
 
 def test_delete_previous_layout_clears_widgets_and_nested_layouts(
-    molecule_tab: MoleculeGeneration,
+    molecule_tab_factory: partial[MoleculeGeneration],
 ) -> None:
     """Verify recursive traversal tears down layout structures without creating memory leaks."""
+    molecule_tab = molecule_tab_factory()
     # Build a sample mock layout hierarchy inside our parameter layout holder
     # Assert widgets are added and valid
     assert molecule_tab.param_layout.count(), "The molecule parameter layout is empty."
@@ -125,10 +148,11 @@ def test_delete_previous_layout_clears_widgets_and_nested_layouts(
 
 
 def test_build_param_inputs_creates_labeled_grid_elements(
-    molecule_tab: MoleculeGeneration,
+    molecule_tab_factory: partial[MoleculeGeneration],
     monkeypatch: MonkeyPatch,
 ) -> None:
     """Verify reflection engine extracts arguments to compile type-safe input controls."""
+    molecule_tab = molecule_tab_factory()
 
     # Define a custom molecule generation function to inspect
     def temp_generator(
@@ -180,8 +204,9 @@ def test_build_param_inputs_creates_labeled_grid_elements(
         assert not molecule_tab.param_widgets["ignore_atoms"].isEnabled()
 
 
-def test_build_bad_param_inputs_raises_critical_dialogue(molecule_tab: MoleculeGeneration, qtbot: QtBot) -> None:
+def test_build_bad_param_inputs_raises_critical_dialogue(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify reflection engine extracts arguments to compile type-safe input controls."""
+    molecule_tab = molecule_tab_factory()
 
     # Define a custom molecule generation function to inspect
     def bad_generator(
@@ -227,8 +252,43 @@ def test_build_bad_param_inputs_raises_critical_dialogue(molecule_tab: MoleculeG
         assert "_" not in molecule_tab.param_widgets
 
 
-def test_build_bad_param_inputs_raises_error(molecule_tab: MoleculeGeneration, qtbot: QtBot) -> None:
+def test_build_param_inputs_trips_future_annotation_check(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Simulate a library function that is missing the __future__ annotations import to verify it suggests the fix."""
+    molecule_tab = molecule_tab_factory()
+
+    def bad_library_func(_: None) -> None:
+        """Do nothing and have no annotation."""
+
+    molecule_tab.generators["bad_func"] = bad_library_func  # pyright: ignore[reportArgumentType]
+
+    mock_param = MagicMock(spec=inspect.Parameter)
+    mock_param.default = inspect.Parameter.empty
+
+    type(mock_param).annotation = PropertyMock(return_value=int)
+
+    mock_signature = MagicMock(spec=inspect.Signature)
+    type(mock_signature).parameters = PropertyMock(return_value={"sample_arg": mock_param})
+
+    monkeypatch.setattr(inspect, "signature", Mock(return_value=mock_signature))
+
+    monkeypatch.setattr("adsorpy.gui.extract_param_docs", Mock(return_value={}))
+    monkeypatch.setattr("adsorpy.gui.get_type_hints", Mock(return_value={}))
+    mock_error = Mock()
+    monkeypatch.setattr(MoleculeGeneration, "error", mock_error)
+
+    molecule_tab.build_param_inputs("bad_func")
+
+    mock_error.assert_called_once_with(
+        "Parameter is not a string. Use ``from __future__ import annotations`` to ensure this.",
+    )
+
+
+def test_build_bad_param_inputs_raises_error(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify reflection engine extracts arguments to compile type-safe input controls."""
+    molecule_tab = molecule_tab_factory()
 
     # Define a custom molecule generation function to inspect
     def bad_generator(  # type: ignore[explicit-any]
@@ -280,8 +340,9 @@ def generate_pydantic_error() -> ValidationError:
     raise AssertionError(errmsg)
 
 
-def test_add_molecule_success(molecule_tab: MoleculeGeneration, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_molecule_success(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch) -> None:
     """Verify that a successful molecule generation updates UI components and tracking state."""
+    molecule_tab = molecule_tab_factory()
     molecule_name = "dogbonium"
     molecule_tab.func_dropdown.setCurrentText(molecule_name)
     refl_flag = True
@@ -308,8 +369,12 @@ def test_add_molecule_success(molecule_tab: MoleculeGeneration, monkeypatch: pyt
     assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list
 
 
-def test_add_molecule_validation_error(molecule_tab: MoleculeGeneration, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_add_molecule_validation_error(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+) -> None:
     """Verify that a Pydantic ValidationError stops execution and bubbles via the error tracker."""
+    molecule_tab = molecule_tab_factory()
     molecule_name = "xyz_reader"
     molecule_tab.func_dropdown.setCurrentText(molecule_name)
     molecule_tab.molecule_list_widget.clear()
@@ -341,16 +406,17 @@ def test_add_molecule_validation_error(molecule_tab: MoleculeGeneration, monkeyp
     ],
 )
 def test_add_molecule_fallback_routing(
-    molecule_tab: MoleculeGeneration,
-    monkeypatch: pytest.MonkeyPatch,
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
     dropdown_text: str,
     expected_func_key: str,
 ) -> None:
     """Verify that special generator naming triggers appropriate fallback routing aliases."""
+    molecule_tab = molecule_tab_factory()
     molecule_tab.func_dropdown.setCurrentText(dropdown_text)
     molecule_tab.mol_list_counter = count(start=1)
 
-    mock_generator_func = Mock(return_value=[])
+    mock_generator_func = Mock(return_value={})
     molecule_tab.generators = {expected_func_key: mock_generator_func}  # pyright: ignore[reportAttributeAccessIssue]
 
     monkeypatch.setattr(molecule_tab, "get_param_values", Mock(return_value={}))
@@ -360,9 +426,10 @@ def test_add_molecule_fallback_routing(
     mock_generator_func.assert_called_once()
 
 
-def test_delete_molecule_success(molecule_tab: MoleculeGeneration, monkeypatch: MonkeyPatch) -> None:
+def test_delete_molecule_success(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch) -> None:
     """Verify that deleting a selected molecule updates UI elements and tracking lists."""
-    # 1. Arrange baseline state with two mock items
+    molecule_tab = molecule_tab_factory()
+
     name1 = "molecule_a #1"
     name2 = "molecule_b #2"
 
@@ -397,9 +464,10 @@ def test_delete_molecule_success(molecule_tab: MoleculeGeneration, monkeypatch: 
     assert molecule_tab.molecule_list_widget.currentRow() == -1
 
 
-def test_delete_molecule_no_selection_returns_early(molecule_tab: MoleculeGeneration) -> None:
+def test_delete_molecule_no_selection_returns_early(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify that trying to delete a molecule when nothing is selected returns immediately."""
-    # 1. Arrange a baseline state with items, but do NOT select anything
+    molecule_tab = molecule_tab_factory()
+
     molecule_tab.molecule_list_widget.addItem("molecule_a #1")
 
     param_mock = Mock()
@@ -419,3 +487,253 @@ def test_delete_molecule_no_selection_returns_early(molecule_tab: MoleculeGenera
     # Verify UI items and notification labels did not shift
     assert molecule_tab.molecule_list_widget.count() == 1
     assert molecule_tab.output_label.text() == "Initial State"
+
+
+def test_launch_first_time_loader_without_name(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Test whether this function initialises correctly."""
+    molecule_tab = molecule_tab_factory()
+    mock_picker = MagicMock()
+    mock_picker.text.return_value = ""
+    molecule_tab.show_molecule_flag = False
+
+    monkeypatch.setitem(molecule_tab.param_widgets, "file_name", mock_picker)
+
+    monkeypatch.setattr(
+        molecule_lib,
+        "first_time_loader",
+        Mock(side_effect=AssertionError("Task failed successfully.")),
+    )
+
+    with pytest.raises(AssertionError, match=r"Task failed successfully."):
+        molecule_tab.launch_first_time_loader()
+
+    mock_picker.text.assert_called()
+    mock_picker.browse_button.click.assert_called_once()
+
+    assert molecule_tab.show_molecule_flag is False, "Molecule flag should remain set to False."
+
+
+def test_launch_first_time_loader_fully(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Test that launch_first_time_loader runs completely when a valid file is provided."""
+    molecule_tab = molecule_tab_factory()
+    temp_file = tmp_path / "molecule.xyz"
+    temp_file.write_text("dummy data")
+
+    mock_picker = MagicMock()
+    mock_picker.text.return_value = str(temp_file)
+    monkeypatch.setitem(molecule_tab.param_widgets, "file_name", mock_picker)
+
+    mock_output = {"x_offset": 1.5, "roll": 45.0}
+    mock_loader = Mock(return_value=mock_output)
+    monkeypatch.setattr(molecule_lib, "first_time_loader", mock_loader)
+
+    monkeypatch.setattr("adsorpy.gui.is_valid_param", Mock(return_value=True))
+    mock_set_content = Mock()
+    monkeypatch.setattr("adsorpy.gui.set_content", mock_set_content)
+
+    molecule_tab.opt_checkboxes = {"x_offset": MagicMock(), "roll": MagicMock()}
+
+    molecule_tab.show_molecule_flag = False
+
+    molecule_tab.launch_first_time_loader()
+
+    mock_loader.assert_called_once_with(temp_file)
+
+    assert mock_set_content.call_count == len(mock_output)
+    input_flag = True
+    molecule_tab.opt_checkboxes["x_offset"].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
+    molecule_tab.opt_checkboxes["roll"].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
+
+    assert molecule_tab.show_molecule_flag is True
+
+
+def test_launch_first_time_loader_missing_key_error(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Test that a critical error occurs if 'file_name' is missing from param_widgets."""
+    molecule_tab = molecule_tab_factory()
+    molecule_tab.param_widgets = {}
+
+    mock_critical = Mock()
+    monkeypatch.setattr(QMessageBox, "critical", mock_critical)
+
+    molecule_tab.launch_first_time_loader()
+
+    mock_critical.assert_called_once_with(molecule_tab, "Key Error", "Parameter file_name not found in widget.")
+    assert not hasattr(molecule_tab, "show_molecule_flag") or molecule_tab.show_molecule_flag is False
+
+
+def test_launch_first_time_loader_invalid_param_error(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Test that a critical error occurs if the loader returns an invalid key."""
+    molecule_tab = molecule_tab_factory()
+    mock_picker = MagicMock()
+    mock_picker.text.return_value = "/mock/path.xyz"
+    monkeypatch.setitem(molecule_tab.param_widgets, "file_name", mock_picker)
+
+    mock_loader = Mock(return_value={"invalid_key_name": "some_value"})
+    monkeypatch.setattr(molecule_lib, "first_time_loader", mock_loader)
+
+    monkeypatch.setattr("adsorpy.gui.is_valid_param", Mock(return_value=False))
+    mock_critical = Mock()
+    monkeypatch.setattr(QMessageBox, "critical", mock_critical)
+
+    if "invalid_key_name" in molecule_tab.param_widgets:
+        del molecule_tab.param_widgets["invalid_key_name"]
+
+    molecule_tab.launch_first_time_loader()
+
+    mock_critical.assert_called_once_with(molecule_tab, "Key Error", "Not a valid key: invalid_key_name")
+    assert not hasattr(molecule_tab, "show_molecule_flag") or molecule_tab.show_molecule_flag is False
+
+
+@given(st.data())
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_sync_list_order_with_hypothesis(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    data: st.DataObject,
+) -> None:
+    """Property-based test ensuring list sync properties hold true across arbitrary sequences."""
+    # 1. Generate an arbitrary list of unique strings (at least 1 item long)
+    # We filter out empty/falsy strings to ensure the 'if taken_item:' condition passes
+    molecule_tab = molecule_tab_factory()
+    initial_list = data.draw(st.lists(st.text(min_size=1), min_size=1, unique=True))
+
+    # 2. Dynamically draw old and new indices that are guaranteed to be within bounds
+    max_idx = len(initial_list) - 1
+    old_index = data.draw(st.integers(min_value=0, max_value=max_idx))
+    new_index = data.draw(st.integers(min_value=0, max_value=max_idx))
+
+    # Track the element we expect to move
+    target_item = initial_list[old_index]
+
+    # 3. Setup mock environment
+    molecule_tab.mol_params_list = initial_list.copy()  # pyright: ignore[reportAttributeAccessIssue]
+    molecule_tab.state = MagicMock()
+
+    # 4. Execute the function
+    molecule_tab.sync_list_order(old_index, new_index)
+
+    # 5. Assert the invariant properties
+    # Property A: The item must now exist at the exact new destination index
+    assert molecule_tab.mol_params_list[new_index] == target_item
+
+    # Property B: The length of the list must remain identical
+    assert len(molecule_tab.mol_params_list) == len(initial_list)
+
+    # Property C: The set of items must not have changed (order changed, contents didn't)
+    assert set(molecule_tab.mol_params_list) == set(initial_list)
+
+    # Property D: State must sync correctly with the list tracking
+    assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list
+
+
+def test_build_left_panel_with_target_index_0(
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """Test that the ``build_param_inputs`` function is called when the target index is 0."""
+    molecule_tab = molecule_tab_factory()
+    mock_build_param_inputs = Mock()
+    mock_settings = Mock(return_value=0)
+    monkeypatch.setattr(MoleculeGeneration, "build_param_inputs", mock_build_param_inputs)
+    monkeypatch.setattr(MoleculeGeneration, "_fetch_setting", mock_settings)
+
+    molecule_tab._build_left_panel()
+    mock_build_param_inputs.assert_called_once()
+
+
+def test_delete_previous_layout(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch) -> None:
+    """Test that the ``delete_previous_layout`` function deletes everything correctly."""
+    molecule_tab = molecule_tab_factory()
+    assert molecule_tab.param_layout.count(), "Layout should not start empty."
+    molecule_tab._delete_previous_layout()
+    assert not molecule_tab.param_layout.count(), "Layout should have been cleared."
+
+    molecule_tab.param_layout.addItem(QSpacerItem(1, 1))
+    assert molecule_tab.param_layout.count(), "Layout should not start empty."
+    molecule_tab._delete_previous_layout()
+    assert not molecule_tab.param_layout.count(), "Layout should have been cleared."
+
+
+def test_create_param_widget(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+) -> None:
+    """Verify that specific type annotations result in correct behaviour."""
+    molecule_tab = molecule_tab_factory()
+
+    all_param_types = {
+        "float": (0.0, QDoubleSpinBox),
+        "PositiveFloat": (1.0, QDoubleSpinBox),
+        "NonNegativeFloat": (2.0, QDoubleSpinBox),
+        "float | None": (3.0, QDoubleSpinBox),
+        "int": (4, QSpinBox),
+        "PositiveInt": (5, QSpinBox),
+        "FilePath": ("6", FilePickerWidget),
+        "str | list[str] | None": ("7", QLineEdit),
+    }
+
+    for param_input, (param_default, param_type) in all_param_types.items():
+        with subtests.test(param_name=param_input):
+            assert isinstance(molecule_tab._create_param_widget(param_input, param_default), param_type)
+
+
+def test_create_param_widget_error(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+) -> None:
+    """Verify that incorrect type annotations result in a raised TypeError."""
+    molecule_tab = molecule_tab_factory()
+    annotation = "InvalidType"
+    with pytest.raises(TypeError, match=f"Unsupported parameter annotation: '{annotation}'."):
+        molecule_tab._create_param_widget(annotation, "")
+
+
+def test_get_param_values(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+) -> None:
+    """Test whether the get param values function works correctly."""
+    molecule_tab = molecule_tab_factory()
+    disabled_widget = QLineEdit()
+    disabled_widget.setDisabled(True)
+    spinbox = QSpinBox()
+    value = 1
+    spinbox.setValue(value)
+    lineedit = QLineEdit()
+    text = "success"
+    lineedit.setText(text)
+    input_dict = {
+        "spinbox": spinbox,
+        "lineedit": lineedit,
+        "disabled_widget": disabled_widget,
+    }
+
+    monkeypatch.setattr(molecule_tab, "param_widgets", input_dict)
+    output = molecule_tab.get_param_values()
+
+    assert "spinbox" in output
+    assert "lineedit" in output
+    assert "disabled_widget" not in output
+    assert output["spinbox"] == value
+    assert output["lineedit"] == text
+
+
+def test_error(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch) -> None:
+    """Test whether the error function works correctly."""
+    molecule_tab = molecule_tab_factory()
+    mock_error = Mock()
+    input_message = "Test message"
+    monkeypatch.setattr(QMessageBox, "critical", mock_error)
+
+    molecule_tab.error(input_message)
+
+    mock_error.assert_called_once_with(molecule_tab, "Input Error", input_message)

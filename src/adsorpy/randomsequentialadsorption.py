@@ -1695,7 +1695,6 @@ class Surface:
         :param height: The height of the SVG.
         :param definitions: The definitions (templates) to add to the SVG.
         """
-        root_elements: list[svg.Defs | svg.G | svg.Style] = [definitions, style]
         root_group = svg.G(
             transform=[
                 svg.Scale(x=1, y=-1),
@@ -1703,13 +1702,13 @@ class Surface:
             ],
             elements=cast("list[svg.Element]", root_group_elements),
         )
-        root_elements.append(root_group)
+        root_elements: list[svg.Defs | svg.G | svg.Style] = [definitions, style, root_group]
 
         root = svg.SVG(
             width=svg.Length(width, "cm"),
             height=svg.Length(height, "cm"),
             viewBox=svg.ViewBoxSpec(0, 0, width, height),
-            elements=root_elements,  # pyright: ignore[reportArgumentType]
+            elements=cast("list[svg.Element]", root_elements),
         )
 
         raw_xml = root.as_str()

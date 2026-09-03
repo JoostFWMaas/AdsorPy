@@ -23,10 +23,12 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 from pytestqt.qtbot import QtBot
 from shapely import Point, Polygon
 
+import adsorpy.gui
 from adsorpy.gui import (
     AdsorpyGUI,
     BatchSimulationInput,
     GeneralSettings,
+    MoleculeParameters,
     PydanticPolygon,
     SurfaceParameters,
 )
@@ -332,6 +334,8 @@ def test_export_json_format(mock_widget: GeneralSettings, tmp_path: Path, monkey
     mock_info_box = Mock()
     monkeypatch.setattr(QMessageBox, "information", mock_info_box)
 
+    mock_widget.input_metadata["molecules_list"] = [Point((0, 0)).buffer(1.0)]
+
     # Run execution loop
     mock_widget.export_results()
 
@@ -342,6 +346,8 @@ def test_export_json_format(mock_widget: GeneralSettings, tmp_path: Path, monkey
     assert "repeats" in data["metadata"]
     assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
     assert "Gap_size_distribution" in data
+    assert "molecules_list" in data["metadata"]
+    assert data["metadata"]["molecules_list"] == [str(Point((0, 0)).buffer(1.0))]
     np.testing.assert_array_equal(data["Gap_size_distribution"][:], mock_widget.state.gap_size_distribution)
 
 
@@ -517,3 +523,72 @@ def test_export_bad_format_error(mock_widget: GeneralSettings, tmp_path: Path, m
     mock_warning_box.assert_called_once()
     mock_info_box.assert_not_called()
     mock_critical_box.assert_not_called()
+
+
+def test_change_bulk_run_value(mock_widget: GeneralSettings, tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+    """Validate that the bulk run textbox and value are updated correctly."""
+    mock_widget._change_bulk_run_value(1)
+    old_text = mock_widget.bulk_run_button.text()
+    old_value = mock_widget._settings.value("repeat_count")
+
+    assert str(old_value) in old_text, "QLabel and QSettings value are out of sync."
+
+    mock_widget._change_bulk_run_value(old_value + 1)
+
+    new_text = mock_widget.bulk_run_button.text()
+    new_value = mock_widget._settings.value("repeat_count")
+
+    assert str(new_value) in new_text, "QLabel and QSettings value are out of sync."
+    assert new_text != old_text, "Text did not update."
+    assert new_value == old_value + 1, "Value did not update correctly."
+
+
+def test_on_molecules_changed(mock_widget: GeneralSettings) -> None:
+    """Validate the correct QLabel text when 0 <= N molecules are defined."""
+    text_tuple: tuple[str, str, str] = (
+        "Default.",
+        "1 molecule defined by user.",
+        "2 molecules defined by user.",
+    )
+
+    for idx, text in enumerate(text_tuple):
+        mock_widget._on_molecules_changed([MoleculeParameters()] * idx)  # pyright: ignore[reportCallIssue]
+        assert text == mock_widget.initiated_molecules_textbox.text(), f"Text did not update correctly for {idx}."
+
+    mock_widget._on_molecules_changed(None)
+    assert text_tuple[0] == mock_widget.initiated_molecules_textbox.text(), "Text did not reset correctly."
+
+
+def test_get_run_sim_default(mock_widget: GeneralSettings, monkeypatch: MonkeyPatch) -> None:
+    """Validate that the default value is returned correctly."""
+    input_vals = ("hello", 10, 0.1, None)
+
+    for input_val in input_vals:
+
+        def good_function(_: str | float | None = input_val) -> None:
+            """Define a function with a default type."""
+
+        monkeypatch.setattr(adsorpy.gui, "run_simulation", good_function)
+
+        assert input_val is mock_widget.get_run_sim_default("_")
+
+
+def test_get_run_sim_default_error(mock_widget: GeneralSettings, monkeypatch: MonkeyPatch) -> None:
+    """Validate that the function raises an error correctly when there is no default value."""
+
+    def bad_function(_: None) -> None:
+        """Define a function without default values."""
+
+    monkeypatch.setattr(adsorpy.gui, "run_simulation", bad_function)
+    with pytest.raises(ValueError, match="_ has no default"):
+        mock_widget.get_run_sim_default("_")
+
+
+def test_error(mock_widget: GeneralSettings, monkeypatch: MonkeyPatch) -> None:
+    """Validate the error function."""
+    errmsg = "Testing the error function."
+    error_function = Mock()
+    monkeypatch.setattr(QMessageBox, "critical", error_function)
+    mock_widget.error(errmsg)
+
+    error_function.assert_called_once_with(mock_widget, "Input Error", errmsg)
