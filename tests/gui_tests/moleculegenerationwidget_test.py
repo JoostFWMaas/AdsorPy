@@ -9,7 +9,7 @@ from functools import partial
 from itertools import count
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import MagicMock, Mock, PropertyMock, patch
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpacerItem,
     QWidget,
 )
 from pytestqt.qtbot import QtBot
@@ -249,6 +250,39 @@ def test_build_bad_param_inputs_raises_critical_dialogue(molecule_tab_factory: p
         assert "_" not in molecule_tab.param_widgets
 
 
+def test_build_param_inputs_trips_future_annotation_check(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch,
+) -> None:
+    """Simulate a library function that is missing the __future__ annotations import to verify it suggests the fix."""
+    molecule_tab = molecule_tab_factory()
+
+    def bad_library_func(_: None) -> None:
+        """Do nothing and have no annotation."""
+
+    molecule_tab.generators["bad_func"] = bad_library_func  # pyright: ignore[reportArgumentType]
+
+    mock_param = MagicMock(spec=inspect.Parameter)
+    mock_param.default = inspect.Parameter.empty
+
+    type(mock_param).annotation = PropertyMock(return_value=int)
+
+    mock_signature = MagicMock(spec=inspect.Signature)
+    type(mock_signature).parameters = PropertyMock(return_value={"sample_arg": mock_param})
+
+    monkeypatch.setattr(inspect, "signature", Mock(return_value=mock_signature))
+
+    monkeypatch.setattr("adsorpy.gui.extract_param_docs", Mock(return_value={}))
+    monkeypatch.setattr("adsorpy.gui.get_type_hints", Mock(return_value={}))
+    mock_error = Mock()
+    monkeypatch.setattr(MoleculeGeneration, "error", mock_error)
+
+    molecule_tab.build_param_inputs("bad_func")
+
+    mock_error.assert_called_once_with(
+        "Parameter is not a string. Use ``from __future__ import annotations`` to ensure this.",
+    )
+
+
 def test_build_bad_param_inputs_raises_error(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify reflection engine extracts arguments to compile type-safe input controls."""
     molecule_tab = molecule_tab_factory()
@@ -379,7 +413,7 @@ def test_add_molecule_fallback_routing(
     molecule_tab.func_dropdown.setCurrentText(dropdown_text)
     molecule_tab.mol_list_counter = count(start=1)
 
-    mock_generator_func = Mock(return_value=[])
+    mock_generator_func = Mock(return_value={})
     molecule_tab.generators = {expected_func_key: mock_generator_func}  # pyright: ignore[reportAttributeAccessIssue]
 
     monkeypatch.setattr(molecule_tab, "get_param_values", Mock(return_value={}))
@@ -599,3 +633,30 @@ def test_sync_list_order_with_hypothesis(
 
     # Property D: State must sync correctly with the list tracking
     assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list
+
+
+def test_build_left_panel_with_target_index_0(
+    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch,
+) -> None:
+    """Test that the ``build_param_inputs`` function is called when the target index is 0."""
+    molecule_tab = molecule_tab_factory()
+    mock_build_param_inputs = Mock()
+    mock_settings = Mock(return_value=0)
+    monkeypatch.setattr(MoleculeGeneration, "build_param_inputs", mock_build_param_inputs)
+    monkeypatch.setattr(MoleculeGeneration, "_fetch_setting", mock_settings)
+
+    molecule_tab._build_left_panel()
+    mock_build_param_inputs.assert_called_once()
+
+
+def test_delete_previous_layout(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch) -> None:
+    """Test that the ``delete_previous_layout`` function deletes everything correctly."""
+    molecule_tab = molecule_tab_factory()
+    assert molecule_tab.param_layout.count(), "Layout should not start empty."
+    molecule_tab._delete_previous_layout()
+    assert not molecule_tab.param_layout.count(), "Layout should have been cleared."
+
+    molecule_tab.param_layout.addItem(QSpacerItem(1, 1))
+    assert molecule_tab.param_layout.count(), "Layout should not start empty."
+    molecule_tab._delete_previous_layout()
+    assert not molecule_tab.param_layout.count(), "Layout should have been cleared."

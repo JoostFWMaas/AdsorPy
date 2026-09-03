@@ -806,10 +806,8 @@ class ZoomableSvgWidget(QSvgWidget):
                 h_bar.setValue(h_bar.value() - steps)
             event.accept()
 
-        elif scroll_area:
-            QApplication.sendEvent(scroll_area.viewport(), event)
         else:
-            event.ignore()
+            QApplication.sendEvent(scroll_area.viewport(), event)
 
 
 class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc]
@@ -1408,12 +1406,7 @@ class GeneralSettings(QWidget):
             how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()
             seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
 
-        try:
-            misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
-        except ValidationError as e:
-            errmsg = f"Invalid parameters provided:\n{e}"
-            self.error(errmsg)
-            return BatchSimulationInput()
+        misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)
 
         misc_adapter = TypeAdapter(MiscParameters)
         misc_params = misc_adapter.validate_python(misc_params)
