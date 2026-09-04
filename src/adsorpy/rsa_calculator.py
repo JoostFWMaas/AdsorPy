@@ -7,7 +7,7 @@ There is no real reason for the user to need to use any of this, but the functio
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeAlias, TypeVar, cast
 
 import numpy as np  # For vectorised computations (performed in C).
 import shapely.affinity as aff  # Install shapely via https://www.lfd.uci.edu/~gohlke/pythonlibs/#shapely
@@ -37,6 +37,11 @@ if TYPE_CHECKING:  # When running mypy, import these classes for type checking.
 
     T = TypeVar("T", CoordsArray, CoordsArray3D)
     P = ParamSpec("P")  # Helps with static type checkers.
+
+Array2DOr3D: TypeAlias = (
+    np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]]
+    | np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]
+)
 
 
 # @njit("double[:, :](double[:, :], double[:, :])", parallel=True, cache=True)
@@ -144,7 +149,7 @@ def check_hard_border(
 
     :return: bool: is there guaranteed clearance between the molecule radius and the edge?
     """
-    both_max: CoordPair = cast("CoordPair", np.array([[x_max], [y_max]], dtype=np.float64))
+    both_max: CoordPair = np.array([[x_max], [y_max]], dtype=np.float64)
     both_max -= max_radius
     included: BoolArray = cast("BoolArray", max_radius < candidate_coords)
     included &= candidate_coords < both_max
@@ -170,14 +175,14 @@ def check_hard_molecule(
 
     :return: Is there guaranteed clearance between the molecule polygon and the edge?
     """
-    truth_table: BoolArray = cast("BoolArray", np.empty_like(fmg.bp.molecules_bounding_coords, dtype=np.bool_))
+    truth_table: BoolArray = np.empty_like(fmg.bp.molecules_bounding_coords, dtype=np.bool_)
     # Check whether xmin, ymin, xmax, and ymax of the molecule touch the edge (in that order).
     truth_table[:, 0] = -fmg.bp.molecules_bounding_coords[:, 0] < candidate_coords[0]
     truth_table[:, 1] = -fmg.bp.molecules_bounding_coords[:, 1] < candidate_coords[1]
     truth_table[:, 2] = x_max > candidate_coords[0] + fmg.bp.molecules_bounding_coords[:, 2]
     truth_table[:, 3] = y_max > candidate_coords[1] + fmg.bp.molecules_bounding_coords[:, 3]
     # The index can be used if none of the sides touch the edge.
-    clearance_table: BoolArray = cast("BoolArray", np.all(truth_table, axis=1))
+    clearance_table: BoolArray = np.all(truth_table, axis=1)
 
     return clearance_table
 
@@ -297,7 +302,7 @@ def make_rectangular_filter(
     y_true: float = y_offset if y_offset is not None else x_offset
 
     # Nota bene: X &= Y is equivalent to X = X & Y, an element-wise AND operation.
-    filtered_array: BoolArray = cast("BoolArray", np.ones_like(other_x, dtype=np.bool_))
+    filtered_array: BoolArray = np.ones_like(other_x, dtype=np.bool_)
     filtered_array &= candidate_x - x_offset < other_x  # Remove everything to right.
     filtered_array &= other_x < candidate_x + x_offset  # Remove everything to the left.
     filtered_array &= candidate_y - y_true < other_y  # Remove everything above.
@@ -325,13 +330,10 @@ def create_periodic_images(
     """
     extended_coordinates: T = coordinates.copy()
     # This creates an array of the form [[x_max, 0], [0, y_max]].
-    temp_offset: (
-        np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]]
-        | np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]
-    ) = (
-        cast("np.ndarray[tuple[Literal[2], Literal[2]], np.dtype[np.float64]]", np.diag([x_max, y_max]).reshape((2, 2)))
-        if z_max is None
-        else cast("np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.float64]]", np.diag([x_max, y_max, z_max]))
+
+    temp_offset: Array2DOr3D = cast(
+        "Array2DOr3D",
+        np.diag([x_max, y_max]).reshape((2, 2)) if z_max is None else np.diag([x_max, y_max, z_max]),
     )
     offset: np.ndarray[tuple[Literal[2, 3], Literal[2, 3], Literal[1]], np.dtype[np.float64]] = temp_offset[
         :,
@@ -346,7 +348,10 @@ def create_periodic_images(
         extended_coordinates2: T = extended_coordinates - sliced_offset
         extended_coordinates = cast(
             "T",
-            np.hstack((extended_coordinates, extended_coordinates1, extended_coordinates2), dtype=np.float64),
+            np.hstack(
+                (extended_coordinates, extended_coordinates1, extended_coordinates2),
+                dtype=np.float64,
+            ),
         )
 
     return extended_coordinates

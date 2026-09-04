@@ -28,6 +28,7 @@ from shapely import MultiPoint, Point, Polygon, STRtree, box, contains_xy, prepa
 from shapely.prepared import prep
 
 import adsorpy.rsa_calculator as calc  # Library for calculation functions. Used to be static methods.
+from adsorpy.types import BoundaryConditionStrs
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -45,6 +46,7 @@ if TYPE_CHECKING:
         FloatArray,
         GeoArray,
         IdxArray,
+        SurfaceStrs,
     )
 
     P = ParamSpec("P")  # Helps with static type checkers.
@@ -55,7 +57,7 @@ def _create_empty_coords() -> CoordPair:
 
     :returns: Empty coordinates.
     """
-    return cast("CoordPair", np.empty((2, 1), dtype=np.float64))
+    return np.empty((2, 1), dtype=np.float64)
 
 
 plt.rcParams.update(
@@ -96,7 +98,7 @@ class Config:
     zsize: PositiveFloat | None
     max_molecule_count: PositiveInt
     lattice_a: PositiveFloat
-    boundary_type: Literal["soft", "hard", "periodic"]
+    boundary_type: BoundaryConditionStrs
     sticking_probability: NonNegativeFloat = Field(le=1.0)
 
 
@@ -174,7 +176,7 @@ class BoundaryParameters:
 
     def __init__(
         self,
-        boundary_type: str,
+        boundary_type: BoundaryConditionStrs,
         rot_cnt: int = 0,
         dbl_max_radius: float = 0.0,
     ) -> None:
@@ -185,7 +187,7 @@ class BoundaryParameters:
         :param dbl_max_radius: double the maximum radius of the molecule.
         """
         self.molecules_flag: Final[bool] = bool(rot_cnt)
-        self.boundary_type: Final[str] = boundary_type
+        self.boundary_type: Final[BoundaryConditionStrs] = boundary_type
 
         self.soft_flag: bool = False
         self.hard_flag: bool = False
@@ -196,15 +198,15 @@ class BoundaryParameters:
 
         # Hard boundary parameters:
         self.hard_inner: BoolArray = np.empty(0, dtype=np.bool_)
-        self.molecules_bounding_coords: np.ndarray[tuple[int, Literal[4]], np.dtype[np.float64]] = cast(
-            "np.ndarray[tuple[int, Literal[4]], np.dtype[np.float64]]",
-            np.empty((rot_cnt, 4), dtype=np.float64),
+        self.molecules_bounding_coords: np.ndarray[tuple[int, Literal[4]], np.dtype[np.float64]] = np.empty(
+            (rot_cnt, 4),
+            dtype=np.float64,
         )
         self.allowed_idx: IdxArray = np.arange(rot_cnt, dtype=np.int64)
         self.allowed_bools: BoolArray = np.ones(rot_cnt, dtype=np.bool_)
 
         # Periodic boundary parameters:
-        self.extended_grid: CoordsArray = cast("CoordPair", np.empty((2, 0), dtype=np.float64))
+        self.extended_grid: CoordsArray = np.empty((2, 0), dtype=np.float64)
         self.extended_occupied_by: IdxArray = np.empty(0, dtype=np.int64)
         self.extended_idx: IdxArray = np.empty(0, dtype=np.int64)
         self.close_to_edge: BoolArray = np.empty(0, dtype=np.bool_)
@@ -216,32 +218,16 @@ class BoundaryParameters:
         self.tree: STRtree = STRtree([Point()])
 
     @staticmethod
-    def set_boundary_flags(boundary_type: str) -> tuple[bool, bool, bool]:
+    def set_boundary_flags(boundary_type: BoundaryConditionStrs) -> tuple[bool, bool, bool]:
         """Take a string of the boundary flags and turns it into any of three bools.
 
         Boolean checking is cheaper than string evaluation.
 
         :param boundary_type: The boundary type. Either soft, hard, or periodic. Throws an error otherwise.
         :return: The soft, hard, and periodic flags. One is set to True. If not, an error is thrown.
-        :raises TypeError: If boundary_type is not a string.
         :raises ValueError: If boundary_type is not 'soft', 'hard', or 'periodic'.
         """
-        soft_flag, hard_flag, periodic_flag = False, False, False
-
-        if not isinstance(boundary_type, str):
-            errmsg = f"The boundary_type of type {type(boundary_type).__name__} is not a string."
-            raise TypeError(errmsg)
-        if boundary_type == "soft":
-            soft_flag = True
-        elif boundary_type == "hard":
-            hard_flag = True
-        elif boundary_type == "periodic":
-            periodic_flag = True
-        else:
-            errmsg = f"The boundary_type string {boundary_type} is not 'soft', 'hard', or 'periodic'."
-            raise ValueError(errmsg)
-
-        return soft_flag, hard_flag, periodic_flag
+        return boundary_type == "soft", boundary_type == "hard", boundary_type == "periodic"
 
     def generate_boundary_conditions(
         self,  # For questions about "self", see https://realpython.com/python-classes/#instance-methods-with-self
@@ -256,9 +242,9 @@ class BoundaryParameters:
         :param molgr: The molecule group for which the boundary conditions are defined. Optional.
         """
         # This is the centre of the grid.
-        centre: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]] = cast(
-            "np.ndarray[tuple[Literal[2]], np.dtype[np.float64]]",
-            np.array([0.5 * surf.x_max, 0.5 * surf.y_max], dtype=np.float64),
+        centre: np.ndarray[tuple[Literal[2]], np.dtype[np.float64]] = np.array(
+            [0.5 * surf.x_max, 0.5 * surf.y_max],
+            dtype=np.float64,
         )
 
         if self.hard_flag and molgr is not None:
@@ -307,9 +293,8 @@ class BoundaryParameters:
             self.extended_grid = extended_grid[:, extended_grid_boolsout]
             self.tree = STRtree([Point(coord) for coord in self.extended_grid.T])
             if self.molecules_flag:
-                self.extended_vacant = cast("BoolArray", np.ones_like(temp_idx, dtype=np.bool_))
+                self.extended_vacant = np.ones_like(temp_idx, dtype=np.bool_)
                 self.close_to_edge = ~grid_boolsin  # Array of sites that have mirrors.
-                # self.close_to_edge[:] = True
 
 
 class MoleculeGroup:
@@ -835,11 +820,10 @@ class Simulator:
         self.total_molecule_counter += 1  # Increment total molecule counter.
         pmg.molecule_counter += 1  # Increment molecule counter for placed group.
 
-        pmg.bp.mirrors = cast(
-            "IdxArray",
+        pmg.bp.mirrors = (
             np.flatnonzero(cand.grid_index == pmg.bp.extended_idx)
             if pmg.bp.edge_flag
-            else np.array([cand.grid_index], dtype=np.int64),
+            else np.array([cand.grid_index], dtype=np.int64)
         )
 
         if pmg.bp.periodic_flag:
@@ -1373,10 +1357,10 @@ class Surface:
     def __init__(
         self,
         rsa_config: RsaConfig,
-        lattice_type: str = "triangular",
+        lattice_type: SurfaceStrs | Literal["hexagonal"] = "triangular",
         site_count: int | None = None,
         lattice_a: float | None = None,
-        boundary_type: str | None = None,
+        boundary_type: BoundaryConditionStrs | None = None,
         sticking_probability: float | None = None,
     ) -> None:
         """Initialise the surface.
@@ -1390,7 +1374,7 @@ class Surface:
         :raise ValueError: If only x or y is provided for a custom surface. Currently unusable.
         """
         self.config: Final[Config] = _config_loader(rsa_config)
-        self.lattice_type: Final[str] = lattice_type
+        self.lattice_type: Final[SurfaceStrs] = lattice_type if lattice_type != "hexagonal" else "triangular"
 
         self.sites: int = site_count if site_count is not None else 0
         if not self.sites:
@@ -1416,7 +1400,7 @@ class Surface:
         self.area = 0.0
 
         self.grid_index: IdxArray = np.arange(self.all_site_count, dtype=np.int64)
-        self.grid_coordinates: CoordsArray = cast("CoordsArray", np.empty((2, self.all_site_count), dtype=np.float64))
+        self.grid_coordinates: CoordsArray = np.empty((2, self.all_site_count), dtype=np.float64)
 
         self.bp = BoundaryParameters(self.config.boundary_type if boundary_type is None else boundary_type)
         self.tree: STRtree = STRtree([Point([0, 0])])
@@ -1427,7 +1411,7 @@ class Surface:
         :returns: Total site count.
         """
         temp_all_sites = self.sites * self.sites
-        if self.lattice_type in {"triangular", "hexagonal"}:
+        if self.lattice_type == "triangular":
             temp_all_sites *= 2
         elif self.lattice_type == "honeycomb":
             temp_all_sites *= 4
@@ -1437,8 +1421,7 @@ class Surface:
         """Create a hexagonal grid as a 2D numpy array with x the first index and y on the second.
 
         :param rng: The random generator. Used when generating an amorphous surface with the Delone lib.
-        :raises ValueError: If the lattice string is not supported (name and type are printed).
-        :raises TypeError: If the lattice type is not supported (name and type are printed).
+        :raises ValueError: If the lattice string is not supported.
         """
         sqrt3: float = np.sqrt(3.0)
 
@@ -1446,7 +1429,7 @@ class Surface:
         x1 *= self.lattice_a  # Scale the range by the lattice constant.
         y1: DistArray = x1 * sqrt3  # Scale the y grid.
 
-        if self.lattice_type in {"triangular", "hexagonal", "honeycomb"}:
+        if self.lattice_type in {"triangular", "honeycomb"}:
             x2: DistArray = x1 + 0.5 * self.lattice_a  # Create an off-set grid.
             y2: DistArray = x2 * sqrt3
 
@@ -1472,8 +1455,8 @@ class Surface:
             y_all = np.tile(x1, self.sites)
 
         else:
-            errmsg: str = f"Unsupported lattice: {self.lattice_type} of type {type(self.lattice_type).__name__}."
-            raise ValueError(errmsg) if isinstance(self.lattice_type, str) else TypeError(errmsg)
+            errmsg: str = f"Unsupported lattice: {self.lattice_type}."
+            raise ValueError(errmsg)
 
         self.grid_coordinates = np.vstack((x_all, y_all))  # (2, 2N^2) Make a coordinate array.
 
@@ -1498,7 +1481,7 @@ class Surface:
         self.x_max += cast("float", np.max(x_all)) if self.x_max == 0 else 0.0
         self.y_max += cast("float", np.max(y_all)) if self.y_max == 0 else 0.0
         if self.bp.periodic_flag:  # A periodic grid needs to be extended a little bit.
-            if self.lattice_type in {"triangular", "hexagonal"}:
+            if self.lattice_type == "triangular":
                 self.y_max += 0.5 * self.lattice_a * sqrt3  # Half a unit is added in the max x and y size.
                 self.x_max += 0.5 * self.lattice_a  # This is done to make periodic matching easier.
             elif self.lattice_type == "honeycomb":
@@ -1845,8 +1828,8 @@ class MoleculeData:
             self._otomir_fill_vals,
         )
 
-        self.coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
-        self.mirror_coords = cast("CoordsArray", np.empty((2, self.max_array_length), dtype=np.float64))
+        self.coords = np.empty((2, self.max_array_length), dtype=np.float64)
+        self.mirror_coords = np.empty((2, self.max_array_length), dtype=np.float64)
 
     @staticmethod
     def make_struct_array(
@@ -1907,7 +1890,7 @@ class MoleculeData:
             self.stored_data = new_stored_data
 
             old_coords: CoordsArray = self.coords.copy()
-            self.coords = cast("CoordsArray", np.empty((2, new_length)))
+            self.coords = np.empty((2, new_length))
             self.coords[:, : old_coords.shape[1]] = old_coords
 
             new_stored_data2 = self.make_struct_array(
@@ -1977,7 +1960,7 @@ class MoleculeData:
             self.stored_mirr_data = new_stored_data
 
             old_coords: CoordsArray = self.mirror_coords.copy()
-            self.mirror_coords = cast("CoordsArray", np.empty((2, new_length)))
+            self.mirror_coords = np.empty((2, new_length))
             self.mirror_coords[:, : old_coords.shape[1]] = old_coords
 
         temp_data = (

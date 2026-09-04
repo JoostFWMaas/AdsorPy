@@ -69,8 +69,8 @@ def test_pydantic_polygon_validation_failure_raises_error() -> None:
     """Verify that unconvertible object payloads trigger a standard Pydantic ValidationError."""
     malformed_input: list[float] = [10.0, 20.0, 30.0]
 
-    with pytest.raises(TypeError, match="Cannot convert <class 'list'> to a Shapely Polygon"):
-        SimulationGeometryModel(footprint=malformed_input)  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError, match="Invalid input for Polygon"):
+        SimulationGeometryModel(footprint=malformed_input)
 
 
 def test_pydantic_polygon_serialisation(valid_geojson_dict: dict[str, str | list[list[list[float]]]]) -> None:

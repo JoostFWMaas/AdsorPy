@@ -108,7 +108,7 @@ def test_run_simulation(iterate: int, qtbot: QtBot, monkeypatch: MonkeyPatch) ->
     gui.state = MagicMock()
     general_settings = GeneralSettings(gui.state)
     # The next line is required because the code will never finish otherwise. Magic mock causes issues.
-    gui.state.surface_params = SurfaceParameters({"lattice_type": "hexagonal", "site_count": 10})
+    gui.state.surface_params = SurfaceParameters({"lattice_type": "triangular", "site_count": 10})
     gui.state.molecule_param_list = [
         {
             "polygon": PydanticPolygon(Point((0, 0)).buffer(1.5)),

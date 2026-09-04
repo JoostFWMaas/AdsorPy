@@ -21,7 +21,7 @@ import adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
 import adsorpy.randomsequentialadsorption as rsarun
 from adsorpy.rsa_calculator import squared_cdist
 from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
-from adsorpy.types import CoordsArray, GeoArray
+from adsorpy.types import BoundaryConditionStrs, CoordsArray, GeoArray, SurfaceStrs
 
 
 class ExampleSimulation:
@@ -71,13 +71,13 @@ class AbstractExampleSimulation:
         self.configname = configname
 
 
-config_shortname = [
+config_shortname: list[BoundaryConditionStrs] = [
     "soft",
     "hard",
     "periodic",
 ]
 molgr_count = [1, 2, 3]
-surf_type = ["triangular", "square", "honeycomb"]
+surf_type: list[SurfaceStrs] = ["triangular", "square", "honeycomb"]
 
 # parameters: list[tuple[str, int, str]] = list(product(config_shortname, molgr_count, surf_type))
 # """A Cartesian product of the three parameter lists. Example: [A, B] x [1, 2] --> [(A, 1), (B, 2), (A, 2), (B, 2)]"""
@@ -107,7 +107,7 @@ class TestWithParameters:
     ) -> None:
         """The config is loaded correctly."""
         simulator.set_configname(f"config_test_{configname}.json")
-        simulator.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / simulator.configname)
+        simulator.rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / simulator.configname)
         assert simulator.rsa_config is not None
 
     def test_create_surface(
@@ -377,29 +377,18 @@ class TestWithParameters:
 def test_surfacetype_invalid_input() -> None:
     """An error is raised when the lattice type is incorrect."""
     bad_type: str = "Dogbonium"
-    with pytest.raises(ValueError, match=f"Unsupported lattice: {bad_type} of type {type(bad_type).__name__}"):
+    with pytest.raises(ValueError, match=f"Unsupported lattice: {bad_type}."):
         rsarun.Surface(
-            RsaConfig(Path(__file__).parent / "test_data" / "config_test_soft.json"),
+            RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_soft.json"),
             bad_type,
         ).generate_grid()
-
-
-def test_boundarytype_invalid_input() -> None:
-    """An error is raised for invalid boundary types."""
-    bad_type: int = 10
-    with pytest.raises(TypeError, match=f"The boundary_type of type {type(bad_type).__name__} is not a string."):
-        rsarun.BoundaryParameters(bad_type)  # pyright: ignore[reportArgumentType]
-
-    bad_name: str = "Dogbonium"
-    with pytest.raises(ValueError, match=f"The boundary_type string {bad_name} is not 'soft', 'hard', or 'periodic'."):
-        rsarun.BoundaryParameters(bad_name)
 
 
 def test_molecules_invalid_input() -> None:
     """An error is raised for invalid input of the molecules."""
     sim = ExampleSimulation(13579)
     sim.set_configname("config_test_soft.json")
-    sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
+    sim.rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / sim.configname)
     with pytest.raises(ValueError, match=r"No molecules have been provided!"):
         rsarun.Simulator(sim.rsa_config, None, None, [], None)  # pyright: ignore[reportArgumentType]
 
@@ -412,7 +401,7 @@ def simple_simulator() -> ExampleSimulation:
     """
     sim = ExampleSimulation(123321)
     sim.set_configname("config_test_soft.json")
-    sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
+    sim.rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / sim.configname)
     sim.rng = Generator(PCG64DXSM(sim.seed))
     sim.surf = rsarun.Surface(sim.rsa_config)
     sim.surf.generate_grid(sim.rng)
@@ -563,7 +552,7 @@ def gapsim() -> ExampleSimulation:
     """
     sim = ExampleSimulation(123321)
     sim.set_configname("config_test_periodic.json")
-    sim.rsa_config = RsaConfig(Path(__file__).parent / "test_data" / sim.configname)
+    sim.rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / sim.configname)
     sim.rng = Generator(PCG64DXSM(sim.seed))
     sim.surf = rsarun.Surface(sim.rsa_config)
     sim.surf.generate_grid(sim.rng)

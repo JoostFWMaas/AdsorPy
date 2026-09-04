@@ -32,8 +32,17 @@ from adsorpy.rsa_config import RsaConfig  # Config of the simulation.
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+    from pydantic import NonNegativeFloat, NonNegativeInt, PositiveFloat, PositiveInt
 
-    from adsorpy.types import BoolArray, DistArray, GeoArray, IdxArray
+    from adsorpy.types import (
+        BoolArray,
+        BoundaryConditionStrs,
+        DistArray,
+        DosingSchemeStrs,
+        GeoArray,
+        IdxArray,
+        SurfaceStrs,
+    )
 
     P = ParamSpec("P")  # Helps with static type checkers.
     T1 = TypeVar("T1", bool, int, float, str, np.float64, np.str_, np.int64, Polygon, np.bool_)
@@ -49,29 +58,41 @@ if TYPE_CHECKING:
     Tax = TypeVar("Tax", Axes, None)
 
 
+# def _ensure_idx_array(int_like: object | None, bound: Literal["Ge", "Gt"]) -> IdxArray | None:
+#     if isinstance(int_like, IdxArray):
+#         if not np.issubdtype(int_like, np.integer):
+#             errmsg = f"Expected integer array, got type {int_like.dtype}."
+#             raise TypeError(errmsg)
+#         comparison = np.greater_equal if bound == "Ge" else np.greater
+#         if np.any(comparison(int_like, 0)):
+#             errmsg = "Array contains values "
+#             raise ValueError(errmsg)
+
+
+# @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
 def run_simulation(  # noqa: PLR0913, PLR0917
     rsa_config: RsaConfig | None = None,
     molecules_list: Polygon | list[Polygon] | GeoArray | None = None,
-    rotation_symmetries: int | list[int] | IdxArray | None = None,
+    rotation_symmetries: NonNegativeInt | list[NonNegativeInt] | IdxArray | None = None,
     reflection_symmetries: bool | list[bool] | BoolArray | None = None,
-    rotation_counts: int | list[int] | IdxArray | None = None,
-    lattice_type: str = "triangular",
-    site_count: int | None = None,
-    lattice_a: float | None = None,
-    boundary_condition: str | None = None,
-    simulation_type: str = "sequential",
-    dosing_distribution: list[float] | DistArray | None = None,
+    rotation_counts: PositiveInt | list[PositiveInt] | IdxArray | None = None,
+    lattice_type: SurfaceStrs | Literal["hexagonal"] = "triangular",
+    site_count: PositiveInt | None = None,
+    lattice_a: PositiveFloat | None = None,
+    boundary_condition: BoundaryConditionStrs | None = None,
+    simulation_type: DosingSchemeStrs = "sequential",
+    dosing_distribution: list[NonNegativeFloat] | DistArray | None = None,
     include_rejected_flux: bool = False,
     calculate_gap_size: bool = False,
     prlongoutput_flag: bool = False,
     plot_output_flag: bool = False,
-    seed: int | Generator | None = None,
-    timestep_limit: int = 1000000,
+    seed: NonNegativeInt | Generator | None = None,
+    timestep_limit: NonNegativeInt = 1000000,
     site_x_coords: DistArray | None = None,
     site_y_coords: DistArray | None = None,
-    bounding_x_coord: float | None = None,
-    bounding_y_coord: float | None = None,
-    sticking_probability: float | list[float] | DistArray = 1.0,
+    bounding_x_coord: NonNegativeFloat | None = None,
+    bounding_y_coord: NonNegativeFloat | None = None,
+    sticking_probability: NonNegativeFloat | list[NonNegativeFloat] | DistArray = 1.0,
 ) -> tuple[list[int], DistArray, int | Generator, tuple[IdxArray, ...], IdxArray, Simulator]:
     """Run the RSA simulation.
 
@@ -108,9 +129,10 @@ def run_simulation(  # noqa: PLR0913, PLR0917
         3. The fluxes/doses as a tuple of lists of counts per stepcount of adsorption event.
         4. The available surface function (ASF).
         5. The Simulator class.
-    :raises TypeError: If the sticking probability is an invalid type.
     """
     rsa_config = RsaConfig(Path(__file__).parent / "config.json") if rsa_config is None else rsa_config
+
+    lattice_type = "hexagonal" if lattice_type == "triangular" else lattice_type
 
     mol_lst: GeoArray
     rot_syms: IdxArray
@@ -176,11 +198,8 @@ def run_simulation(  # noqa: PLR0913, PLR0917
     stick_prob: DistArray = np.array([1.0])
     if isinstance(sticking_probability, (float, int, np.integer)):
         stick_prob = np.array([sticking_probability] * len(mol_lst))
-    elif isinstance(sticking_probability, (list, np.ndarray)):
+    else:  # ignore
         stick_prob = np.array(sticking_probability)
-    elif sticking_probability is not None:
-        errmsg = "sticking_probability must be a float, list, or np.ndarray"
-        raise TypeError(errmsg)
 
     pp: Polygon
     for idx, (pp, stick) in enumerate(zip(mol_lst, stick_prob, strict=True)):
@@ -589,7 +608,7 @@ def _select_and_run(
 
 def show_surface(
     rsa_config: RsaConfig | None = None,
-    lattice_type: str = "triangular",
+    lattice_type: SurfaceStrs = "triangular",
     site_count: int | None = None,
     lattice_a: float | None = None,
     # boundary_condition: str | None = None,

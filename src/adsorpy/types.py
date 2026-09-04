@@ -41,3 +41,9 @@ RotMatrix: TypeAlias = np.ndarray[tuple[Literal[3], Literal[3]], np.dtype[np.flo
 """3x3 array of floats, used as a rotation matrix."""
 StrArray: TypeAlias = np.ndarray[tuple[int], np.dtype[np.str_]]
 """1D array of strings. Used for e.g. names and colours."""
+SurfaceStrs: TypeAlias = Literal["triangular", "square", "honeycomb"]
+"""Allowed surface types. Defined in ``types.py`` as a single source of truth."""
+DosingSchemeStrs: TypeAlias = Literal["sequential", "codosing", "cascade"]
+"""Allowed dosing schemes. Defined in ``types.py`` as a single source of truth."""
+BoundaryConditionStrs: TypeAlias = Literal["soft", "hard", "periodic"]
+"""Allowed boundary conditions. Defined in ``types.py`` as a single source of truth."""
