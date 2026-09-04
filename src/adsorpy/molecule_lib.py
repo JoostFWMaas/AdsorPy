@@ -249,7 +249,7 @@ def xyz_reader(
     centre[0] -= x_offset
     centre[1] -= y_offset
 
-    return cast("Polygon", aff.translate(molecule, *centre))
+    return aff.translate(molecule, *centre)
 
 
 def _rotation_matrix(roll: float | np.float64, pitch: float | np.float64, yaw: float | np.float64) -> RotMatrix:
@@ -1312,16 +1312,17 @@ def _initialise_reader(
     data = np.loadtxt(file_path, dtype=str, skiprows=2)
     listed_molecule_count: np.int64 | None = cast("np.int64 | None", np.loadtxt(file_path, dtype=np.int64, max_rows=1))
     atomkeys: StrArray = data[:, 0]
-    atompos: CoordsArray3D = cast("CoordsArray3D", data[:, 1:].astype(np.float64))
+    atompos: CoordsArray3D = data[:, 1:].astype(np.float64)
 
     _xyz_verifier(atomkeys, atompos, listed_molecule_count)
 
     mask: BoolArray | None = None
     if isinstance(ignore_atoms, str):
         ignore_atoms = ignore_atoms.split(",")
+
     if ignore_atoms is None:
         pass
-    elif isinstance(ignore_atoms[0], str):
+    else:
         mask = np.ones(atomkeys.size, dtype=np.bool_)
         for ign_atm in ignore_atoms:
             mask &= atomkeys != ign_atm

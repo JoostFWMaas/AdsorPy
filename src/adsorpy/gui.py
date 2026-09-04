@@ -17,6 +17,7 @@ import textwrap
 import webbrowser
 import zipfile
 from collections import defaultdict
+from typing import get_args
 
 if sys.version_info >= (3, 11):
     from datetime import UTC, datetime  # For datetime stamping and seed generation.
@@ -138,16 +139,9 @@ except ImportError as e:
     print(f"Details: {e}", file=sys.stderr)
     raise
 
-
 from adsorpy import __version__, molecule_lib
 from adsorpy.run_simulation import run_simulation, show_surface
-
-T_qobj = TypeVar("T_qobj", bound=QObject)
-T_inv = TypeVar("T_inv", bool, int, str, float)
-P_mol = ParamSpec("P_mol")  # Helps with static type checkers.
-P = ParamSpec("P")
-R = TypeVar("R")
-# T_widg = TypeVar("T_widg", bound=QWidget)
+from adsorpy.types import SurfaceStrs
 
 if TYPE_CHECKING:
     from collections.abc import Callable, ItemsView, ValuesView
@@ -157,10 +151,24 @@ if TYPE_CHECKING:
 
     from adsorpy.randomsequentialadsorption import Simulator
     from adsorpy.rsa_config import RsaConfig
-    from adsorpy.types import BoolArray, DistArray, FloatArray, GeoArray, IdxArray
+    from adsorpy.types import (
+        BoolArray,
+        BoundaryConditionStrs,
+        DistArray,
+        DosingSchemeStrs,
+        FloatArray,
+        GeoArray,
+        IdxArray,
+    )
 
     InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QLineEdit | "FilePickerWidget"
     RunResult: TypeAlias = tuple[DistArray, DistArray, DistArray]
+
+T_qobj = TypeVar("T_qobj", bound=QObject)
+T_inv = TypeVar("T_inv", bool, int, str, float)
+P_mol = ParamSpec("P_mol")  # Helps with static type checkers.
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class RunSimulationInput(TypedDict, total=False):
@@ -171,11 +179,11 @@ class RunSimulationInput(TypedDict, total=False):
     rotation_symmetries: int | list[int] | IdxArray | None
     reflection_symmetries: bool | list[bool] | BoolArray | None
     rotation_counts: int | list[int] | IdxArray | None
-    lattice_type: str
+    lattice_type: SurfaceStrs
     site_count: int | None
     lattice_a: float | None
-    boundary_condition: str | None
-    simulation_type: str
+    boundary_condition: BoundaryConditionStrs | None
+    simulation_type: DosingSchemeStrs
     dosing_distribution: list[float] | DistArray | None
     include_rejected_flux: bool
     calculate_gap_size: bool
@@ -359,21 +367,20 @@ def validate_polygon(pol: Polygon | str | dict[str, str | list[list[list[float]]
 
     :param pol: Polygon or GeoJSON format.
     :returns: Polygon.
-    :raises TypeError: if the type cannot be converted to Polygon.
+    :raises TypeError: If the input is not of the correct type.
     """
     if isinstance(pol, Polygon):
         return pol
 
     if isinstance(pol, dict):
         # Convert the python dictionary to a valid JSON string first
-        json_str = json.dumps(pol)
-        return from_geojson_str_to_polygon(json_str)
+        pol = json.dumps(pol)
 
-    if isinstance(pol, str):
+    if isinstance(pol, str):  # pyright: ignore[reportUnnecessaryIsInstance]
         # Turns {"type": "Polygon", "coordinates": ...} into a Shapely object
         return from_geojson_str_to_polygon(pol)
 
-    errmsg = f"Cannot convert {type(pol)} to a Shapely Polygon"
+    errmsg = f"Invalid input for Polygon: {type(pol).__name__}"
     raise TypeError(errmsg)
 
 
@@ -529,7 +536,7 @@ class SurfaceParameters(TypedDict, total=False):
     :ivar seed: RNG seed.
     """
 
-    lattice_type: Literal["hexagonal", "triangular", "honeycomb", "square"]
+    lattice_type: SurfaceStrs
     site_count: PositiveInt
     lattice_a: PositiveFloat | None
     seed: int | None
@@ -1466,15 +1473,10 @@ class GeneralSettings(QWidget):
         """Run exactly one instance of the simulation engine."""
         inputs = self._prepare_simulation_inputs()
         self.input_metadata = inputs
-        # if inputs is None:
-        #     errmsg = "Simulation input is empty."
-        #     QMessageBox.critical(self, "Input Error", errmsg)
-        #     return
 
         self.run_group.setEnabled(False)
         self.progress_bar.show()
         self.progress_bar.setValue(0)
-        # self.run_group.setText("Computing...")
 
         sim_input = RunSimulationInput(**{key: value for key, value in inputs.items() if key != "repeats"})  # type: ignore[typeddict-item]
         task = BackgroundTask(run_simulation, **sim_input)
@@ -1727,7 +1729,7 @@ class GeneralSettings(QWidget):
 
         covs = cast("tuple[DistArray]", self.state.coverages)
         fracs = cast("tuple[DistArray]", self.state.fraction_of_covered_area)
-        gaps = cast("DistArray", self.state.gap_size_distribution)
+        gaps = self.state.gap_size_distribution
 
         suffix_lower = file_path.suffix.lower()
 
@@ -2536,7 +2538,7 @@ class SurfaceGeneration(QWidget):
         layout.addWidget(QLabel("Surface Type:"), alignment=Qt.AlignmentFlag.AlignTop)
         self.surface_dropdown = QComboBox()
         """Selection box for geometry presets."""
-        self.surface_dropdown.addItems(sorted(["hexagonal", "square", "honeycomb"]))
+        self.surface_dropdown.addItems(sorted(get_args(SurfaceStrs)))
         self.surface_dropdown.setToolTip("Select surface type.")
         layout.addWidget(self.surface_dropdown, alignment=Qt.AlignmentFlag.AlignTop)
 
@@ -2612,7 +2614,7 @@ class SurfaceGeneration(QWidget):
         temp_count: str = self.site_count_input.text().strip()
         self.surface_count = default_count if not temp_count else int(temp_count)
         self.real_surface_count = self.surface_count * self.surface_count
-        if surface_type == "hexagonal":
+        if surface_type == "triangular":
             self.real_surface_count *= 2
         elif surface_type == "honeycomb":
             self.real_surface_count *= 4
@@ -2631,7 +2633,7 @@ class SurfaceGeneration(QWidget):
         lattice = self.lattice_input.value()
 
         lattice_type = cast(
-            "Literal['hexagonal', 'triangular', 'honeycomb', 'square']",
+            "SurfaceStrs",
             self.surface_dropdown.currentText(),
         )
         app = cast("QGuiApplication", QGuiApplication.instance())

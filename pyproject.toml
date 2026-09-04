@@ -370,8 +370,8 @@ reportUnknownMemberType = "none"
 reportUnknownVariableType = "none"
 reportUnknownParameterType = "none"
 reportUnknownArgumentType = "none"
-reportUnnecessaryCast = "none"  # These are needed for mypy.
-reportUnnecessaryIsInstance = "none"  # These are needed for mypy.
+#reportUnnecessaryCast = "none"  # These are needed for mypy.
+#reportUnnecessaryIsInstance = "none"  # These are needed for mypy.
 
 # Keep useful strict checks.
 reportImplicitOverride = "error"
@@ -381,7 +381,7 @@ reportUnnecessaryComparison = "warning"  # These are usually included to prevent
 # Basedpyright options, comment these out when falling back on pyright:
 typeCheckingMode = "strict"  # Comment when using pyright.  Options (increasingly strict): "strict", "recommended", "all".
 failOnWarnings = false  # basedpyright by default allows warnings on check but fails warnings on CI. That is inconsistent behaviour, so this disables that.
-executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportUnnecessaryTypeIgnoreComment = "none" }]
+executionEnvironments = [{ root = "tests", reportPrivateUsage = "none", reportArgumentType = "none"}]
 
 
 [tool.slotscheck]

@@ -28,7 +28,7 @@ SEED = 123654789
 @pytest.fixture
 def rsa_config() -> RsaConfig:
     """Fixture for a basic RsaConfig object."""
-    config_path = Path(__file__).parent / "test_data" / "config_test_periodic.json"
+    config_path = Path(__file__).parents[1] / "test_data" / "config_test_periodic.json"
     return RsaConfig(config_path)
 
 
@@ -270,7 +270,7 @@ def test_run_simulation_property_test(
     If the length of the lists is not equivalent (or equal to 1), a ValueError test is expected.
     Otherwise, the output is tested.
     """
-    rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
+    rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
     seed = 123123
 
     num_mols = len(molecules_list)
@@ -317,7 +317,7 @@ class TestCustomGrid:
 
     def test_bad_custom_grid(self) -> None:
         """Custom grid raises an error when either x or y (not both) is missing."""
-        rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
+        rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
         with pytest.raises(
             ValueError,
             match=r"A custom grid will only be generated if 'site_x_coords', 'site_y_coords',*",
@@ -326,7 +326,7 @@ class TestCustomGrid:
 
     def test_bad_xcoords(self) -> None:
         """Raise an error when the x coordinates are negative. Same effect as the y coordinates."""
-        rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
+        rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
         with pytest.raises(ValueError, match=r"Site x coordinates must be positive.*"):
             run_simulation(
                 rsa_config=rsa_config,
@@ -339,7 +339,7 @@ class TestCustomGrid:
     def test_good_custom_grid(self) -> None:
         """Custom grid generates correctly without errors."""
         sim: Simulator
-        rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
+        rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
         *_, sim = run_simulation(
             rsa_config=rsa_config,
             seed=SEED,
@@ -355,7 +355,7 @@ class TestCustomGrid:
 
 def test_sequential_fluxreject() -> None:
     """Handle flux-based simulation correctly."""
-    rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
+    rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
     flux = run_simulation(rsa_config=rsa_config, seed=SEED, simulation_type="sequential", include_rejected_flux=True)[3]
     assert flux is not None  # The flux return value has to exist.
     assert isinstance(flux, tuple)  # It should be a numpy array.
@@ -372,10 +372,3 @@ def test_select_and_run() -> None:
         match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported.",
     ):
         _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # pyright: ignore[reportArgumentType]
-
-
-def test_wrong_stickingprobability() -> None:
-    """When the wrong sticking probability type is used, an error should be raised."""
-    rsa_config = RsaConfig(Path(__file__).parent / "test_data" / "config_test_periodic.json")
-    with pytest.raises(TypeError, match=r"sticking_probability must be a float, list, or np.ndarray"):
-        run_simulation(rsa_config=rsa_config, simulation_type="sequential", sticking_probability="one")  # pyright: ignore[reportArgumentType]

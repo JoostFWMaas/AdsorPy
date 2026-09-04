@@ -1,10 +1,13 @@
+ignore_type_checking_imports = true
+forbid_circular_dependencies = true
+exact = true
 interfaces = []
 exclude = [
-    "**/*__pycache__",
-    "**/*egg-info",
-    "**/docs",
-    "**/tests",
-    "**/venv",
+    "**/__pycache__",
+    "**/*.egg-info",
+    "**/docs/**",
+    "**/tests/**",
+    "**/venv/**",
 ]
 source_roots = [
     "src",
@@ -16,7 +19,7 @@ depends_on = []
 
 [[modules]]
 path = "adsorpy.randomsequentialadsorption"
-depends_on = ["adsorpy.rsa_calculator"]
+depends_on = ["adsorpy.rsa_calculator", "adsorpy.types"]
 
 [[modules]]
 path = "adsorpy.rsa_config"
@@ -32,7 +35,7 @@ depends_on = ["adsorpy.randomsequentialadsorption", "adsorpy.molecule_lib", "ads
 
 [[modules]]
 path = "adsorpy.gui"
-depends_on = ["adsorpy.run_simulation", "adsorpy.molecule_lib"]
+depends_on = ["adsorpy.run_simulation", "adsorpy.molecule_lib", "adsorpy.types"]
 
 [[modules]]
 path = "adsorpy.types"

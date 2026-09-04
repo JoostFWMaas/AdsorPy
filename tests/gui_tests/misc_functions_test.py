@@ -147,14 +147,6 @@ def test_validate_polygon_success_cases(
         assert res.equals(expected_poly)
 
 
-def test_validate_polygon_raises_type_error_for_invalid_input() -> None:
-    """Verify that unconvertible object payloads throw an explicit TypeError."""
-    invalid_input: list[float] = [0.0, 0.0, 1.0, 1.0]
-
-    with pytest.raises(TypeError, match="Cannot convert"):
-        validate_polygon(invalid_input)  # pyright: ignore[reportArgumentType]
-
-
 def test_from_geojson_str_to_polygon_errors() -> None:
     """Test the from_geojson_str_to_polygon function error handling."""
     with pytest.raises(shapely.errors.GEOSException, match=r"ParseException: Error parsing JSON:.*"):

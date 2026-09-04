@@ -7,8 +7,8 @@ labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
 # Quick reference: for all tests in clean environments, ``uvx tox run -r``
 # For linting only: ``uvx tox run -m static -r``
+# For a single env, such as py310: ``uvx tox run -e py310 -r``
 [env_run_base]
-labels = ["test"]
 pass_env = [
     "CI",
     "GITHUB_*",

@@ -667,7 +667,9 @@ def test_delete_previous_layout(molecule_tab_factory: partial[MoleculeGeneration
 
 
 def test_create_param_widget(
-    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+    subtests: pytest.Subtests,
 ) -> None:
     """Verify that specific type annotations result in correct behaviour."""
     molecule_tab = molecule_tab_factory()
@@ -689,7 +691,9 @@ def test_create_param_widget(
 
 
 def test_create_param_widget_error(
-    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+    subtests: pytest.Subtests,
 ) -> None:
     """Verify that incorrect type annotations result in a raised TypeError."""
     molecule_tab = molecule_tab_factory()
@@ -699,7 +703,9 @@ def test_create_param_widget_error(
 
 
 def test_get_param_values(
-    molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: MonkeyPatch, subtests: pytest.Subtests,
+    molecule_tab_factory: partial[MoleculeGeneration],
+    monkeypatch: MonkeyPatch,
+    subtests: pytest.Subtests,
 ) -> None:
     """Test whether the get param values function works correctly."""
     molecule_tab = molecule_tab_factory()

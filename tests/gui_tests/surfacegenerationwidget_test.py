@@ -41,7 +41,7 @@ def test_initial_structural_layout_states(surface_tab: SurfaceGeneration) -> Non
     assert surface_tab.main_splitter.orientation() == Qt.Orientation.Horizontal
 
     # Check default combo box configuration entries
-    expected_items = sorted(["hexagonal", "square", "honeycomb"])
+    expected_items = sorted(["triangular", "square", "honeycomb"])
     actual_items = [surface_tab.surface_dropdown.itemText(i) for i in range(surface_tab.surface_dropdown.count())]
     assert actual_items == expected_items
 
@@ -61,7 +61,7 @@ def test_input_validators_range_boundaries(surface_tab: SurfaceGeneration) -> No
     [
         ("square", "100", "10000"),  # Straight 1:1 mapping
         ("square", "", "2500"),  # Blank fallback state logic default
-        ("hexagonal", "40", "3200"),  # Doubles site count requirement (2x)
+        ("triangular", "40", "3200"),  # Doubles site count requirement (2x)
         ("honeycomb", "25", "2500"),  # Quadruples site count requirement (4x)
     ],
 )
@@ -102,7 +102,8 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
     seed = 119
     surface_tab.state.seed_input.setText(str(seed))
     surface_tab.lattice_input.setValue(lattice_a)
-    surface_tab.surface_dropdown.setCurrentText("hexagonal")
+    surf_type = "triangular"
+    surface_tab.surface_dropdown.setCurrentText(surf_type)
     site_count = 35
     surface_tab.site_count_input.setText(f"{site_count}")  # Sets base count variable to 35
 
@@ -122,7 +123,7 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
         _, kwargs = mock_show_surface.call_args
 
         assert kwargs["lattice_a"] == lattice_a
-        assert kwargs["lattice_type"] == "hexagonal"
+        assert kwargs["lattice_type"] == surf_type
         assert kwargs["seed"] == seed
         assert kwargs["site_count"] == site_count
         assert isinstance(kwargs["filepath"], io.BytesIO)
@@ -135,7 +136,7 @@ def test_generate_surface_success(surface_tab: SurfaceGeneration, qtbot: QtBot) 
         adapter = TypeAdapter(SurfaceParameters)
         adapter.validate_python(surface_tab.state.surface_params)
         assert isinstance(surface_tab.state.surface_params, dict)
-        assert surface_tab.state.surface_params["lattice_type"] == "hexagonal"  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert surface_tab.state.surface_params["lattice_type"] == surf_type  # pyright: ignore[reportTypedDictNotRequiredAccess]
         assert surface_tab.state.surface_params["site_count"] == site_count  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
