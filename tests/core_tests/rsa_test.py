@@ -36,7 +36,7 @@ class ExampleSimulation:
         """
         self.seed: int = seed
         self.configname: str = ""
-        self.rsa_config: RsaConfig = RsaConfig()
+        self.rsa_config: RsaConfig | None = None
         self.surf: rsarun.Surface | None = None
         self.molecules: list[rsarun.MoleculeGroup] = []
         self.sim: rsarun.Simulator | None = None

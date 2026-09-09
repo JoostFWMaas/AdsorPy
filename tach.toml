@@ -23,7 +23,7 @@ depends_on = ["adsorpy.rsa_calculator", "adsorpy.types"]
 
 [[modules]]
 path = "adsorpy.rsa_config"
-depends_on = []
+depends_on = ["adsorpy.types"]
 
 [[modules]]
 path = "adsorpy.molecule_lib"

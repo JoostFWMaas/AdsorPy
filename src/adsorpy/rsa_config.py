@@ -1,106 +1,147 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
-"""Reads the config json.
-
-The config.json contains the standard values for the RSA simulations. They can be changed if the user wants to,
-however, the most important values can be overridden in the run_simulation module as well.
-"""
+"""Schema and validator for the RSA simulation configuration using Pydantic v2."""
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from pathlib import Path
-from typing import TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
 
-# Define the allowed inner JSON primitive types
-JsonLeaf: TypeAlias = float | str | int | list[float] | None
-# A recursive type alias for a nested JSON dictionary layout
-JsonDict: TypeAlias = dict[str, "JsonLeaf | JsonDict"]
+from adsorpy.types import BoundaryConditionStrs  # noqa: TC001
 
-T = TypeVar("T", float, str, int, list[float], None)
+if TYPE_CHECKING:
+    from sys import version_info
+
+    if version_info >= (3, 11):
+        from typing import Self
+    else:
+        from typing_extensions import Self
+
+from pydantic import BaseModel, FilePath, NonNegativeFloat, NonNegativeInt, PositiveInt, TypeAdapter, model_validator
+
+JsonPrimitive: TypeAlias = float | str | int | bool | None
+JsonValue: TypeAlias = "JsonPrimitive | list[JsonValue] | dict[str, JsonValue]"
+RawJsonDict: TypeAlias = dict[str, JsonValue]
+
+# Strict output leaf validation types
+JsonLeaf: TypeAlias = float | str | int | list[float] | bool | None
+T = TypeVar("T", bound=JsonLeaf)
 
 
-class RsaConfig:
-    """Load the RSA config JSON and parse it for the simulation."""
+class LoggingConfig(BaseModel):
+    """Whether logging is enabled or not.
 
-    def __init__(self, config_path: str | Path | None = None, config: JsonDict | None = None) -> None:
-        """Initialise the config reader.
+    :param enabled: If true: enable logging.
+    """
 
-        :param config_path: The path to the config file.
-        :param config: The config values as a dict.
+    enabled: bool
+
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_comments(cls, data: RawJsonDict) -> RawJsonDict:
+        """Strip keys containing '_comment' from the incoming data dictionary."""
+        return {k: v for k, v in data.items() if "_comment" not in k}
+
+
+class WrappedValue(BaseModel, Generic[T]):
+    """Generic wrapper for fields containing a nested 'value' key."""
+
+    value: T
+
+    @model_validator(mode="before")
+    @classmethod
+    def strip_comments(cls, data: RawJsonDict) -> RawJsonDict:
+        """Strip keys containing '_comment' from the incoming data dictionary."""
+        return {k: v for k, v in data.items() if "_comment" not in k}
+
+
+class RsaConfig(BaseModel):
+    """Full RSA Configuration model mirroring the JSON schema exactly.
+
+    :param logging: Whether to enable logging.
+    :param sites: The surface site count.
+    :param xsize: The surface size in the x direction.
+    :param ysize: The surface size in the y direction.
+    :param zsize: The surface size in the z direction.
+    :param max_molecule_count: The maximum number of molecules allowed in the simulation.
+    :param lattice_a: The lattice spacing.
+    :param boundary_type: The boundary type.
+    :param sticking_probability: The sticking probability.
+    """
+
+    logging: LoggingConfig
+    sites: WrappedValue[PositiveInt | None]
+    xsize: WrappedValue[NonNegativeFloat | None]
+    ysize: WrappedValue[NonNegativeFloat | None]
+    zsize: WrappedValue[NonNegativeFloat | None]
+    max_molecule_count: WrappedValue[NonNegativeInt]
+    lattice_a: WrappedValue[NonNegativeFloat]
+    boundary_type: WrappedValue[BoundaryConditionStrs]
+    sticking_probability: WrappedValue[NonNegativeFloat]
+
+    def __init__(self, config_path: str | FilePath | None = None, **kwargs: object) -> None:
+        """Initialise the configuration.
+
+        Supports drop-in instantiation via a positional file path string/Path object,
+        or keyword arguments for testing/override setups.
         """
-        self.config_path: Path | None = Path(config_path) if config_path is not None else None
-        self.__config: JsonDict = config if config is not None else {}
-        self.__initialize()
+        if config_path is not None and not kwargs:
+            validated_path = TypeAdapter(FilePath).validate_python(config_path)
+            with validated_path.open("r") as f:
+                data = json.load(f)
+            # Route the dict parameters directly into the Pydantic init framework
+            validated_model = self.model_validate(data)
 
-    def __initialize(self) -> None:
-        if self.config_path is not None:
-            with self.config_path.open() as f:
-                parsed: object = json.load(f)
-                if isinstance(parsed, dict):
-                    # Guard rail ensuring top level elements align to standard string keys
-                    self.__config = parsed
-                else:
-                    msg = "Configuration file root must be a JSON object dictionary."
-                    raise TypeError(msg)
+            # Map parameters cleanly down to the slotted dict infrastructure
+            self.__setattr__("__dict__", validated_model.__dict__)
+            self.__setattr__("__pydantic_fields_set__", validated_model.__pydantic_fields_set__)
+            self.__setattr__("__pydantic_extra__", validated_model.__pydantic_extra__)
+            self.__setattr__("__pydantic_private__", validated_model.__pydantic_private__)
+            # super().__init__(**data)
+        else:
+            super().__init__(**kwargs)
 
-    def to_dict(self) -> JsonDict:
-        """Return the JSON as dictionary.
 
-        :return: The JSON as dictionary.
-        """
-        return self.__config
+    @model_validator(mode="after")
+    def validate_dimensions(self) -> Self:
+        """Enforce mutual exclusivity between grid 'sites' and spatial 'sizes'."""
+        has_sites: bool = self.sites.value is not None
+        has_sizes: bool = self.xsize.value is not None and self.ysize.value is not None
 
-    def get_item(self, item: str, required: bool = True) -> JsonLeaf | JsonDict | RsaConfig:
-        """Get the item from the JSON.
-
-        :param item: The item to be split into keys.
-        :param required: Bool denoting whether it is required.
-        :return: The item from the JSON.
-        """
-        keys = item.split(".")
-        result = self.__return_key_value(self.__config, keys)
-        if required and result is None:
-            errmsg = f"Required item '{item}' is empty/None!"
+        if has_sites and has_sizes:
+            errmsg = "Cannot specify both 'sites' and spatial dimensions ('xsize'/'ysize')."
             raise ValueError(errmsg)
-        # If result is None but not required, we safely return None as part of JsonLeaf
-        return result if result is not None else None
-
-    def get_value(self, item: str, required: bool = True) -> JsonLeaf | JsonDict | RsaConfig:
-        """Get the value from the JSON.
-
-        :param item: The item to be split into keys.
-        :param required: Bool denoting whether it is required.
-        :return: The value of the item from the JSON.
-        """
-        keys = item.split(".")
-        if not keys or keys[-1] != "value":
-            keys.append("value")
-
-        result = self.__return_key_value(self.__config, keys)
-        if required and result is None:
-            errmsg = f"A required value for '{item}' is empty/None!"
+        if not has_sites and not has_sizes:
+            errmsg = "You must specify either 'sites' or both 'xsize' and 'ysize'."
             raise ValueError(errmsg)
-        return result if result is not None else None
+        return self
 
-    def __return_key_value(
-        self,
-        config_value: JsonLeaf | JsonDict,
-        keys: list[str],
-    ) -> JsonLeaf | JsonDict | RsaConfig:
-        if not keys:
-            if isinstance(config_value, dict):
-                return RsaConfig(config_path=None, config=config_value)
-            return config_value
+    @classmethod
+    def from_file(cls, config_path: str | Path) -> RsaConfig:
+        """Load and strictly validate the configuration directly from a file descriptor."""
+        path = Path(config_path)
+        with path.open("r") as f:
+            data = json.load(f)
+        return cls.model_validate(data)
 
-        if isinstance(config_value, Mapping):
-            first_key = keys[0]
-            if first_key not in config_value:
-                return None
 
-            # Type narrowing for nested structural keys
-            next_value = config_value[first_key]
-            return self.__return_key_value(next_value, keys[1:])
+    def get_value(self, item: str, required: bool) -> JsonLeaf:
+        """Backward-compatible value getter matching legacy adsorpy API constraints."""
+        clean_item = item.replace(".value", "")
 
-        return None
+        if clean_item == "logging":
+            return self.logging.enabled
+
+        attr: object = getattr(self, clean_item, None)
+        if isinstance(attr, WrappedValue):
+            # bound to JsonLeaf, guaranteed clean return type
+            value: JsonLeaf = attr.value
+            if value is None and required:
+                errmsg = "Parameter is required but set to None."
+                raise ValueError(errmsg)
+            return value
+
+        errmsg = f"Configuration has no parameter '{item}'"
+        raise AttributeError(errmsg)

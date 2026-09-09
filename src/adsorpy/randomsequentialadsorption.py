@@ -108,16 +108,28 @@ def _config_loader(rsa_config: RsaConfig) -> Config:
     :param rsa_config: The RsaConfig.
     :returns: The Config.
     """
+    # return Config(
+    #     # rsa_config=rsa_config,  TODO: Maybe use cast("int | None", ...)?
+    #     sites=rsa_config.get_value("sites", required=False),  # pyright: ignore[reportArgumentType]
+    #     xsize=rsa_config.get_value("xsize", required=False),  # pyright: ignore[reportArgumentType]
+    #     ysize=rsa_config.get_value("ysize", required=False),  # pyright: ignore[reportArgumentType]
+    #     zsize=rsa_config.get_value("zsize", required=False),  # pyright: ignore[reportArgumentType]
+    #     max_molecule_count=rsa_config.get_value("max_molecule_count"),  # pyright: ignore[reportArgumentType]
+    #     lattice_a=rsa_config.get_value("lattice_a"),  # pyright: ignore[reportArgumentType]
+    #     boundary_type=rsa_config.get_value("boundary_type"),  # pyright: ignore[reportArgumentType]
+    #     sticking_probability=rsa_config.get_value("sticking_probability"),  # pyright: ignore[reportArgumentType]
+    # )
+
     return Config(
         # rsa_config=rsa_config,  TODO: Maybe use cast("int | None", ...)?
-        sites=rsa_config.get_value("sites", required=False),  # pyright: ignore[reportArgumentType]
-        xsize=rsa_config.get_value("xsize", required=False),  # pyright: ignore[reportArgumentType]
-        ysize=rsa_config.get_value("ysize", required=False),  # pyright: ignore[reportArgumentType]
-        zsize=rsa_config.get_value("zsize", required=False),  # pyright: ignore[reportArgumentType]
-        max_molecule_count=rsa_config.get_value("max_molecule_count"),  # pyright: ignore[reportArgumentType]
-        lattice_a=rsa_config.get_value("lattice_a"),  # pyright: ignore[reportArgumentType]
-        boundary_type=rsa_config.get_value("boundary_type"),  # pyright: ignore[reportArgumentType]
-        sticking_probability=rsa_config.get_value("sticking_probability"),  # pyright: ignore[reportArgumentType]
+        sites=rsa_config.sites.value,  # pyright: ignore[reportArgumentType]
+        xsize=rsa_config.xsize.value,  # pyright: ignore[reportArgumentType]
+        ysize=rsa_config.ysize.value,  # pyright: ignore[reportArgumentType]
+        zsize=rsa_config.zsize.value,  # pyright: ignore[reportArgumentType]
+        max_molecule_count=rsa_config.max_molecule_count.value,  # pyright: ignore[reportArgumentType]
+        lattice_a=rsa_config.lattice_a.value,  # pyright: ignore[reportArgumentType]
+        boundary_type=rsa_config.boundary_type.value,  # pyright: ignore[reportArgumentType]
+        sticking_probability=rsa_config.sticking_probability.value,  # pyright: ignore[reportArgumentType]
     )
 
 
