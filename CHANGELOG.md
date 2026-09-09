@@ -8,6 +8,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 - Add angstrom (Å) scale indicator to gap size distribution plot of GUI.
 ### Changed
 - Molecule footprints are now shown automatically in the GUI (if valid).
+- Make ``rsa_config.py`` safe with ``Pydantic``.
 ### Fixed
 - Rotation, reflection, and counts are now shown correctly when looking at added molecules in GUI.
 ### Removed
