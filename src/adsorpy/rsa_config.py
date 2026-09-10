@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
 
 from adsorpy.types import BoundaryConditionStrs  # noqa: TC001
@@ -117,31 +116,3 @@ class RsaConfig(BaseModel):
             errmsg = "You must specify either 'sites' or both 'xsize' and 'ysize'."
             raise ValueError(errmsg)
         return self
-
-    @classmethod
-    def from_file(cls, config_path: str | Path) -> RsaConfig:
-        """Load and strictly validate the configuration directly from a file descriptor."""
-        path = Path(config_path)
-        with path.open("r") as f:
-            data = json.load(f)
-        return cls.model_validate(data)
-
-
-    def get_value(self, item: str, required: bool) -> JsonLeaf:
-        """Backward-compatible value getter matching legacy adsorpy API constraints."""
-        clean_item = item.replace(".value", "")
-
-        if clean_item == "logging":
-            return self.logging.enabled
-
-        attr: object = getattr(self, clean_item, None)
-        if isinstance(attr, WrappedValue):
-            # bound to JsonLeaf, guaranteed clean return type
-            value: JsonLeaf = attr.value
-            if value is None and required:
-                errmsg = "Parameter is required but set to None."
-                raise ValueError(errmsg)
-            return value
-
-        errmsg = f"Configuration has no parameter '{item}'"
-        raise AttributeError(errmsg)

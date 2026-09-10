@@ -9,6 +9,7 @@ labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 # For linting only: ``uvx tox run -m static -r``
 # For a single env, such as py310: ``uvx tox run -e py310 -r``
 [env_run_base]
+runner = "uv-venv-lock-runner"
 pass_env = [
     "CI",
     "GITHUB_*",
@@ -16,7 +17,7 @@ pass_env = [
     "QT_QPA_PLATFORM",
     "QT_XCB_GL_INTEGRATION",
 ]
-deps = ["-e .[test]"]
+extras = ["test"]
 commands = [["pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
     [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
 ]
@@ -28,16 +29,16 @@ commands = [["ruff", "check", "src", "tests"]]
 
 [env.mypy]
 #skip_install = true
-deps = ["mypy", "[test]"]
+extras = ["lint", "test"]
 commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--allow-subclassing-any", "--exclude", "/scripts/", "src", "tests", "--native-parser", "--show-error-end", "--show-error-code-links", "--show-error-context", "--enable-error-code", "exhaustive-match"],
 ]
 
 [env.basedpyright]
-deps = ["basedpyright", "[test]"]
+extras = ["lint", "test"]
 commands = [["basedpyright", "--venvpath", "{envdir}"]]
 
 [env.slotscheck]
-deps = ["slotscheck", "[gui-deps]"]
+extras = ["lint", "gui-deps", "test"]
 commands = [["python", "-m", "slotscheck", "-m", "adsorpy"]]
 
 [env.tach]

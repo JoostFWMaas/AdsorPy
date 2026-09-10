@@ -2059,7 +2059,7 @@ class MoleculeGeneration(QWidget):
             child_layout: QLayout | None
 
             while layout.count():
-                item = cast("QLayoutItem", layout.takeAt(0))
+                item = cast("QLayoutItem", layout.takeAt(0))  # type: ignore[redundant-cast]
 
                 # Use structural pattern matching to safely handle the item type
                 match item.widget(), item.layout():

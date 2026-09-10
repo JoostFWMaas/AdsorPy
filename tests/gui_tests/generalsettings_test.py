@@ -7,6 +7,7 @@ import pickle
 import sys
 import zipfile
 from pathlib import Path
+from typing import cast
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -529,7 +530,7 @@ def test_change_bulk_run_value(mock_widget: GeneralSettings, tmp_path: Path, mon
     """Validate that the bulk run textbox and value are updated correctly."""
     mock_widget._change_bulk_run_value(1)
     old_text = mock_widget.bulk_run_button.text()
-    old_value = mock_widget._settings.value("repeat_count")
+    old_value: int = cast("int", mock_widget._settings.value("repeat_count"))
 
     assert str(old_value) in old_text, "QLabel and QSettings value are out of sync."
 

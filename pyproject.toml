@@ -208,7 +208,7 @@ omit = [
     "*/__main__.py",
     "*/__init__.py",
     "*/molecule_lib*.py", # There is no point in testing the individual molecules.
-    "*/rsa_config.py", # Cannot be tested properly. Will be reworked.
+#    "*/rsa_config.py", # Cannot be tested properly. Will be reworked.
     "*/sensitivity.py", # Demonstrator, not included.
     "*/Scripts/*",
 ]
