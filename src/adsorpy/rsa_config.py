@@ -19,12 +19,14 @@ if TYPE_CHECKING:
 
 from pydantic import BaseModel, FilePath, NonNegativeFloat, NonNegativeInt, PositiveInt, TypeAdapter, model_validator
 
-JsonPrimitive: TypeAlias = float | str | int | bool | None
-JsonValue: TypeAlias = "JsonPrimitive | list[JsonValue] | dict[str, JsonValue]"
+JsonValue: TypeAlias = "JsonLeaf | list[JsonLeaf] | dict[str, JsonLeaf]"
+"""Values stored in the JSON. Potentially recursive."""
 RawJsonDict: TypeAlias = dict[str, JsonValue]
+"""Dictionary containing the JSON values."""
 
 # Strict output leaf validation types
 JsonLeaf: TypeAlias = float | str | int | list[float] | bool | None
+"""Primitive values stored in the JSON."""
 T = TypeVar("T", bound=JsonLeaf)
 
 
