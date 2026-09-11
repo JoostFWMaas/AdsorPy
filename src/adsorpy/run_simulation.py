@@ -437,6 +437,8 @@ def _turn_into_list(
 def _turn_into_list(val_or_list: object, target_type: type) -> Tn:
     """Turn a variable or a list into an array.
 
+    :no-overloads:
+
     :param val_or_list: Value or list.
     :param target_type: Comparison type. Should be either the type of the value or the type in the list.
     :return: The 1D array of the original variable or list.
