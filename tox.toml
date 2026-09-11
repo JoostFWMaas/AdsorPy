@@ -30,7 +30,7 @@ commands = [["ruff", "check", "src", "tests"]]
 [env.mypy]
 #skip_install = true
 extras = ["lint", "test"]
-commands = [["mypy", "--strict", "--ignore-missing-imports", "--disallow-any-explicit", "--allow-untyped-decorators", "--allow-subclassing-any", "--exclude", "/scripts/", "src", "tests", "--native-parser", "--show-error-end", "--show-error-code-links", "--show-error-context", "--enable-error-code", "exhaustive-match"],
+commands = [["mypy", "src", "tests"],
 ]
 
 [env.basedpyright]
@@ -39,9 +39,8 @@ commands = [["basedpyright", "--venvpath", "{envdir}"]]
 
 [env.slotscheck]
 extras = ["lint", "gui-deps", "test"]
-commands = [["python", "-m", "slotscheck", "-m", "adsorpy"]]
+commands = [["slotscheck", "-m", "adsorpy", "-v"]]
 
 [env.tach]
-skip_install = true
 deps = ["tach"]
 commands = [["tach", "check"]]

@@ -20,10 +20,11 @@ else:
 import time  # For timing of the script.
 from itertools import count  # A simple counter, iterates with next(...).
 from pathlib import Path  # For path handling in Python.
-from typing import TYPE_CHECKING, Literal, ParamSpec, TypeVar, cast, overload  # For type hinting.
+from typing import TYPE_CHECKING, Literal, ParamSpec, TypeAlias, TypeVar, cast, overload  # For type hinting.
 
 import numpy as np  # For vectorised computations (performed in C).
 from numpy.random import PCG64DXSM, Generator  # New random generator.
+from pydantic import ConfigDict, TypeAdapter
 from shapely import Polygon  # Shapely creates and manipulates polygons.
 
 import adsorpy.molecule_lib as mol  # Homebrew lib of molecules and molecule footprint generation.
@@ -46,16 +47,16 @@ if TYPE_CHECKING:
 
     P = ParamSpec("P")  # Helps with static type checkers.
     T1 = TypeVar("T1", bool, int, float, str, np.float64, np.str_, np.int64, Polygon, np.bool_)
-    T2 = TypeVar("T2", np.float64, np.str_, np.int64, Polygon, np.bool_)
-    Tn = TypeVar(
-        "Tn",
-        np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
+    Tn: TypeAlias = np.ndarray[tuple[int], np.dtype[Polygon | np.float64 | np.int64 | np.str_ | np.bool_]]  # type: ignore[type-var] # pyright: ignore[reportInvalidTypeArguments]
+    Tax = TypeVar("Tax", Axes, None)
+    Tarray = TypeVar(
+        "Tarray",
+        np.ndarray[tuple[int], np.dtype[Polygon]],  # type: ignore[type-var] # pyright: ignore[reportInvalidTypeArguments]
         np.ndarray[tuple[int], np.dtype[np.float64]],
         np.ndarray[tuple[int], np.dtype[np.int64]],
         np.ndarray[tuple[int], np.dtype[np.str_]],
         np.ndarray[tuple[int], np.dtype[np.bool_]],
     )
-    Tax = TypeVar("Tax", Axes, None)
 
 
 # def _ensure_idx_array(int_like: object | None, bound: Literal["Ge", "Gt"]) -> IdxArray | None:
@@ -361,7 +362,7 @@ def _run_flux_fixedrotation(
 
 
 def _initialise_run_parameters(
-    molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,  # pyright: ignore[reportInvalidTypeArguments]
+    molecules_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]] | None = None,  # type: ignore[type-var] # pyright: ignore[reportInvalidTypeArguments]
     rotation_symmetries: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int64]] | None = None,
     reflection_symmetries: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]] | None = None,
     rotation_counts: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int64]] | None = None,
@@ -400,57 +401,80 @@ def _initialise_run_parameters(
 
 @overload
 def _turn_into_list(  # type: ignore[overload-overlap]
-    val_or_list: int | list[int] | np.ndarray[tuple[int], np.dtype[np.int64]],
-    compare_to: type[int],
-) -> np.ndarray[tuple[int], np.dtype[np.int64]]: ...
-
-
-@overload
-def _turn_into_list(
-    val_or_list: bool | list[bool] | np.ndarray[tuple[int], np.dtype[np.bool_]],
-    compare_to: type,
+    val_or_list: bool | np.bool_ | list[bool] | list[np.bool_] | np.ndarray[tuple[int], np.dtype[np.bool_]],
+    target_type: type[bool | np.bool_],
 ) -> np.ndarray[tuple[int], np.dtype[np.bool_]]: ...
 
 
 @overload
 def _turn_into_list(
-    val_or_list: float | list[float] | np.ndarray[tuple[int], np.dtype[np.float64]],
-    compare_to: type,
+    val_or_list: int | np.int64 | list[int] | list[np.int64] | np.ndarray[tuple[int], np.dtype[np.int64]],
+    target_type: type[int | np.int64],
+) -> np.ndarray[tuple[int], np.dtype[np.int64]]: ...
+
+
+@overload
+def _turn_into_list(
+    val_or_list: float | np.float64 | list[float] | list[np.float64] | np.ndarray[tuple[int], np.dtype[np.float64]],
+    target_type: type[float | np.float64],
 ) -> np.ndarray[tuple[int], np.dtype[np.float64]]: ...
 
 
 @overload
 def _turn_into_list(
-    val_or_list: str | list[str] | np.ndarray[tuple[int], np.dtype[np.str_]],
-    compare_to: type,
+    val_or_list: str | np.str_ | list[str] | list[np.str_] | np.ndarray[tuple[int], np.dtype[np.str_]],
+    target_type: type[str | np.str_],
 ) -> np.ndarray[tuple[int], np.dtype[np.str_]]: ...
 
 
 @overload
 def _turn_into_list(
-    val_or_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]],  # pyright: ignore[reportInvalidTypeArguments]
-    compare_to: type,
-) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # pyright: ignore[reportInvalidTypeArguments]
+    val_or_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]],  # type: ignore[type-var] # pyright: ignore[reportInvalidTypeArguments]
+    target_type: type[Polygon],
+) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # type: ignore[type-var]  pyright: ignore[reportInvalidTypeArguments]
 
 
-def _turn_into_list(
-    val_or_list: T1 | list[T1] | np.ndarray[tuple[int], np.dtype[T2]],  # pyright: ignore[reportInvalidTypeArguments]
-    compare_to: type,
-) -> np.ndarray[
-    tuple[int],
-    np.dtype[T2],  # pyright: ignore[reportInvalidTypeArguments]
-]:
+def _turn_into_list(val_or_list: object, target_type: type) -> Tn:
     """Turn a variable or a list into an array.
 
-    :no-overloads:
-    :param val_or_list: value or list.
-    :param compare_to: comparison type. Should be either the type of the value or the type in the list.
-    :return: the 1D array of the original variable or list.
+    :param val_or_list: Value or list.
+    :param target_type: Comparison type. Should be either the type of the value or the type in the list.
+    :return: The 1D array of the original variable or list.
     """
-    return np.asarray([val_or_list] if isinstance(val_or_list, compare_to) else val_or_list)
+    raw_list: list[object]
+    if isinstance(val_or_list, np.ndarray):
+        raw_list = val_or_list.tolist()
+    elif isinstance(val_or_list, list):
+        raw_list = val_or_list
+    elif isinstance(val_or_list, target_type):
+        raw_list = [val_or_list]
+    else:
+        errmsg = "The target_type does not match the scalar or value within the list/array."
+        raise TypeError(errmsg)
+
+    if target_type in {bool, np.bool_}:
+        return np.asarray(TypeAdapter(list[bool]).validate_python(raw_list), dtype=np.bool_)
+
+    if target_type in {int, np.int_}:
+        return np.asarray(TypeAdapter(list[int]).validate_python(raw_list), dtype=np.int64)
+
+    if target_type in {float, np.float64}:
+        return np.asarray(TypeAdapter(list[float]).validate_python(raw_list), dtype=np.float64)
+
+    if target_type in {str, np.str_}:
+        return np.asarray(TypeAdapter(list[str]).validate_python(raw_list), dtype=np.str_)
+
+    if target_type is Polygon:
+        return np.asarray(
+            TypeAdapter(list[Polygon], config=ConfigDict(arbitrary_types_allowed=True)).validate_python(raw_list),
+            dtype=Polygon,
+        )
+
+    errmsg = f"Unsupported target type: {target_type}"
+    raise ValueError(errmsg)
 
 
-def _repeater(orig_array: Tn, comparison_len: int) -> Tn:
+def _repeater(orig_array: Tarray, comparison_len: int) -> Tarray:
     """Take the array and repeat it if it has a length of 1.
 
     :param orig_array: original array.

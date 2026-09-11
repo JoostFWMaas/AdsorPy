@@ -36,7 +36,6 @@ class LoggingConfig(BaseModel):
 
     enabled: bool
 
-
     @model_validator(mode="before")
     @classmethod
     def strip_comments(cls, data: RawJsonDict) -> RawJsonDict:
@@ -101,7 +100,6 @@ class RsaConfig(BaseModel):
             # super().__init__(**data)
         else:
             super().__init__(**kwargs)
-
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> Self:
