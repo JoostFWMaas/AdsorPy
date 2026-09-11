@@ -5,22 +5,21 @@
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import numpy as np
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from hypothesis.extra.numpy import arrays
 from hypothesis.strategies import SearchStrategy
+from pydantic import ValidationError
 from shapely import Polygon
 from shapely.ops import orient
 
 from adsorpy.randomsequentialadsorption import Simulator
 from adsorpy.rsa_config import RsaConfig
-from adsorpy.run_simulation import _select_and_run, run_simulation
-
-if TYPE_CHECKING:
-    pass
+from adsorpy.run_simulation import _select_and_run, _turn_into_list, run_simulation
 
 SEED = 123654789
 
@@ -372,3 +371,81 @@ def test_select_and_run() -> None:
         match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported.",
     ):
         _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # pyright: ignore[reportArgumentType]
+
+
+@pytest.mark.parametrize(
+    ("target_type", "expected_dtype", "element_strategy"),
+    [
+        (bool, np.bool_, st.booleans()),
+        (np.bool_, np.bool_, st.booleans()),
+        (int, np.int64, st.integers(min_value=-(2**63), max_value=2**63 - 1)),
+        (np.int_, np.int64, st.integers(min_value=-(2**63), max_value=2**63 - 1)),
+        (float, np.float64, st.floats(allow_nan=False)),
+        # TypeAdapter list[float] fails on literal NaN/Inf strings in some configs
+        (np.float64, np.float64, st.floats(allow_nan=False)),
+        (str, np.str_, st.text()),
+        (np.str_, np.str_, st.text()),
+        (int, np.int64, st.none()),
+    ],
+)
+def test_turn_into_list_properties(
+    target_type: type,
+    expected_dtype: type,
+    element_strategy: SearchStrategy[str | bool | float | None],
+) -> None:
+    """Dynamically test scalars, lists, and numpy arrays using generated data.
+
+    :param target_type: Type to compare against.
+    :param expected_dtype: Dtype to compare assertion against.
+    :param element_strategy: Strategy to use for comparing elements.
+    """
+    # Define nested strategies based on the primitive type
+    list_strategy = st.lists(element_strategy, min_size=0, max_size=100)
+    ndarray_strategy = arrays(dtype=expected_dtype, shape=st.integers(min_value=0, max_value=100))
+
+    @given(st.one_of(element_strategy, list_strategy, ndarray_strategy))
+    def run_property_test(val_or_list_or_array: object) -> None:
+        """Run the property test to check whether value/list/array handling works.
+
+        :param val_or_list_or_array: Value, list, or array to test.
+        """
+        if isinstance(val_or_list_or_array, list | np.ndarray):
+            if not len(val_or_list_or_array):
+                with pytest.raises(ValueError, match=r"List is not allowed to be empty."):
+                    _turn_into_list(val_or_list_or_array, target_type)  # pyright: ignore[reportCallIssue]
+            elif val_or_list_or_array[0] is None:
+                with pytest.raises(ValidationError):
+                    _turn_into_list(val_or_list_or_array, target_type)  # pyright: ignore[reportCallIssue]
+
+        elif val_or_list_or_array is None:
+            with pytest.raises(
+                TypeError,
+                match=r"The target_type does not match the scalar or value within the list/array.",
+            ):
+                _turn_into_list(val_or_list_or_array, target_type)  # pyright: ignore[reportCallIssue]
+
+        else:
+            result = _turn_into_list(val_or_list_or_array, target_type)  # pyright: ignore[reportCallIssue]
+
+            assert isinstance(result, np.ndarray)
+            assert result.dtype.type is expected_dtype
+
+            # Verify the length matches the structural input depth
+            if isinstance(val_or_list_or_array, (list, np.ndarray)):
+                assert len(result) == len(val_or_list_or_array)
+            else:
+                assert len(result) == 1
+
+    run_property_test()
+
+
+def test_type_error_on_mismatched_scalar() -> None:
+    """Property testing isn't ideal for checking a specific fallback error text; use direct assertion."""
+    with pytest.raises(TypeError, match="The target_type does not match the scalar"):
+        _turn_into_list("string_value", int)  # pyright: ignore[reportCallIssue]
+
+
+def test_unsupported_target_type() -> None:
+    """Test whether unsupported target_type raises an error."""
+    with pytest.raises(TypeError, match="Unsupported target type"):
+        _turn_into_list({"a": 1}, dict)  # pyright: ignore[reportCallIssue]

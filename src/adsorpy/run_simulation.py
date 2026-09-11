@@ -431,7 +431,7 @@ def _turn_into_list(
 def _turn_into_list(
     val_or_list: Polygon | list[Polygon] | np.ndarray[tuple[int], np.dtype[Polygon]],  # type: ignore[type-var] # pyright: ignore[reportInvalidTypeArguments]
     target_type: type[Polygon],
-) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # type: ignore[type-var]  pyright: ignore[reportInvalidTypeArguments]
+) -> np.ndarray[tuple[int], np.dtype[Polygon]]: ...  # type: ignore[type-var] # pyright: ignore[reportInvalidTypeArguments]
 
 
 def _turn_into_list(val_or_list: object, target_type: type) -> Tn:
@@ -441,6 +441,15 @@ def _turn_into_list(val_or_list: object, target_type: type) -> Tn:
     :param target_type: Comparison type. Should be either the type of the value or the type in the list.
     :return: The 1D array of the original variable or list.
     """
+    if target_type is np.bool_:
+        target_type = bool
+    elif target_type is np.int64:
+        target_type = int
+    elif target_type is np.float64:
+        target_type = float
+    elif target_type is np.str_:
+        target_type = str
+
     raw_list: list[object]
     if isinstance(val_or_list, np.ndarray):
         raw_list = val_or_list.tolist()
@@ -452,16 +461,20 @@ def _turn_into_list(val_or_list: object, target_type: type) -> Tn:
         errmsg = "The target_type does not match the scalar or value within the list/array."
         raise TypeError(errmsg)
 
-    if target_type in {bool, np.bool_}:
+    if not raw_list:
+        errmsg = "List is not allowed to be empty."
+        raise ValueError(errmsg)
+
+    if target_type is bool:
         return np.asarray(TypeAdapter(list[bool]).validate_python(raw_list), dtype=np.bool_)
 
-    if target_type in {int, np.int_}:
+    if target_type is int:
         return np.asarray(TypeAdapter(list[int]).validate_python(raw_list), dtype=np.int64)
 
-    if target_type in {float, np.float64}:
+    if target_type is float:
         return np.asarray(TypeAdapter(list[float]).validate_python(raw_list), dtype=np.float64)
 
-    if target_type in {str, np.str_}:
+    if target_type is str:
         return np.asarray(TypeAdapter(list[str]).validate_python(raw_list), dtype=np.str_)
 
     if target_type is Polygon:
@@ -470,8 +483,8 @@ def _turn_into_list(val_or_list: object, target_type: type) -> Tn:
             dtype=Polygon,
         )
 
-    errmsg = f"Unsupported target type: {target_type}"
-    raise ValueError(errmsg)
+    errmsg = f"Unsupported target type: {target_type.__name__}."
+    raise TypeError(errmsg)
 
 
 def _repeater(orig_array: Tarray, comparison_len: int) -> Tarray:
