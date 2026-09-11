@@ -24,7 +24,7 @@ commands = [["pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=
 
 [env.ruff]
 skip_install = true
-deps = ["ruff"]
+extras = ["lint"]
 commands = [["ruff", "check", "src", "tests"]]
 
 [env.mypy]
