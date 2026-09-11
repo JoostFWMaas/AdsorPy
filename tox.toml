@@ -42,5 +42,5 @@ extras = ["lint", "gui-deps", "test"]
 commands = [["slotscheck", "-m", "adsorpy", "-v"]]
 
 [env.tach]
-deps = ["tach"]
+extras = ["lint"]
 commands = [["tach", "check"]]
