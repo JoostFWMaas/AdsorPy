@@ -1,11 +1,10 @@
 # Copyright (c) 2025-2026 Contributors to the AdsorPy project.
 # SPDX-License-Identifier: MIT
-"""Schema and validator for the RSA simulation configuration using Pydantic v2."""
+"""Schema and validator for the RSA simulation configuration."""
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
 
 from adsorpy.types import BoundaryConditionStrs  # noqa: TC001
@@ -37,11 +36,14 @@ class LoggingConfig(BaseModel):
 
     enabled: bool
 
-
     @model_validator(mode="before")
     @classmethod
     def strip_comments(cls, data: RawJsonDict) -> RawJsonDict:
-        """Strip keys containing '_comment' from the incoming data dictionary."""
+        """Strip keys containing '_comment' from the incoming data dictionary.
+
+        :param data: Raw dictionary.
+        :return: Dictionary with '_comment' removed.
+        """
         return {k: v for k, v in data.items() if "_comment" not in k}
 
 
@@ -60,15 +62,15 @@ class WrappedValue(BaseModel, Generic[T]):
 class RsaConfig(BaseModel):
     """Full RSA Configuration model mirroring the JSON schema exactly.
 
-    :param logging: Whether to enable logging.
-    :param sites: The surface site count.
-    :param xsize: The surface size in the x direction.
-    :param ysize: The surface size in the y direction.
-    :param zsize: The surface size in the z direction.
-    :param max_molecule_count: The maximum number of molecules allowed in the simulation.
-    :param lattice_a: The lattice spacing.
-    :param boundary_type: The boundary type.
-    :param sticking_probability: The sticking probability.
+    :var logging: Whether to enable logging.
+    :var sites: The surface site count.
+    :var xsize: The surface size in the x direction.
+    :var ysize: The surface size in the y direction.
+    :var zsize: The surface size in the z direction.
+    :var max_molecule_count: The maximum number of molecules allowed in the simulation.
+    :var lattice_a: The lattice spacing.
+    :var boundary_type: The boundary type.
+    :var sticking_probability: The sticking probability.
     """
 
     logging: LoggingConfig
@@ -86,6 +88,9 @@ class RsaConfig(BaseModel):
 
         Supports drop-in instantiation via a positional file path string/Path object,
         or keyword arguments for testing/override setups.
+
+        :param config_path: The path to the configuration file.
+        :param kwargs: Additional keyword arguments.
         """
         if config_path is not None and not kwargs:
             validated_path = TypeAdapter(FilePath).validate_python(config_path)
@@ -103,10 +108,12 @@ class RsaConfig(BaseModel):
         else:
             super().__init__(**kwargs)
 
-
     @model_validator(mode="after")
     def validate_dimensions(self) -> Self:
-        """Enforce mutual exclusivity between grid 'sites' and spatial 'sizes'."""
+        """Enforce mutual exclusivity between grid 'sites' and spatial 'sizes'.
+
+        :return: The class itself.
+        """
         has_sites: bool = self.sites.value is not None
         has_sizes: bool = self.xsize.value is not None and self.ysize.value is not None
 
@@ -117,31 +124,3 @@ class RsaConfig(BaseModel):
             errmsg = "You must specify either 'sites' or both 'xsize' and 'ysize'."
             raise ValueError(errmsg)
         return self
-
-    @classmethod
-    def from_file(cls, config_path: str | Path) -> RsaConfig:
-        """Load and strictly validate the configuration directly from a file descriptor."""
-        path = Path(config_path)
-        with path.open("r") as f:
-            data = json.load(f)
-        return cls.model_validate(data)
-
-
-    def get_value(self, item: str, required: bool) -> JsonLeaf:
-        """Backward-compatible value getter matching legacy adsorpy API constraints."""
-        clean_item = item.replace(".value", "")
-
-        if clean_item == "logging":
-            return self.logging.enabled
-
-        attr: object = getattr(self, clean_item, None)
-        if isinstance(attr, WrappedValue):
-            # bound to JsonLeaf, guaranteed clean return type
-            value: JsonLeaf = attr.value
-            if value is None and required:
-                errmsg = "Parameter is required but set to None."
-                raise ValueError(errmsg)
-            return value
-
-        errmsg = f"Configuration has no parameter '{item}'"
-        raise AttributeError(errmsg)
