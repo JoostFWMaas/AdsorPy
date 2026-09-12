@@ -47,8 +47,14 @@ from PySide6.QtWidgets import (
     QSlider,
     QVBoxLayout,
 )
-from shapely import MultiPoint, MultiPolygon, Point, Polygon
+from shapely import LineString, MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
+
+if sys.version_info >= (3, 15):
+    pass
+else:
+    from frozendict import frozendict
+
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QFontMetrics
@@ -80,7 +86,7 @@ AtomKey = Annotated[str, StringConstraints(min_length=1, max_length=2)]
 """Atom key validator. String of length 1 or 2 denoting chemical symbols."""
 
 
-def _load_radii_from_json() -> dict[str, float]:
+def _load_radii_from_json() -> frozendict[str, float]:
     """Load the van der Waals radii from the vdw_radii.json file.
 
     Uses Pydantic to validate the JSON.
@@ -89,10 +95,10 @@ def _load_radii_from_json() -> dict[str, float]:
     """
     radii_adapter = TypeAdapter(dict[AtomKey, PositiveFloat])
     radii_json_path = Path(__file__).parent / "vdw_radii.json"
-    return radii_adapter.validate_json(radii_json_path.read_bytes())
+    return frozendict(radii_adapter.validate_json(radii_json_path.read_bytes()))
 
 
-RADII: Final[dict[str, float]] = _load_radii_from_json()
+RADII: Final[frozendict[str, float]] = _load_radii_from_json()
 """Key-value pairs of chemical symbols and van der Waals radii.
 
 Reference:
@@ -121,20 +127,8 @@ def discorectangle(
     """
     y_offset *= -1.0
     x_offset *= -1.0
-    circles = MultiPoint(
-        [(x_offset - distance / 2.0, y_offset), (x_offset + distance / 2.0, y_offset)],
-    ).buffer(radius)
 
-    rectangle = Polygon(
-        [
-            (x_offset - distance / 2.0, y_offset - radius),
-            (x_offset + distance / 2.0, y_offset - radius),
-            (x_offset + distance / 2.0, y_offset + radius),
-            (x_offset - distance / 2.0, y_offset + radius),
-        ],
-    )
-
-    return cast("Polygon", unary_union([rectangle, circles]))
+    return LineString([(x_offset - distance / 2.0, y_offset), (x_offset + distance / 2.0, y_offset)]).buffer(radius)
 
 
 @validate_call
@@ -1248,7 +1242,7 @@ def first_time_loader(
 def _xyz_verifier(
     atomkeys: StrArray,
     atompos: CoordsArray3D,
-    listed_molecule_count: np.int64 | None,
+    listed_molecule_count: np.int64 | int | None,
 ) -> None:
     """Check if the .xyz file is of the correct format.
 
@@ -1343,10 +1337,14 @@ def _initialise_reader(
 
 
 def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | Path | io.BytesIO = "") -> None:
-    """Save the molecule shape as an SVG with a locked aspect ratio."""
+    """Save the molecule shape as an SVG with a locked aspect ratio.
+
+    :param molecule: Molecule footprint polygon.
+    :param lattice: Lattice spacing parameter.
+    :param filename: Filename to save the svg to.
+    """
     rounding: int = 4
 
-    # 1. Extract and round molecule coordinates
     coords = np.round(
         np.asarray(molecule.exterior.coords, dtype=float),
         rounding,
@@ -1358,7 +1356,6 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
         stroke="none",
     )
 
-    # 2. Compute lattice circles
     elements: list[svg.Circle] = []
     lattice_x = lattice * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5])
     lattice_y = lattice * np.array(
@@ -1368,7 +1365,6 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
     for lx, ly in zip(lattice_x, lattice_y, strict=True):
         elements.append(svg.Circle(cx=float(lx), cy=float(ly), r=lattice * 0.1, fill="black"))
 
-    # 3. Calculate dynamic viewBox bounds
     all_x = np.concatenate([coords[:, 0], lattice_x])
     all_y = np.concatenate([coords[:, 1], lattice_y])
 
@@ -1394,11 +1390,9 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
     view_w = max_dim
     view_h = max_dim
 
-    # 4. Force Uniform Scaling Aspect Ratio
     # This prevents the container from stretching the SVG unevenly.
     aspect_ratio = svg.PreserveAspectRatio("xMidYMid")
 
-    # 5. Construct the SVG document
     svg_out = svg.SVG(
         width=svg.Length(100, "%"),
         height=svg.Length(100, "%"),
@@ -1407,7 +1401,6 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
         elements=[poly, *elements],
     )
 
-    # 6. Handle output
     svg_string = str(svg_out)
 
     if isinstance(filename, io.BytesIO):

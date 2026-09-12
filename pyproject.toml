@@ -57,7 +57,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    # This does not run on mobile because of Shapely.
+    # This does not run on mobile because of Shapely. It runs everywhere else, see matrix tests in CI.
     "Operating System :: OS Independent",
 ]
 keywords = [
@@ -103,6 +103,8 @@ dependencies = [
     "enum34>=1.1.10",
     "ipaddress>=1.0.23",
     "ply>=3.11",
+    "frozendict>=2.4.7; python_version < '3.14'",  # This exists in default Python starting 3.15.
+    "pre-commit>=4.6.2",
 ]
 
 
@@ -123,7 +125,7 @@ test = [
 lint = [
     "mypy==2.3.1",
     "ruff==0.16.7",
-    "basedpyright==1.40.0",
+    "basedpyright==1.40.1",
     "tach==0.35.0",
     "slotscheck==0.21.0",
     "pyside6-stubs==6.7.3.0",
@@ -208,8 +210,7 @@ omit = [
     "*/Output/*",
     "*/__main__.py",
     "*/__init__.py",
-    "*/molecule_lib*.py", # There is no point in testing the individual molecules.
-#    "*/rsa_config.py", # Cannot be tested properly. Will be reworked.
+#    "*/molecule_lib*.py", # There is no point in testing the individual molecules.
     "*/sensitivity.py", # Demonstrator, not included.
     "*/Scripts/*",
 ]
