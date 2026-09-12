@@ -103,7 +103,7 @@ dependencies = [
     "enum34>=1.1.10",
     "ipaddress>=1.0.23",
     "ply>=3.11",
-    "frozendict>=2.4.7; python_version < '3.14'",  # This exists in default Python starting 3.15.
+    "frozendict>=2.4.7; python_version <= '3.14'",  # This exists in default Python starting 3.15.
     "pre-commit>=4.6.2",
 ]
 
