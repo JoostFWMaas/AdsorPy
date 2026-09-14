@@ -50,9 +50,7 @@ from PySide6.QtWidgets import (
 from shapely import LineString, MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
 
-if sys.version_info >= (3, 15):
-    pass
-else:
+if sys.version_info < (3, 15):
     from frozendict import frozendict
 
 
@@ -1312,6 +1310,7 @@ def _initialise_reader(
 
     mask: BoolArray | None = None
     if isinstance(ignore_atoms, str):
+        ignore_atoms = ignore_atoms.replace(" ", "")  # Leaving spaces such as "C, H" would result in " H".
         ignore_atoms = ignore_atoms.split(",")
 
     if ignore_atoms is None:

@@ -8,9 +8,11 @@ import inspect
 from collections.abc import Callable
 from pathlib import Path
 from typing import ParamSpec, TypeVar
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from _pytest.monkeypatch import MonkeyPatch
 from hypothesis import given
 from hypothesis import strategies as st
 from hypothesis.strategies import DataObject
@@ -18,7 +20,7 @@ from pydantic import ValidationError
 from shapely import MultiPolygon, Polygon
 
 from adsorpy import molecule_lib
-from adsorpy.molecule_lib import _xyz_verifier
+from adsorpy.molecule_lib import _initialise_reader, _xyz_verifier, first_time_loader
 from adsorpy.types import CoordsArray3D, StrArray
 
 P_mol = ParamSpec("P_mol")  # Helps with static type checkers.
@@ -153,3 +155,138 @@ def test_xyz_verifier_errors(
     """
     with pytest.raises(ValueError, match=expected_value_error_message):
         _xyz_verifier(atomkeys, atompos, listed_molecule_count)
+
+
+@pytest.mark.parametrize(
+    ("file_name", "ignore_atoms", "z_trim", "value_error_message"),
+    [
+        ("mockfile.bad", None, None, r"The file type is not .xyz but .bad"),
+        (XYZ_FILE_PATH, None, np.inf, r"The current settings result in an empty molecule."),
+        (XYZ_FILE_PATH, ["C", "H", "O", "Cl", "F"], None, r"The current settings result in an empty molecule."),
+        (XYZ_FILE_PATH, ["Cl", "F"], None, None),
+        (XYZ_FILE_PATH, "Cl, F", None, None),
+        (XYZ_FILE_PATH, ["Cl"], None, None),
+        (XYZ_FILE_PATH, "Cl", None, None),
+        (XYZ_FILE_PATH, None, None, None),
+    ],
+)
+def test_initialise_reader(
+    file_name: str | Path, ignore_atoms: str | list[str] | None, z_trim: float | None, value_error_message: str | None,
+) -> None:
+    """Test whether the xyz file reader initialises correctly."""
+    if value_error_message:
+        with pytest.raises(ValueError, match=value_error_message):
+            _initialise_reader(file_name, ignore_atoms, z_trim)
+        return
+
+    total_atom_count = 7
+
+    ignore_atoms_len = 0
+    if isinstance(ignore_atoms, str):
+        ignore_atoms_len = len(ignore_atoms.split(","))
+    elif isinstance(ignore_atoms, list):
+        ignore_atoms_len = len(ignore_atoms)
+
+    atomkeys, atompos = _initialise_reader(file_name, ignore_atoms, z_trim)
+
+    assert atomkeys.size == total_atom_count - ignore_atoms_len, "Atomkeys length must match filtered length."
+    assert atompos.shape[0] == total_atom_count - ignore_atoms_len
+
+
+@pytest.fixture
+def mock_ui_environment(monkeypatch: MonkeyPatch) -> dict[str, MagicMock]:
+    """Set up standard Mocks via monkeypatching to isolate the loader from files and UI."""
+    mock_reader = MagicMock(return_value=(["H"], [[0.0, 0.0, 0.0]]))
+    monkeypatch.setattr(molecule_lib, "_initialise_reader", mock_reader)
+
+    mock_adapter_instance = MagicMock()
+    # Mocking standard hex return object
+    mock_color = MagicMock()
+    mock_color.as_hex.return_value = "#FF0000"
+    mock_adapter_instance.validate_json.return_value = {"H": mock_color}
+
+    mock_type_adapter = MagicMock(return_value=mock_adapter_instance)
+    monkeypatch.setattr(molecule_lib, "TypeAdapter", mock_type_adapter)
+
+    mock_qapp_class = MagicMock()
+    mock_qapp_class.instance.return_value = None  # Force initialization branch
+    monkeypatch.setattr(molecule_lib, "QApplication", mock_qapp_class)
+
+    mock_viewer = MagicMock()
+    mock_viewer.roll = 10.0
+    mock_viewer.pitch = 20.0
+    mock_viewer.yaw = 30.0
+    mock_viewer.x_offset = 1.0
+    mock_viewer.y_offset = 2.0
+    mock_viewer.disabled_molecules = ["He"]
+    mock_viewer.z_cutoff = 1.5
+    # Configure checkbox mock behavior
+    mock_viewer.z_filter_enable.isChecked.return_value = True
+
+    mock_viewer_class = MagicMock(return_value=mock_viewer)
+    monkeypatch.setattr(molecule_lib, "MoleculeViewer", mock_viewer_class)
+
+    return {"reader": mock_reader, "adapter_instance": mock_adapter_instance, "viewer": mock_viewer}
+
+
+def test_first_time_loader_success(mock_ui_environment: dict[str, MagicMock], tmp_path: Path) -> None:
+    """Test standard successful execution path with valid parameters."""
+    mocks = mock_ui_environment
+
+    # Create a temporary file path to satisfy Pydantic's FilePath type checker
+    temp_file = tmp_path / "molecule.xyz"
+    temp_file.write_text("xyz file content placeholder")
+
+    result = first_time_loader(
+        file_name=temp_file,
+        roll=0.0,
+        pitch=0.0,
+        yaw=0.0,
+        x_offset=0.0,
+        y_offset=0.0,
+        ignore_atoms=None,
+        z_trim=None,
+        reference_lattice_spacing=1.0,
+    )
+
+    # Verify underlying operations were triggered
+    mocks["reader"].assert_called_once_with(temp_file, None, None)
+    mocks["viewer"].exec.assert_called_once()
+
+    # Validate output dictionary payload matches Mocked properties
+    assert result["file_name"] == str(temp_file)
+    assert result["pitch"] == mocks["viewer"].pitch
+
+
+def test_first_time_loader_z_trim_disabled(mock_ui_environment: dict[str, MagicMock], tmp_path: Path) -> None:
+    """Test that z_trim resolves to None if the UI checkbox is unchecked."""
+    mocks = mock_ui_environment
+    mocks["viewer"].z_filter_enable.isChecked.return_value = False
+
+    temp_file = tmp_path / "molecule.xyz"
+    temp_file.write_text("xyz")
+
+    result = first_time_loader(file_name=temp_file)
+    assert result["z_trim"] is None
+
+
+def test_first_time_loader_color_json_fail(mock_ui_environment: dict[str, MagicMock], tmp_path: Path) -> None:
+    """Test gracefull warning fallback when the color JSON validation encounters errors."""
+    mocks = mock_ui_environment
+    # Override standard validation response to raise a FileNotFoundError exception
+    mocks["adapter_instance"].validate_json.side_effect = FileNotFoundError()
+
+    temp_file = tmp_path / "molecule.missingcolours"
+    temp_file.write_text("CDEFGH")
+
+    # Verify a warning is cleanly handled instead of blowing up execution
+    with pytest.warns(UserWarning, match="Could not parse colours safely"):
+        result = first_time_loader(file_name=temp_file)
+
+    assert result["roll"] == mocks["viewer"].roll  # Verification that code still ran completely
+
+
+def test_first_time_loader_pydantic_validation_error(tmp_path: Path) -> None:
+    """Test that @validate_call blocks wrong structural types prior to execution."""
+    with pytest.raises(ValidationError, match=r"path_not_file"):
+        first_time_loader(file_name=str(tmp_path / "file.bad"))
