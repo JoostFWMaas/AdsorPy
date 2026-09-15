@@ -47,8 +47,12 @@ from PySide6.QtWidgets import (
     QSlider,
     QVBoxLayout,
 )
-from shapely import MultiPoint, MultiPolygon, Point, Polygon
+from shapely import LineString, MultiPoint, MultiPolygon, Point, Polygon
 from shapely.ops import unary_union
+
+if sys.version_info < (3, 15):
+    from frozendict import frozendict
+
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QFontMetrics
@@ -80,7 +84,7 @@ AtomKey = Annotated[str, StringConstraints(min_length=1, max_length=2)]
 """Atom key validator. String of length 1 or 2 denoting chemical symbols."""
 
 
-def _load_radii_from_json() -> dict[str, float]:
+def _load_radii_from_json() -> frozendict[str, float]:
     """Load the van der Waals radii from the vdw_radii.json file.
 
     Uses Pydantic to validate the JSON.
@@ -89,10 +93,10 @@ def _load_radii_from_json() -> dict[str, float]:
     """
     radii_adapter = TypeAdapter(dict[AtomKey, PositiveFloat])
     radii_json_path = Path(__file__).parent / "vdw_radii.json"
-    return radii_adapter.validate_json(radii_json_path.read_bytes())
+    return frozendict(radii_adapter.validate_json(radii_json_path.read_bytes()))
 
 
-RADII: Final[dict[str, float]] = _load_radii_from_json()
+RADII: Final[frozendict[str, float]] = _load_radii_from_json()
 """Key-value pairs of chemical symbols and van der Waals radii.
 
 Reference:
@@ -121,20 +125,8 @@ def discorectangle(
     """
     y_offset *= -1.0
     x_offset *= -1.0
-    circles = MultiPoint(
-        [(x_offset - distance / 2.0, y_offset), (x_offset + distance / 2.0, y_offset)],
-    ).buffer(radius)
 
-    rectangle = Polygon(
-        [
-            (x_offset - distance / 2.0, y_offset - radius),
-            (x_offset + distance / 2.0, y_offset - radius),
-            (x_offset + distance / 2.0, y_offset + radius),
-            (x_offset - distance / 2.0, y_offset + radius),
-        ],
-    )
-
-    return cast("Polygon", unary_union([rectangle, circles]))
+    return LineString([(x_offset - distance / 2.0, y_offset), (x_offset + distance / 2.0, y_offset)]).buffer(radius)
 
 
 @validate_call
@@ -356,8 +348,8 @@ class MoleculeViewer(QDialog):
         plot_workspace = self._create_plot_panel()
 
         # Inject functional widget sub-controls directly into the module frames
-        self.setup_bond_controls(filter_panel)
-        self.setup_lattice_controls(filter_panel)
+        self._setup_bond_controls(filter_panel)
+        self._setup_lattice_controls(filter_panel)
 
         # Assemble unified parent layout structural paths
         top_horizontal_layout.addLayout(filter_panel, stretch=1)
@@ -461,7 +453,7 @@ class MoleculeViewer(QDialog):
         hint: QSize = self.bg_toggle.sizeHint()
         self.bg_toggle.setFixedWidth(hint.width() + 20)
 
-        # 1. Z-Cutoff Group
+        # Z-Cutoff group.
         z_group: QGroupBox = QGroupBox("Z-Cutoff Filter")
         z_layout: QHBoxLayout = QHBoxLayout(z_group)
         z_label: QLabel = QLabel("Z-Min Cut:")
@@ -488,7 +480,7 @@ class MoleculeViewer(QDialog):
         z_layout.addWidget(self.z_spinbox)
         filter_panel.addWidget(z_group)
 
-        # 2. Dynamic Atom Checkbox Toggles Group
+        # Dynamic atom checkbox toggles group.
         atom_group: QGroupBox = QGroupBox("Filter Atoms by Type")
         atom_checkbox_layout: QVBoxLayout = QVBoxLayout(atom_group)
 
@@ -574,10 +566,12 @@ class MoleculeViewer(QDialog):
             label.setFixedWidth(max_width)
 
             slider: QSlider = QSlider(Qt.Orientation.Horizontal)
+            slider.setObjectName(f"slider_{name}")
             slider.setMinimum(val_range[0] * 10)
             slider.setMaximum(val_range[1] * 10)
 
             box: QDoubleSpinBox = QDoubleSpinBox()
+            box.setObjectName(f"box_{name}")
             box.setRange(float(val_range[0]), float(val_range[1]))
             box.setWrapping(val_range[2])
             box.setDecimals(2)
@@ -656,14 +650,12 @@ class MoleculeViewer(QDialog):
 
         self.draw()
 
-    def setup_bond_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
+    def _setup_bond_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
         """Create and connect the atomic bond visualisation toggle.
 
         :param layout: The QLayout instance (e.g., QVBoxLayout) where the checkbox should be added.
         """
-        # Ensure the underlying rendering property exists
-        if not hasattr(self, "show_bonds"):
-            self.show_bonds = False
+        self.show_bonds = False
 
         # Initialise the checkbox widget
         self.bond_checkbox = QCheckBox("Show Atomic Bonds (visual guide)")
@@ -675,23 +667,7 @@ class MoleculeViewer(QDialog):
         # Insert the checkbox into the provided layout panel
         layout.addWidget(self.bond_checkbox)
 
-    def update_values(self, val: float, name: str, box_widget: QDoubleSpinBox) -> None:
-        """Unifies slider-to-backend slot to keep widgets cleanly scoped.
-
-        :param val: The value to update the attribute to.
-        :param name: The name of the parameter to update.
-        :param box_widget: The QDoubleSpinBox widget to update.
-        """
-        v = val / 10
-        # Block signals to avoid feedback looping when setting the companion value
-        box_widget.blockSignals(True)  # noqa: FBT003
-        box_widget.setValue(v)
-        box_widget.blockSignals(False)  # noqa: FBT003
-
-        setattr(self, name, v)
-        self.draw()
-
-    def setup_lattice_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
+    def _setup_lattice_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
         """Create and connect a standalone double spinbox for lattice spacing.
 
         :param layout: The layout instance where the widget should be added.
@@ -731,11 +707,28 @@ class MoleculeViewer(QDialog):
         :param name: The name of the parameter to update using setattr().
         :param box_widget: The QDoubleSpinBox instance to link to the slider.
         """
-        v = box_widget.value()
-        # Block signals to avoid feedback looping when setting the companion value
+        box_val = round(box_widget.value(), 2)
+        target_slider_val = round(box_val * 10)
+
         slider_widget.blockSignals(True)  # noqa: FBT003
-        slider_widget.setValue(int(v * 10))
+        slider_widget.setValue(target_slider_val)
         slider_widget.blockSignals(False)  # noqa: FBT003
+
+        setattr(self, name, round(box_val, 2))
+        self.draw()
+
+    def update_values(self, val: float, name: str, box_widget: QDoubleSpinBox) -> None:
+        """Unifies slider-to-backend slot to keep widgets cleanly scoped.
+
+        :param val: The value to update the attribute to.
+        :param name: The name of the parameter to update.
+        :param box_widget: The QDoubleSpinBox widget to update.
+        """
+        v = round(val / 10.0, 2)
+
+        box_widget.blockSignals(True)  # noqa: FBT003
+        box_widget.setValue(v)
+        box_widget.blockSignals(False)  # noqa: FBT003
 
         setattr(self, name, v)
         self.draw()
@@ -836,8 +829,7 @@ class MoleculeViewer(QDialog):
 
         span: float | np.float64 = max(xmax_v - xmin_v, ymax_v - ymin_v) * 1.5
         min_comparison: float = 1e-9
-        if span < min_comparison:
-            span = 1.0
+        span = 1.0 if span < min_comparison else span
 
         cx_data = (xmin_v + xmax_v) / 2
         cy_data = (ymin_v + ymax_v) / 2
@@ -1248,7 +1240,7 @@ def first_time_loader(
 def _xyz_verifier(
     atomkeys: StrArray,
     atompos: CoordsArray3D,
-    listed_molecule_count: np.int64 | None,
+    listed_molecule_count: np.int64 | int | None,
 ) -> None:
     """Check if the .xyz file is of the correct format.
 
@@ -1318,6 +1310,7 @@ def _initialise_reader(
 
     mask: BoolArray | None = None
     if isinstance(ignore_atoms, str):
+        ignore_atoms = ignore_atoms.replace(" ", "")  # Leaving spaces such as "C, H" would result in " H".
         ignore_atoms = ignore_atoms.split(",")
 
     if ignore_atoms is None:
@@ -1343,10 +1336,14 @@ def _initialise_reader(
 
 
 def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | Path | io.BytesIO = "") -> None:
-    """Save the molecule shape as an SVG with a locked aspect ratio."""
+    """Save the molecule shape as an SVG with a locked aspect ratio.
+
+    :param molecule: Molecule footprint polygon.
+    :param lattice: Lattice spacing parameter.
+    :param filename: Filename to save the svg to.
+    """
     rounding: int = 4
 
-    # 1. Extract and round molecule coordinates
     coords = np.round(
         np.asarray(molecule.exterior.coords, dtype=float),
         rounding,
@@ -1358,7 +1355,6 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
         stroke="none",
     )
 
-    # 2. Compute lattice circles
     elements: list[svg.Circle] = []
     lattice_x = lattice * np.array([0, 1, -1, 0.5, -0.5, 0.5, -0.5])
     lattice_y = lattice * np.array(
@@ -1368,7 +1364,6 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
     for lx, ly in zip(lattice_x, lattice_y, strict=True):
         elements.append(svg.Circle(cx=float(lx), cy=float(ly), r=lattice * 0.1, fill="black"))
 
-    # 3. Calculate dynamic viewBox bounds
     all_x = np.concatenate([coords[:, 0], lattice_x])
     all_y = np.concatenate([coords[:, 1], lattice_y])
 
@@ -1394,11 +1389,9 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
     view_w = max_dim
     view_h = max_dim
 
-    # 4. Force Uniform Scaling Aspect Ratio
     # This prevents the container from stretching the SVG unevenly.
     aspect_ratio = svg.PreserveAspectRatio("xMidYMid")
 
-    # 5. Construct the SVG document
     svg_out = svg.SVG(
         width=svg.Length(100, "%"),
         height=svg.Length(100, "%"),
@@ -1407,7 +1400,6 @@ def save_molecule_svg(molecule: Polygon, lattice: float = 1.0, filename: str | P
         elements=[poly, *elements],
     )
 
-    # 6. Handle output
     svg_string = str(svg_out)
 
     if isinstance(filename, io.BytesIO):
