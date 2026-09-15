@@ -39,7 +39,7 @@ def moleculeviewer_factory(qtbot: QtBot) -> Callable[[], MoleculeViewer]:
                 ],
                 dtype=np.float64,
             ),
-            "init_roll": 10.0,
+            "init_roll": 0.0,
             "init_pitch": None,
         }
 
@@ -57,9 +57,8 @@ def test_init_moleculeviewer(moleculeviewer_factory: Callable[[], MoleculeViewer
     assert len(mol_vwr.atomkeys) == molecule_count
     assert isinstance(mol_vwr.atomkeys, np.ndarray)
 
-    init_roll = 10.0
 
-    assert mol_vwr.roll == init_roll
+    assert mol_vwr.roll == 0.0
     assert mol_vwr.pitch == 0.0
     assert mol_vwr.yaw == 0.0
 
