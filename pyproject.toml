@@ -123,7 +123,7 @@ test = [
 lint = [
     "mypy==2.3.1",
     "ruff==0.16.7",
-    "basedpyright==1.40.0",
+    "basedpyright==1.40.1",
     "tach==0.35.0",
     "slotscheck==0.21.0",
     "pyside6-stubs==6.7.3.0",
