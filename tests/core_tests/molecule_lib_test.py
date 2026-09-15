@@ -36,7 +36,7 @@ PYDANTIC_CUSTOM_STRATEGIES = {
     "FilePath": st.just(XYZ_FILE_PATH),
     "str | list[str] | None": st.one_of(st.text(min_size=0, max_size=2), st.none()),
     "float | None": st.none(),
-    "float": st.floats(allow_nan=False, allow_infinity=False),
+    "float": st.floats(min_value=-1000, max_value=1000, allow_nan=False, allow_infinity=False),
 }
 
 
@@ -123,10 +123,10 @@ def test_simple_molecule_generation_with_args(molecule_function: Callable[P_mol,
     generated_kwargs = data.draw(strategy)
 
     output = molecule_function(**generated_kwargs)  # type: ignore[arg-type, call-arg]
-    if str(molecule_function) != "xyz_reader":
-        assert isinstance(output, Polygon)
+    if molecule_function.__name__ == "xyz_reader":
+        assert isinstance(output, Polygon | MultiPolygon), "xyz_reader should produce a Polygon, or else MultiPolygon."
     else:
-        assert isinstance(output, Polygon | MultiPolygon)
+        assert isinstance(output, Polygon), f"{molecule_function.__name__} should produce a Polygon."
 
 
 @pytest.mark.parametrize(

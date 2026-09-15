@@ -89,6 +89,7 @@ dependencies = [
     "defusedxml>=0.7.1",
     "PySide6>=6.11.1",
     "typing-extensions>=4.16.0",
+    "frozendict>=2.4.7; python_version <= '3.14'",  # This exists in default Python starting 3.15.
     # Everything after this line is included so uv also runs with the lowest dependency resolution.
     "html5lib>=1.1",
     "wcwidth>=0.7.0",
@@ -103,7 +104,6 @@ dependencies = [
     "enum34>=1.1.10",
     "ipaddress>=1.0.23",
     "ply>=3.11",
-    "frozendict>=2.4.7; python_version <= '3.14'",  # This exists in default Python starting 3.15.
     "pre-commit>=4.6.2",
 ]
 
@@ -126,7 +126,7 @@ lint = [
     "mypy==2.3.1",
     "ruff==0.16.7",
     "basedpyright==1.40.1",
-    "tach==0.35.0",
+    "tach==0.35.1",
     "slotscheck==0.21.0",
     "pyside6-stubs==6.7.3.0",
     "gitpython>=3.1.62",
@@ -142,7 +142,7 @@ docs = [
 envs = [
     "tox==4.61.4",
     "tox-uv==1.36.0",
-    "uv==0.12.13",
+    "uv==0.12.15",
 ]
 dev-misc = [
     "build>=1.6.1",

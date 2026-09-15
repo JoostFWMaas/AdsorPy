@@ -176,7 +176,7 @@ def polygonium(
 ) -> Polygon:
     """Create a simple regular polygon with optional rounding.
 
-    :param verts: The vertex count.
+    :param verts: The vertex count, minimum of 3.
     :param scale: The scale factor of the polygon.
     :param roundedness: The roundedness, removes sharp corners. Theoretical limit at infinity is a disk.
     :return: The regular (rounded) polygon.
@@ -191,9 +191,8 @@ def polygonium(
 
     if roundedness > 0.0:
         center = Point((0.0, 0.0))
-        fact = molecule.exterior.hausdorff_distance(center)
-        molecule = molecule.buffer(roundedness, resolution=4 * verts)
-        fact /= molecule.exterior.hausdorff_distance(center)
+        molecule = molecule.buffer(roundedness)
+        fact = scale / (roundedness + scale)  # With the power of pen and paper, 2 lines of code became 1 line of maths.
         molecule = aff.scale(molecule, xfact=fact, yfact=fact, origin=center)
 
     return cast("Polygon", shapely.make_valid(molecule))
