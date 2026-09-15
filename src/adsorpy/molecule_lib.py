@@ -348,8 +348,8 @@ class MoleculeViewer(QDialog):
         plot_workspace = self._create_plot_panel()
 
         # Inject functional widget sub-controls directly into the module frames
-        self.setup_bond_controls(filter_panel)
-        self.setup_lattice_controls(filter_panel)
+        self._setup_bond_controls(filter_panel)
+        self._setup_lattice_controls(filter_panel)
 
         # Assemble unified parent layout structural paths
         top_horizontal_layout.addLayout(filter_panel, stretch=1)
@@ -453,7 +453,7 @@ class MoleculeViewer(QDialog):
         hint: QSize = self.bg_toggle.sizeHint()
         self.bg_toggle.setFixedWidth(hint.width() + 20)
 
-        # 1. Z-Cutoff Group
+        # Z-Cutoff group.
         z_group: QGroupBox = QGroupBox("Z-Cutoff Filter")
         z_layout: QHBoxLayout = QHBoxLayout(z_group)
         z_label: QLabel = QLabel("Z-Min Cut:")
@@ -480,7 +480,7 @@ class MoleculeViewer(QDialog):
         z_layout.addWidget(self.z_spinbox)
         filter_panel.addWidget(z_group)
 
-        # 2. Dynamic Atom Checkbox Toggles Group
+        # Dynamic atom checkbox toggles group.
         atom_group: QGroupBox = QGroupBox("Filter Atoms by Type")
         atom_checkbox_layout: QVBoxLayout = QVBoxLayout(atom_group)
 
@@ -566,10 +566,12 @@ class MoleculeViewer(QDialog):
             label.setFixedWidth(max_width)
 
             slider: QSlider = QSlider(Qt.Orientation.Horizontal)
+            slider.setObjectName(f"slider_{name}")
             slider.setMinimum(val_range[0] * 10)
             slider.setMaximum(val_range[1] * 10)
 
             box: QDoubleSpinBox = QDoubleSpinBox()
+            box.setObjectName(f"box_{name}")
             box.setRange(float(val_range[0]), float(val_range[1]))
             box.setWrapping(val_range[2])
             box.setDecimals(2)
@@ -648,14 +650,12 @@ class MoleculeViewer(QDialog):
 
         self.draw()
 
-    def setup_bond_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
+    def _setup_bond_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
         """Create and connect the atomic bond visualisation toggle.
 
         :param layout: The QLayout instance (e.g., QVBoxLayout) where the checkbox should be added.
         """
-        # Ensure the underlying rendering property exists
-        if not hasattr(self, "show_bonds"):
-            self.show_bonds = False
+        self.show_bonds = False
 
         # Initialise the checkbox widget
         self.bond_checkbox = QCheckBox("Show Atomic Bonds (visual guide)")
@@ -667,23 +667,7 @@ class MoleculeViewer(QDialog):
         # Insert the checkbox into the provided layout panel
         layout.addWidget(self.bond_checkbox)
 
-    def update_values(self, val: float, name: str, box_widget: QDoubleSpinBox) -> None:
-        """Unifies slider-to-backend slot to keep widgets cleanly scoped.
-
-        :param val: The value to update the attribute to.
-        :param name: The name of the parameter to update.
-        :param box_widget: The QDoubleSpinBox widget to update.
-        """
-        v = val / 10
-        # Block signals to avoid feedback looping when setting the companion value
-        box_widget.blockSignals(True)  # noqa: FBT003
-        box_widget.setValue(v)
-        box_widget.blockSignals(False)  # noqa: FBT003
-
-        setattr(self, name, v)
-        self.draw()
-
-    def setup_lattice_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
+    def _setup_lattice_controls(self, layout: QHBoxLayout | QVBoxLayout) -> None:
         """Create and connect a standalone double spinbox for lattice spacing.
 
         :param layout: The layout instance where the widget should be added.
@@ -723,11 +707,28 @@ class MoleculeViewer(QDialog):
         :param name: The name of the parameter to update using setattr().
         :param box_widget: The QDoubleSpinBox instance to link to the slider.
         """
-        v = box_widget.value()
-        # Block signals to avoid feedback looping when setting the companion value
+        box_val = round(box_widget.value(), 2)
+        target_slider_val = round(box_val * 10)
+
         slider_widget.blockSignals(True)  # noqa: FBT003
-        slider_widget.setValue(int(v * 10))
+        slider_widget.setValue(target_slider_val)
         slider_widget.blockSignals(False)  # noqa: FBT003
+
+        setattr(self, name, round(box_val, 2))
+        self.draw()
+
+    def update_values(self, val: float, name: str, box_widget: QDoubleSpinBox) -> None:
+        """Unifies slider-to-backend slot to keep widgets cleanly scoped.
+
+        :param val: The value to update the attribute to.
+        :param name: The name of the parameter to update.
+        :param box_widget: The QDoubleSpinBox widget to update.
+        """
+        v = round(val / 10.0, 2)
+
+        box_widget.blockSignals(True)  # noqa: FBT003
+        box_widget.setValue(v)
+        box_widget.blockSignals(False)  # noqa: FBT003
 
         setattr(self, name, v)
         self.draw()
@@ -828,8 +829,7 @@ class MoleculeViewer(QDialog):
 
         span: float | np.float64 = max(xmax_v - xmin_v, ymax_v - ymin_v) * 1.5
         min_comparison: float = 1e-9
-        if span < min_comparison:
-            span = 1.0
+        span = 1.0 if span < min_comparison else span
 
         cx_data = (xmin_v + xmax_v) / 2
         cy_data = (ymin_v + ymax_v) / 2

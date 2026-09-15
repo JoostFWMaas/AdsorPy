@@ -132,12 +132,12 @@ def test_simple_molecule_generation_with_args(molecule_function: Callable[P_mol,
 @pytest.mark.parametrize(
     ("atomkeys", "atompos", "listed_molecule_count", "expected_value_error_message"),
     [
-        (np.array(["C"]), np.empty((1, 3)), None, r"The .xyz file must contain a valid molecule count on line 1."),
-        (np.array(["C"]), np.empty((1, 3)), 1000, "The file promises 1000 molecules but gives 1"),
-        (np.array(["Mock"]), np.empty((1, 3)), 1, r"Bad molecule types detected:"),
-        (np.array(["C"]), np.empty((2, 3)), 1, "The keys and molecule coordinate lists are not of equal length."),
+        (np.array(["C"]), np.zeros((1, 3)), None, r"The .xyz file must contain a valid molecule count on line 1."),
+        (np.array(["C"]), np.zeros((1, 3)), 1000, "The file promises 1000 molecules but gives 1"),
+        (np.array(["Mock"]), np.zeros((1, 3)), 1, r"Bad molecule types detected:"),
+        (np.array(["C"]), np.zeros((2, 3)), 1, "The keys and molecule coordinate lists are not of equal length."),
         (np.array(["C"]), np.full((1, 3), np.inf), 1, r"The .xyz file contains invalid coordinates."),
-        (np.array(["C"]), np.empty((1, 2)), 1, r"The .xyz file must contain 3D coordinates."),
+        (np.array(["C"]), np.zeros((1, 2)), 1, r"The .xyz file must contain 3D coordinates."),
     ],
 )
 def test_xyz_verifier_errors(
@@ -171,7 +171,10 @@ def test_xyz_verifier_errors(
     ],
 )
 def test_initialise_reader(
-    file_name: str | Path, ignore_atoms: str | list[str] | None, z_trim: float | None, value_error_message: str | None,
+    file_name: str | Path,
+    ignore_atoms: str | list[str] | None,
+    z_trim: float | None,
+    value_error_message: str | None,
 ) -> None:
     """Test whether the xyz file reader initialises correctly."""
     if value_error_message:
