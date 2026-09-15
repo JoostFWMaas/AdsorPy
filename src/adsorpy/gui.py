@@ -771,7 +771,7 @@ class ZoomableSvgWidget(QSvgWidget):
         :param event: QWheelEvent for when scrolling occurs.
         """
         modifiers = event.modifiers()
-        scroll_elder = self.parent()
+        scroll_elder = cast("QScrollArea | QObject | None", self.parent())
 
         while scroll_elder is not None and not isinstance(scroll_elder, QScrollArea):  # Find the scrollable ancestor.
             scroll_elder = scroll_elder.parent()
@@ -2055,26 +2055,16 @@ class MoleculeGeneration(QWidget):
 
             :param layout: The layout to clear.
             """
-            widget: QWidget | None
-            child_layout: QLayout | None
-
             while layout.count():
+                # takeAt(0) removes the 0th item and returns it, just like .pop()!
                 item = cast("QLayoutItem", layout.takeAt(0))  # type: ignore[redundant-cast]
 
-                # Use structural pattern matching to safely handle the item type
-                match item.widget(), item.layout():
-                    case (widget, _) if widget is not None:
-                        # It is a widget container item
-                        widget.deleteLater()
-
-                    case (_, child_layout) if child_layout is not None:
-                        # It is a nested layout item; recurse down first, then delete it
-                        clear_layout(child_layout)
-                        child_layout.deleteLater()
-
-                    case _:
-                        # It is a spacer item or an empty container
-                        del item
+                if widget := item.widget():  #                         vvvvvvv "rubbish" according to autocorrect :).
+                    widget.deleteLater()  # C++ deletion, will collect garbage when all references have been deleted.
+                elif child_layout := item.layout():
+                    clear_layout(child_layout)  # Matches on QLayouts. These need to be deleted recursively.
+                    child_layout.deleteLater()
+                del item  # Catches everything else including QSpacerItem.
 
         clear_layout(self.param_layout)
 
