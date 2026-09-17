@@ -27,7 +27,7 @@ extra_link_args = ["-lomp"]
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.3.2-alpha.2+test.1"  # Edit manually.
+version = "1.3.2-alpha.2+test.2"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -124,7 +124,7 @@ test = [
 ]
 lint = [
     "mypy==2.3.1",
-    "ruff==0.16.7",
+    "ruff==0.16.8",
     "basedpyright==1.40.1",
     "tach==0.35.1",
     "slotscheck==0.21.0",
