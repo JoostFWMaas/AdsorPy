@@ -212,7 +212,7 @@ jobs:
           set -euo pipefail
           for whl in dist/*.whl; do
             echo "Processing $whl..."
-            dist_info_dir=$(unzip -Z1 "$whl" | grep -E '^[^/\\]+\.dist-info[/\\]$' | head -n 1)
+            dist_info_dir=$(unzip -Z1 "$whl" | grep -E '^[^/\\]+\.dist-info[/\\]?$' | head -n 1)
             staging_path="tmp_stage/${dist_info_dir}sboms"
             mkdir -p "$staging_path"
             cp sbom.cdx.json "$staging_path/"
