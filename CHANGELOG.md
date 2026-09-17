@@ -5,12 +5,20 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 
 ## [unreleased]
 ### Added
+### Changed
+### Fixed
+### Removed
+
+## 1.3.2 - 2026-09-17
+### Added
 - Add angstrom (Å) scale indicator to gap size distribution plot of GUI.
+- Add tests to ``molecule_lib.py``. More detailed tests to be added later.
 ### Changed
 - Molecule footprints are now shown automatically in the GUI (if valid).
-- Make ``rsa_config.py`` safe with ``Pydantic``.
+- Make ``rsa_config.py`` safe with ``Pydantic`` and add tests.
 ### Fixed
 - Rotation, reflection, and counts are now shown correctly when looking at added molecules in GUI.
+- Make ``mypy`` function correctly (more strictly) by fixing the ``pyproject.toml``.
 ### Removed
 - Remove show molecule button from GUI. Molecule is now shown automatically when valid.
 

@@ -5,9 +5,10 @@ recreate = true
 labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
 
-# Quick reference: for all tests in clean environments, ``uvx tox run -r``
-# For linting only: ``uvx tox run -m static -r``
-# For a single env, such as py310: ``uvx tox run -e py310 -r``
+# Quick reference: for all tests in clean environments, ``tox run -r``
+# For linting only: ``run -m static -r``
+# For a single env, such as py310: ``tox run -e py310 -r``
+# To run in parallel: ``tox -p``
 [env_run_base]
 runner = "uv-venv-lock-runner"
 pass_env = [
