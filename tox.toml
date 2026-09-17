@@ -1,5 +1,5 @@
 min_version = "4.61.4"
-env_list = [{ prefix = "py3", start = 10, stop = 14 }, "coverage-report", "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
+env_list = [{ prefix = "py3", start = 10, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
 isolated_build = true
 recreate = true
 labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
@@ -20,18 +20,8 @@ pass_env = [
     "QT_XCB_GL_INTEGRATION",
 ]
 extras = ["test"]
-commands = [["coverage", "run", "-p", "-m", "pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
+commands = [["pytest", "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
     [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
-]
-
-[env.coverage-report]
-depends = ["py3*"]
-change_dir = "{tox_root}"
-set_env = { "COVERAGE_FILE" = "{tox_root}/.coverage" }
-commands = [
-    ["coverage", "combine"],
-    ["coverage", "report", "-m"],
-    ["coverage", "xml"], # Handy for CI tools like Codecov
 ]
 
 [env.ruff]
