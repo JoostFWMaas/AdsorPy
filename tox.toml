@@ -11,7 +11,6 @@ labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 # To run in parallel: ``tox -p``
 [env_run_base]
 runner = "uv-venv-lock-runner"
-set_env = { "COVERAGE_FILE" = "{tox_root}/.coverage" }
 pass_env = [
     "CI",
     "GITHUB_*",
