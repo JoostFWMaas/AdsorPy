@@ -293,18 +293,18 @@ jobs:
 
           expected_raw = "${GITHUB_REF_NAME}"
 
-          # 1. Cleanse and parse the tag string from GitHub Actions
+          # Cleanse and parse the tag string from GitHub Actions
           expected_clean = re.sub(r"^v", "", expected_raw)
           expected_clean = expected_clean.replace("-alpha.", "a").replace("-beta.", "b").replace("-rc.", "rc")
           expected_clean = re.sub(r"\+.*$", "", expected_clean)
           expected = Version(expected_clean)
 
-          # 2. Extract the actual version and dynamically drop any local build metadata suffix
+          # Extract the actual version and dynamically drop any local build metadata suffix
           actual_raw = adsorpy.__version__
           actual_clean = re.sub(r"\+.*$", "", actual_raw)
           actual = Version(actual_clean)
 
-          # 3. Perform the apples-to-apples comparison
+          # Perform the apples-to-apples comparison
           if actual != expected:
               print(f"❌ Version mismatch! Environment code: {actual} (raw: {actual_raw}) | Target Tag: {expected} (parsed from {expected_raw})")
               sys.exit(1)
@@ -416,6 +416,8 @@ jobs:
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
