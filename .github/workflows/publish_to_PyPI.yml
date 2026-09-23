@@ -431,17 +431,19 @@ jobs:
           VERSION=$(echo "$VERSION" | sed 's/+.*//')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Wait for TestPyPI index to update
-        run: sleep 60
-
       - name: Install from TestPyPI
-        run: |
-          set -euo pipefail
-          uv run --no-project pip install \
-            --index-url https://test.pypi.org \
-            --extra-index-url https://pypi.org \
-            ${{ env.PACKAGE_NAME }}==${{ steps.normalize_version.outputs.version }}
-          uv run --no-project python -c "import ${{ env.PACKAGE_NAME }}; print(${{ env.PACKAGE_NAME }}.__version__)"
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60
+        with:
+          max_attempts: 3
+          timeout_seconds: 120
+          retry_wait_seconds: 60
+          command: |
+            set -euo pipefail
+            uv run \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/ \
+              --with "${{ env.PACKAGE_NAME }}==${{ steps.normalize_version.outputs.version }}" \
+            python -c "import ${{ env.PACKAGE_NAME }}; print(${{ env.PACKAGE_NAME }}.__version__)"
 
       - name: Verify import outside project tree
         run: |
