@@ -419,6 +419,8 @@ jobs:
 
       - name: Setup uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
 
       - name: Normalize version
         id: normalize_version
@@ -432,7 +434,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install from TestPyPI
-        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60
+        uses: nick-fields/retry@ad984534de44a9489a53aefd81eb77f87c70dc60 # v4.0.0
         with:
           max_attempts: 3
           timeout_seconds: 120
@@ -440,6 +442,7 @@ jobs:
           command: |
             set -euo pipefail
             uv run \
+              --index-strategy unsafe-best-match \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/ \
               --with "${{ env.PACKAGE_NAME }}==${{ steps.normalize_version.outputs.version }}" \
