@@ -91,28 +91,16 @@ jobs:
         with:
           arch: ${{ matrix.msvc_arch }}
 
-      - name: Build wheels (Windows)
-        if: runner.os == 'Windows'
+      - name: Build wheels
         uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_PLATFORM: ${{ matrix.platform || 'auto' }}
-          CIBW_ARCHS: ${{ matrix.archs || 'auto' }}
+          CIBW_ARCHS: ${{ matrix.os == 'windows-intel' && 'AMD64' || 'auto' }}
           CIBW_TEST_SKIP: "*-win_arm64"
           SOURCE_DATE_EPOCH: "315532800"
           PYTHONHASHSEED: "0"
-          CC: "cl"
-          CXX: "cl"
-
-      - name: Build wheels (Unix & Web)
-        if: runner.os != 'Windows'
-        uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
-        env:
-          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
-          CIBW_PLATFORM: ${{ matrix.platform || 'auto' }}
-          CIBW_ARCHS: ${{ matrix.archs || 'auto' }}
-          SOURCE_DATE_EPOCH: "315532800"
-          PYTHONHASHSEED: "0"
+          CIBW_ENVIRONMENT_WINDOWS: "CC='cl' CXX='cl'"
 
       - name: Upload OS-specific wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
