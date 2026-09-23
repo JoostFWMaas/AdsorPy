@@ -97,7 +97,7 @@ jobs:
           CIBW_PLATFORM: ${{ matrix.platform || 'auto' }}
           CIBW_ARCHS: ${{ matrix.archs || 'auto' }}
           CIBW_TEST_SKIP: "*-win_arm64"
-          SOURCE_DATE_EPOCH: "0"
+          SOURCE_DATE_EPOCH: "315532800"
           PYTHONHASHSEED: "0"
 
       - name: Upload OS-specific wheels
@@ -122,7 +122,7 @@ jobs:
       attestations: write  # Required for generating native GitHub Attestations
 
     env:
-      SOURCE_DATE_EPOCH: "0"
+      SOURCE_DATE_EPOCH: "315532800"
       PYTHONHASHSEED: "0"
       UV_FROZEN: "1"
 
