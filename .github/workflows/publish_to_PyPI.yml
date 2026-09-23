@@ -55,8 +55,10 @@ jobs:
             runs-on: ubuntu-26.04-arm
           - os: windows-intel
             runs-on: windows-latest
+            msvc_arch: x64
           - os: windows-arm
             runs-on: windows-11-arm
+            msvc_arch: arm64
           - os: macos-intel
             # macos-15-intel is the last x86_64 runner
             runs-on: macos-15-intel
@@ -87,7 +89,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: TheMrMilchmann/setup-msvc-dev@368ef7d1ee4d1171b31d4a7f67f4d954f903f5a9 # v4.1.0
         with:
-          arch: arm64
+          arch: ${{ matrix.msvc_arch }}
 
       - name: Build wheels
         uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
@@ -99,8 +101,8 @@ jobs:
           CIBW_TEST_SKIP: "*-win_arm64"
           SOURCE_DATE_EPOCH: "315532800"
           PYTHONHASHSEED: "0"
-          CC: cl
-          CXX: cl
+          CC: ${{ runner.os == 'Windows' && 'cl' || '' }}
+          CXX: ${{ runner.os == 'Windows' && 'cl' || '' }}
 
       - name: Upload OS-specific wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
