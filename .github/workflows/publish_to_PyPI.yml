@@ -450,13 +450,6 @@ jobs:
               --with "${{ env.PACKAGE_NAME }}==${{ steps.normalize_version.outputs.version }}" \
             python -c "import ${{ env.PACKAGE_NAME }}; print(${{ env.PACKAGE_NAME }}.__version__)"
 
-      - name: Verify import outside project tree
-        run: |
-          set -euo pipefail
-          mkdir /tmp/testimport
-          cd /tmp/testimport
-          uv run --no-project python -c "import ${{ env.PACKAGE_NAME }}; print('Import OK')"
-
   # =========================================================================
   # 5. PRODUCTION DEPLOYMENT: Pushes definitive distributions to live PyPI registry
   # =========================================================================
