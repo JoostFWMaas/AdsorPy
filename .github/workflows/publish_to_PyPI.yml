@@ -149,17 +149,25 @@ jobs:
           path: ~/.cache/uv
           key: uv-${{ hashFiles('uv.lock') }}
 
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .sbomify-cache
+          key: sbomify-${{ runner.os }}
+
       - name: Generate SBOM
         uses: sbomify/sbomify-action@ed3f547023f5a3cc82025a85f568f6baff4bda3f # v26.8.0
         env:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
-          UPLOAD: true
+          UPLOAD: false
           COMPONENT_ID: "fnTHXhhCGZKB"
           COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
           COMPONENT_VERSION: ${{ github.ref_name }}
           ENRICH: true
           AUGMENT: true
+          SBOMIFY_CACHE_DIR: ${{ github.workspace }}/.sbomify-cache
+          SYFT_CACHE_DIR: ${{ github.workspace }}/.sbomify-cache/syft
+          PRODUCT_RELEASE: '["jmtLHQbIeZLD:${{ github.ref_name }}"]'
 
       - name: Install build and validation tools
         run: |
@@ -355,6 +363,16 @@ jobs:
           name: sbom
           path: sbom.cdx.json
 
+      - name: Upload SBOM to sbomify after signing
+        uses: sbomify/sbomify-action@ed3f547023f5a3cc82025a85f568f6baff4bda3f # v26.8.0
+        env:
+          SBOM_FILE: sbom.cdx.json
+          UPLOAD: true
+          COMPONENT_ID: "fnTHXhhCGZKB"
+          COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
+          COMPONENT_VERSION: ${{ github.ref_name }}
+          PRODUCT_RELEASE: '["jmtLHQbIeZLD:${{ github.ref_name }}"]'
+
   # =========================================================================
   # 3. STAGING DEPLOYMENT: Submits targets to TestPyPI
   # =========================================================================
@@ -439,6 +457,9 @@ jobs:
               --with "${{ env.PACKAGE_NAME }}==${{ steps.normalize_version.outputs.version }}" \
             python -c "import ${{ env.PACKAGE_NAME }}; print(${{ env.PACKAGE_NAME }}.__version__)"
 
+      - name: Restore attestation bundle
+        run: mv ./bundle.sbom.jsonl dist/
+
   # =========================================================================
   # 5. PRODUCTION DEPLOYMENT: Pushes definitive distributions to live PyPI registry
   # =========================================================================
@@ -509,7 +530,10 @@ jobs:
       - name: Create GitHub Release (immutable)
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          files: release-assets/*
+          files: |
+            release-assets/*
+            release-assets/dist/*
           generate_release_notes: true
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

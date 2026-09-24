@@ -1,4 +1,4 @@
-min_version = "4.61.4"
+min_version = "4.63.0"
 env_list = [{ prefix = "py3", start = 10, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
 isolated_build = true
 recreate = true
