@@ -168,6 +168,7 @@ jobs:
           SBOMIFY_CACHE_DIR: ${{ github.workspace }}/.sbomify-cache
           SYFT_CACHE_DIR: ${{ github.workspace }}/.sbomify-cache/syft
           PRODUCT_RELEASE: '["jmtLHQbIeZLD:${{ github.ref_name }}"]'
+          NORMALIZE_VERSION: true
 
       - name: Install build and validation tools
         run: |
@@ -410,6 +411,9 @@ jobs:
           print-hash: true
           attestations: true
 
+      - name: Restore attestation bundle
+        run: mv ./bundle.sbom.jsonl dist/
+
   # =========================================================================
   # 4. INTEGRATION LIVE TEST: Installs and verifies straight from TestPyPI simple indices
   # =========================================================================
@@ -456,9 +460,6 @@ jobs:
               --extra-index-url https://pypi.org/simple/ \
               --with "${{ env.PACKAGE_NAME }}==${{ steps.normalize_version.outputs.version }}" \
             python -c "import ${{ env.PACKAGE_NAME }}; print(${{ env.PACKAGE_NAME }}.__version__)"
-
-      - name: Restore attestation bundle
-        run: mv ./bundle.sbom.jsonl dist/
 
   # =========================================================================
   # 5. PRODUCTION DEPLOYMENT: Pushes definitive distributions to live PyPI registry
