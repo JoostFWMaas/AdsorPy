@@ -1,0 +1,20 @@
+{
+  "__sbomify_wizard__": {
+    "managed": true,
+    "version": 1
+  },
+  "lifecycle_phase": "build",
+  "supplier": {
+    "contacts": [
+      {
+        "email": "j.f.w.maas@tue.nl",
+        "name": "Joost F. W. Maas"
+      }
+    ],
+    "name": "Joost F. W. Maas",
+    "url": [
+      "https://github.com/JoostFWMaas/AdsorPy"
+    ]
+  },
+  "licenses": ["MIT"]
+}
