@@ -9,7 +9,10 @@ concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: true
 
-permissions: {}
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
 
 env:
   PACKAGE_NAME: adsorpy
@@ -538,3 +541,9 @@ jobs:
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  trigger-scorecard:
+    needs: create-release
+    uses: ./.github/workflows/scorecard.yml
+    secrets: inherit
