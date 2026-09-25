@@ -228,7 +228,7 @@ jobs:
           mv sdist2/*.tar.gz dist/
 
       # ---------------------------------------------------------------------
-      # VALIDATION ON PURE ARTIFACTS (Twine will crash if bundle.sbom.jsonl is here)
+      # VALIDATION ON PURE ARTIFACTS (Twine will crash if bundle.sbom.intoto.jsonl is here)
       # ---------------------------------------------------------------------
       - name: Twine check
         run: |
@@ -345,10 +345,10 @@ jobs:
           echo "Successfully identified Sigstore signature package at: $GENERATED_BUNDLE"
 
           # Copy the file directly into the dist folder for deployment packaging
-          cp "$GENERATED_BUNDLE" dist/bundle.sbom.jsonl
+          cp "$GENERATED_BUNDLE" dist/bundle.sbom.intoto.jsonl
 
           # Generate the final verified release hashes manifest file
-          sha256sum dist/*.whl dist/*.tar.gz dist/bundle.sbom.jsonl > hashes.txt
+          sha256sum dist/*.whl dist/*.tar.gz dist/bundle.sbom.intoto.jsonl > hashes.txt
 
       # ---------------------------------------------------------------------
       # UPLOAD STAGING ENVIRONMENT ARTIFACTS
@@ -405,7 +405,7 @@ jobs:
         run: cat hashes.txt
 
       - name: Temporarily isolate attestation bundle
-        run: mv dist/bundle.sbom.jsonl ./
+        run: mv dist/bundle.sbom.intoto.jsonl ./
 
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
@@ -415,7 +415,7 @@ jobs:
           attestations: true
 
       - name: Restore attestation bundle
-        run: mv ./bundle.sbom.jsonl dist/
+        run: mv ./bundle.sbom.intoto.jsonl dist/
 
   # =========================================================================
   # 4. INTEGRATION LIVE TEST: Installs and verifies straight from TestPyPI simple indices
@@ -494,7 +494,7 @@ jobs:
           grep -E '\.(whl|tar\.gz)$' hashes.txt | sha256sum -c -
 
       - name: Temporarily isolate attestation bundle
-        run: mv dist/bundle.sbom.jsonl ./
+        run: mv dist/bundle.sbom.intoto.jsonl ./
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
@@ -503,7 +503,7 @@ jobs:
           print-hash: true
 
       - name: Restore attestation bundle
-        run: mv ./bundle.sbom.jsonl dist/
+        run: mv ./bundle.sbom.intoto.jsonl dist/
 
   # =========================================================================
   # 6. POST-RELEASE IMMUTABILITY: Generates final release notes & bundles tags on GitHub
