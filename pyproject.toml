@@ -212,7 +212,7 @@ omit = [
     "*/__init__.py",
 #    "*/molecule_lib*.py", # There is no point in testing the individual molecules.
     "*/sensitivity.py", # Demonstrator, not included.
-    "*/Scripts/*",
+    "*/scripts/*",
 ]
 
 
@@ -257,7 +257,7 @@ mypy_path = ["."]
 ignore_missing_imports = true
 strict = true
 disallow_any_explicit = true
-exclude = ['/Scripts']
+exclude = ['/scripts']
 plugins = ["pydantic.mypy"]
 allow_untyped_decorators = true
 native_parser = true
