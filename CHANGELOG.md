@@ -9,7 +9,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ### Fixed
 ### Removed
 
-## 1.3.2 - 2026-09-17
+## 1.3.2 - 2026-09-25
 ### Added
 - Add angstrom (Å) scale indicator to gap size distribution plot of GUI.
 - Add tests to ``molecule_lib.py``. More detailed tests to be added later.
