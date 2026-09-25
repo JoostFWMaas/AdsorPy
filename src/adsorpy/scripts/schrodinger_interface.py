@@ -5,7 +5,13 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated, Self, cast
+from sys import version_info
+from typing import Annotated, cast
+
+if version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self  # NOQA: TC002
 
 import shapely
 from pydantic import (
