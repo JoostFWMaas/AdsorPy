@@ -405,6 +405,10 @@ archs = "AMD64"
 environment = { CC="cl", CXX="cl" }
 repair-wheel-command = "delvewheel repair -w \"{dest_dir}\" -v \"{wheel}\""
 
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux_2_34"
+manylinux-aarch64-image = "manylinux_2_34"
+
 
 [tool.hatch.build.targets.wheel.hooks.cython]
 dependencies = ["hatch-cython", "numpy"]
