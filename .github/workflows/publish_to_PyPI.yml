@@ -80,13 +80,14 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.13'
-
       - name: Setup uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Cache cibuildwheel assets
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cibw-cache
+          key: cibw-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Set up MSVC Developer Command Prompt
         if: runner.os == 'Windows'
@@ -97,13 +98,9 @@ jobs:
       - name: Build wheels
         uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
         env:
-          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_PLATFORM: ${{ matrix.platform || 'auto' }}
           CIBW_ARCHS: ${{ matrix.os == 'windows-intel' && 'AMD64' || 'auto' }}
-          CIBW_TEST_SKIP: "*-win_arm64"
-          SOURCE_DATE_EPOCH: "315532800"
-          PYTHONHASHSEED: "0"
-          CIBW_ENVIRONMENT_WINDOWS: "CC='cl' CXX='cl'"
+          CIBW_CACHE_PATH: ${{ runner.temp }}/cibw-cache
 
       - name: Upload OS-specific wheels
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -205,22 +202,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir sdist1 sdist2
-          uv run python -m build --sdist --outdir sdist1
+          uv build --sdist --outdir sdist1
 
       - name: Build sdist #2 (candidate reproducible)
         run: |
           set -euo pipefail
-          uv run python -m build --sdist --outdir sdist2
+          uv build --sdist --outdir sdist2
 
       - name: Compare builds
         run: |
           set -euo pipefail
-          rm -rf reproducibility
-          mkdir reproducibility
-          sha256sum sdist1/*.tar.gz | awk '{print $1}' > reproducibility/hashes1.txt
-          sha256sum sdist2/*.tar.gz | awk '{print $1}' > reproducibility/hashes2.txt
+          mkdir -p reproducibility
+
+          (cd sdist1 && sha256sum *.tar.gz) > reproducibility/hashes1.txt
+          (cd sdist2 && sha256sum *.tar.gz) > reproducibility/hashes2.txt
+
           diff reproducibility/hashes1.txt reproducibility/hashes2.txt
-          echo "Reproducible sdist build OK"
+          echo "✨ Reproducible sdist build OK!"
 
       - name: Promote sdist to main dist archive
         run: |
@@ -240,26 +238,6 @@ jobs:
           set -euo pipefail
           uv tool run check-wheel-contents dist/*.whl
 
-      - name: Smoke test (wheels across all target Python versions)
-        run: |
-          set -euo pipefail
-          TARGET_VERSIONS=("3.10" "3.11" "3.12" "3.13" "3.14")
-          for py_ver in "${TARGET_VERSIONS[@]}"; do
-            echo "=========================================================="
-            echo " Testing Wheel Installation for Python $py_ver"
-            echo "=========================================================="
-            env_dir="venv_test_${py_ver//./_}"
-            uv venv "$env_dir" --python "$py_ver"
-            tag_version="cp${py_ver//./}"
-            WHEEL_FILE=$(find dist -maxdepth 1 -name "*${tag_version}*manylinux*.whl" | head -n 1)
-            if [ -z "$WHEEL_FILE" ]; then
-               echo "⚠️ No local manylinux wheel found for $tag_version. Falling back to general search."
-               WHEEL_FILE=$(find dist -maxdepth 1 -name "*${tag_version}*linux*.whl" | head -n 1)
-            fi
-            echo "Installing explicit local file: $WHEEL_FILE"
-            uv pip install --python "$env_dir" --force-reinstall "$WHEEL_FILE"
-            uv run --no-project --python "$env_dir" python -c "import adsorpy; print('Successfully verified version:', adsorpy.__version__)"
-          done
 
       - name: Smoke test (sdist across all target Python versions)
         run: |

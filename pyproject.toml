@@ -3,31 +3,11 @@ requires = ["hatchling", "hatch-cython"]
 build-backend = "hatchling.build"
 
 
-[tool.hatch.build.targets.wheel.hooks.cython]
-dependencies = ["hatch-cython", "numpy"]
-
-
-[tool.hatch.build.targets.wheel.hooks.cython.options]
-compile_py = false
-
-
-[tool.hatch.build.targets.wheel.hooks.cython.options.platform.windows]
-extra_compile_args = ["/openmp"]
-extra_link_args = ["/openmp"]
-
-[tool.hatch.build.targets.wheel.hooks.cython.options.platform.linux]
-extra_compile_args = ["-fopenmp"]
-extra_link_args = ["-fopenmp"]
-
-[tool.hatch.build.targets.wheel.hooks.cython.options.platform.darwin]
-extra_compile_args = ["-Xpreprocessor", "-fopenmp"]
-extra_link_args = ["-lomp"]
-
 
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.3.2"  # Edit manually.
+version = "1.3.3-alpha.1"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -184,6 +164,10 @@ deterministic = true
 [tool.hatch.build.targets.wheel]
 sbom-files = ["sbom.cdx.json"]
 packages = ["src/adsorpy"]
+exclude = [
+    "**/*.c",
+    "**/*.cpp",
+]
 
 
 [tool.hatch.build.targets.sdist]
@@ -404,5 +388,40 @@ exec_directory = "build"
 project_dir = "./src/adsorpy"
 
 
+
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
+build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
+test-skip = "*-win_arm64"
+before-build = "python -c \"import shutil, glob, os; [shutil.rmtree(p, ignore_errors=True) for p in [\\\"build\\\", \\\"dist\\\"]]; [os.remove(f) for f in set(glob.glob(\\\"**/*.c\\\", recursive=True) + glob.glob(\\\"**/*.cpp\\\", recursive=True) + glob.glob(\\\"**/*.so\\\", recursive=True) + glob.glob(\\\"**/*.pyd\\\", recursive=True)) if os.path.exists(f)]\""
+test-command = "python -c \"import adsorpy; print('Successfully verified version:', adsorpy.__version__)\""
+
+[tool.cibuildwheel.environment]
+SOURCE_DATE_EPOCH = "315532800"
+PYTHONHASHSEED = "0"
+
+[tool.cibuildwheel.windows]
+archs = "AMD64"
+environment = { CC="cl", CXX="cl" }
+repair-wheel-command = "delvewheel repair -w \"{dest_dir}\" -v \"{wheel}\""
+
+
+[tool.hatch.build.targets.wheel.hooks.cython]
+dependencies = ["hatch-cython", "numpy"]
+
+
+[tool.hatch.build.targets.wheel.hooks.cython.options]
+compile_py = false
+include_numpy = true
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.windows]
+extra_compile_args = ["/openmp"]
+extra_link_args = ["/openmp"]
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.linux]
+extra_compile_args = ["-fopenmp"]
+extra_link_args = ["-fopenmp"]
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.darwin]
+extra_compile_args = ["-Xpreprocessor", "-fopenmp"]
+extra_link_args = ["-lomp"]
