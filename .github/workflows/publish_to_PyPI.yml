@@ -202,12 +202,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir sdist1 sdist2
-          uv build --sdist --outdir sdist1
+          uv build --sdist --out-dir sdist1
 
       - name: Build sdist #2 (candidate reproducible)
         run: |
           set -euo pipefail
-          uv build --sdist --outdir sdist2
+          uv build --sdist --out-dir sdist2
 
       - name: Compare builds
         run: |
