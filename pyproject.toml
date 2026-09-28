@@ -60,7 +60,7 @@ keywords = [
 
 dependencies = [
     "numpy>=2.2.6",
-    "matplotlib>=3.8.4",
+    "matplotlib>=3.8.9",
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
     "pydantic-extra-types>=2.11.1",
