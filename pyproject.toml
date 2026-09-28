@@ -397,6 +397,7 @@ before-build = "python -c \"import shutil, glob, os; [shutil.rmtree(p, ignore_er
 test-command = "python -c \"import adsorpy; print('Successfully verified version:', adsorpy.__version__)\""
 manylinux-x86_64-image = "manylinux_2_34"
 #manylinux-aarch64-image = "manylinux_2_39"
+skip = "*-musllinux_*"
 
 [tool.cibuildwheel.environment]
 SOURCE_DATE_EPOCH = "315532800"
