@@ -104,7 +104,7 @@ test = [
 ]
 lint = [
     "mypy==2.3.1",
-    "ruff==0.16.8",
+    "ruff==0.16.9",
     "basedpyright==1.40.1",
     "tach==0.35.1",
     "slotscheck==0.21.0",
@@ -120,9 +120,9 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox==4.63.0",
+    "tox==4.64.3",
     "tox-uv==1.36.0",
-    "uv==0.12.17",
+    "uv==0.12.19",
 ]
 dev-misc = [
     "build>=1.6.1",
