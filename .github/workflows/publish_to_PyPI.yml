@@ -264,7 +264,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          uv run --no-project --python venv_test_3_13 python - <<EOF
+          ./venv_test_3_13 python - <<EOF
           import re
           import sys
           from packaging.version import Version
@@ -351,9 +351,6 @@ jobs:
           SBOM_FILE: sbom.cdx.json
           UPLOAD: true
           COMPONENT_ID: "fnTHXhhCGZKB"
-          COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
-          COMPONENT_VERSION: ${{ github.ref_name }}
-          PRODUCT_RELEASE: '["jmtLHQbIeZLD:${{ github.ref_name }}"]'
 
   # =========================================================================
   # 3. STAGING DEPLOYMENT: Submits targets to TestPyPI
