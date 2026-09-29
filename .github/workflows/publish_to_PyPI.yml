@@ -264,7 +264,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          venv_test_3_13/bin/python - <<EOF
+          venv_sdist_3_13/bin/python - <<EOF
           import re
           import sys
           from packaging.version import Version
