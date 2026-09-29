@@ -155,7 +155,7 @@ jobs:
           key: sbomify-${{ runner.os }}
 
       - name: Generate SBOM
-        uses: sbomify/sbomify-action@ed3f547023f5a3cc82025a85f568f6baff4bda3f # v26.8.0
+        uses: sbomify/sbomify-action@fc7f05256cca65c26c8010da5faf3203e9477e5c # v26.9.0
         env:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
@@ -346,7 +346,7 @@ jobs:
           path: sbom.cdx.json
 
       - name: Upload SBOM to sbomify after signing
-        uses: sbomify/sbomify-action@ed3f547023f5a3cc82025a85f568f6baff4bda3f # v26.8.0
+        uses: sbomify/sbomify-action@fc7f05256cca65c26c8010da5faf3203e9477e5c # v26.9.0
         env:
           SBOM_FILE: sbom.cdx.json
           UPLOAD: true
