@@ -9,6 +9,14 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ### Fixed
 ### Removed
 
+## 1.3.3 - 2026-09-29
+### Added
+### Changed
+### Fixed
+- Fixed bloat of wheels. All wheels contained the ``.c`` file and the compiled files of all previous Python versions.
+### Removed
+- Wheels for pyodine (they would not have worked, Pyside6 has no pyodine support).
+
 ## 1.3.2 - 2026-09-25
 ### Added
 - Add angstrom (Å) scale indicator to gap size distribution plot of GUI.
