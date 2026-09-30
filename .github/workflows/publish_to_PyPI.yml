@@ -226,7 +226,7 @@ jobs:
           mv sdist2/*.tar.gz dist/
 
       # ---------------------------------------------------------------------
-      # VALIDATION ON PURE ARTIFACTS (Twine will crash if bundle.sbom.intoto.jsonl is here)
+      # VALIDATION ON PURE ARTIFACTS
       # ---------------------------------------------------------------------
       - name: Twine check
         run: |
@@ -298,8 +298,10 @@ jobs:
         id: hash
         run: |
           set -euo pipefail
-          HASHES=$(sha256sum dist/*.whl dist/*.tar.gz | base64 -w0)
+          cd dist
+          HASHES=$(sha256sum *.whl *.tar.gz | base64 -w0)
           echo "hashes=$HASHES" >> "$GITHUB_OUTPUT"
+          cd ..
 
       - name: Generate native GitHub Attestation
         id: sign_artifacts
@@ -308,25 +310,39 @@ jobs:
           subject-path: 'dist/*'
           sbom-path: 'sbom.cdx.json'
 
-      - name: Generate final hashes.txt
+      - name: Attest Standalone SBOM Document (For sbomify)
+        id: sign_sbom
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: 'sbom.cdx.json'
+
+      - name: Generate final SHA256SUMS
         run: |
           set -euo pipefail
 
           # Safely extract the absolute generated signature bundle path out of the step's outputs
-          GENERATED_BUNDLE="${{ steps.sign_artifacts.outputs.bundle-path }}"
+          ARTIFACT_BUNDLE="${{ steps.sign_artifacts.outputs.bundle-path }}"
+          SBOM_BUNDLE="${{ steps.sign_sbom.outputs.bundle-path }}"
 
-          if [ -z "$GENERATED_BUNDLE" ]; then
-            echo "❌ Error: Attestation bundle output path from step context is blank!"
+          if [ -z "$ARTIFACT_BUNDLE" ] || [ -z "$SBOM_BUNDLE" ]; then
+            echo "❌ Error: One of the attestation bundle paths is blank."
             exit 1
           fi
 
-          echo "Successfully identified Sigstore signature package at: $GENERATED_BUNDLE"
+          echo "Successfully identified Sigstore signature package at: $ARTIFACT_BUNDLE"
 
           # Copy the file directly into the dist folder for deployment packaging
-          cp "$GENERATED_BUNDLE" dist/bundle.sbom.intoto.jsonl
+          mkdir -p attestations
+          cp "$ARTIFACT_BUNDLE" attestations/adsorpy-artifacts.intoto.jsonl
+          cp "$SBOM_BUNDLE" attestations/sbom.cdx.json.intoto.jsonl
+          cp sbom.cdx.json attestations/
 
           # Generate the final verified release hashes manifest file
-          sha256sum dist/*.whl dist/*.tar.gz dist/bundle.sbom.intoto.jsonl > hashes.txt
+          cd dist
+          sha256sum *.whl *.tar.gz > ../SHA256SUMS
+          cd ../attestations
+          sha256sum * >> ../SHA256SUMS
+          cd ..
 
       # ---------------------------------------------------------------------
       # UPLOAD STAGING ENVIRONMENT ARTIFACTS
@@ -334,21 +350,25 @@ jobs:
       - name: Upload dist artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: dist
-          path: |
-            dist/
-            hashes.txt
+          name: python-dist-packages
+          path: dist/
 
-      - name: Upload SBOM
+      - name: Upload checksum manifest file
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: sbom
-          path: sbom.cdx.json
+          name: release-checksums
+          path: SHA256SUMS
+
+      - name: Upload SBOM and attestations to github
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-metadata
+          path: attestations/
 
       - name: Upload SBOM to sbomify after signing
         uses: sbomify/sbomify-action@fc7f05256cca65c26c8010da5faf3203e9477e5c # v26.9.0
         env:
-          SBOM_FILE: sbom.cdx.json
+          SBOM_FILE: attestations/sbom.cdx.json
           UPLOAD: true
           COMPONENT_ID: "fnTHXhhCGZKB"
 
@@ -360,27 +380,31 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      name: pypi
+      name: testpypi
+      url: https://test.pypi.org/p/adsorpy
     permissions:
       id-token: write
       attestations: write
 
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: dist
-          path: .
-
       - name: Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
-      - name: Show hashes (pre-publish verification)
-        run: cat hashes.txt
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-dist-packages
+          path: .
 
-      - name: Temporarily isolate attestation bundle
-        run: mv dist/bundle.sbom.intoto.jsonl ./
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-checksums
+          path: .
+
+
+      - name: Show hashes (pre-publish verification)
+        run: cat SHA256SUMS
 
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
@@ -388,9 +412,6 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
           print-hash: true
           attestations: true
-
-      - name: Restore attestation bundle
-        run: mv ./bundle.sbom.intoto.jsonl dist/
 
   # =========================================================================
   # 4. INTEGRATION LIVE TEST: Installs and verifies straight from TestPyPI simple indices
@@ -448,37 +469,39 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
+      url: https://pypi.org/p/adsorpy
     permissions:
       id-token: write
       attestations: write
 
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: dist
-          path: .
-
       - name: Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-dist-packages
+          path: .
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-checksums
+          path: .
+
       - name: Verify hashes before publish
         run: |
           set -euo pipefail
-          grep -E '\.(whl|tar\.gz)$' hashes.txt | sha256sum -c -
-
-      - name: Temporarily isolate attestation bundle
-        run: mv dist/bundle.sbom.intoto.jsonl ./
+          cd dist
+          grep -E '\.(whl|tar\.gz)$' ../SHA256SUMS | sha256sum -c -
+          cd ..
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           attestations: true
           print-hash: true
-
-      - name: Restore attestation bundle
-        run: mv ./bundle.sbom.intoto.jsonl dist/
 
   # =========================================================================
   # 6. POST-RELEASE IMMUTABILITY: Generates final release notes & bundles tags on GitHub
@@ -498,27 +521,27 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: dist
+          name: python-dist-packages
           path: release-assets/
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: sbom
+          name: release-checksums
+          path: release-assets/
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: security-metadata
           path: release-assets/
 
       - name: Create GitHub Release (immutable)
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           files: |
-            release-assets/*
+            release-assets/SHA256SUMS
             release-assets/dist/*
+            release-assets/attestations/*
           generate_release_notes: true
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-#
-#  trigger-scorecard:
-#    needs: create-release
-#    uses: ./.github/workflows/scorecard.yml
-#    secrets: inherit
