@@ -155,6 +155,7 @@ jobs:
           key: sbomify-${{ runner.os }}
 
       - name: Generate SBOM
+        id: sbom_gen
         uses: sbomify/sbomify-action@fc7f05256cca65c26c8010da5faf3203e9477e5c # v26.9.0
         env:
           LOCK_FILE: uv.lock
@@ -366,12 +367,18 @@ jobs:
           name: security-metadata
           path: attestations/
 
-#      - name: Upload SBOM to sbomify after signing
-#        uses: sbomify/sbomify-action@fc7f05256cca65c26c8010da5faf3203e9477e5c # v26.9.0
-#        env:
-#          SBOM_FILE: attestations/sbom.cdx.json
-#          UPLOAD: true
-#          COMPONENT_ID: "fnTHXhhCGZKB"
+      - name: Upload Provenance to sbomify
+        env:
+          ARTIFACT_ID: steps.sbom_gen.outputs.release_id
+          SBOMIFY_TOKEN: ${{ secrets.SBOMIFY_TOKEN }}  # Note to self: will expire in 90 days.
+        run: |
+          set -euo pipefail
+
+          curl -X POST "https://app.sbomify.com/api/v2/artifacts/$ARTIFACT_ID/provenance" \
+              -H "Authorization: Bearer $SBOMIFY_TOKEN" \
+              -H "Content-Type: application/json" \
+              --data-binary @sbom.cdx.json.intoto.jsonl
+
 
   # =========================================================================
   # 3. STAGING DEPLOYMENT: Submits targets to TestPyPI
