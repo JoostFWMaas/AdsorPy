@@ -60,7 +60,6 @@ dependencies = [
     { name = "shapely" },
     { name = "svg-py" },
     { name = "typing-extensions" },
-    { name = "urllib3" },
     { name = "wcwidth" },
     { name = "webencodings" },
 ]
@@ -241,7 +240,6 @@ requires-dist = [
     { name = "twine", marker = "extra == 'dev-misc'", specifier = ">=7.0.0" },
     { name = "types-shapely", marker = "extra == 'lint'", specifier = ">=2.1.0.20260728" },
     { name = "typing-extensions", specifier = ">=4.16.0" },
-    { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uv", marker = "extra == 'envs'", specifier = "==0.12.19" },
     { name = "wcwidth", specifier = ">=0.7.0" },
     { name = "webencodings", specifier = ">=0.5.1" },
