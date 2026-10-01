@@ -377,7 +377,7 @@ jobs:
           curl -X POST "https://app.sbomify.com/api/v2/artifacts/$ARTIFACT_ID/provenance" \
               -H "Authorization: Bearer $SBOMIFY_TOKEN" \
               -H "Content-Type: application/json" \
-              --data-binary @sbom.cdx.json.intoto.jsonl
+              --data-binary @attestations/sbom.cdx.json.intoto.jsonl
 
 
   # =========================================================================
