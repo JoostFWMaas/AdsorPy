@@ -169,6 +169,7 @@ jobs:
           SYFT_CACHE_DIR: ${{ github.workspace }}/.sbomify-cache/syft
           PRODUCT_RELEASE: '["jmtLHQbIeZLD:${{ github.ref_name }}"]'
           NORMALIZE_VERSION: true
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Attest Standalone SBOM Document (For sbomify)
         id: sign_sbom
