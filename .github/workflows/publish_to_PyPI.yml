@@ -369,7 +369,7 @@ jobs:
 
       - name: Upload Provenance to sbomify
         env:
-          ARTIFACT_ID: steps.sbom_gen.outputs.release_id
+          ARTIFACT_ID: ${{ steps.sbom_gen.outputs.release_id }}
           SBOMIFY_TOKEN: ${{ secrets.SBOMIFY_TOKEN }}  # Note to self: will expire in 90 days.
         run: |
           set -euo pipefail
