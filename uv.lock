@@ -31,7 +31,7 @@ wheels = [
 
 [[package]]
 name = "adsorpy"
-version = "1.3.4a6"
+version = "1.3.4a7"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },
