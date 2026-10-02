@@ -394,6 +394,9 @@ jobs:
               -H "Content-Type: application/json" \
               --data-binary @attestations/sbom.cdx.json.intoto.jsonl
 
+      - name: BREAKPOINT FOR RETRACING LOGS
+        run: exit 1
+
 
   # =========================================================================
   # 3. STAGING DEPLOYMENT: Submits targets to TestPyPI
