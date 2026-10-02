@@ -155,7 +155,6 @@ jobs:
           key: sbomify-${{ runner.os }}
 
       - name: Generate SBOM
-        id: sbom_gen
         uses: sbomify/sbomify-action@fc7f05256cca65c26c8010da5faf3203e9477e5c # v26.9.0
         env:
           LOCK_FILE: uv.lock
@@ -367,9 +366,24 @@ jobs:
           name: security-metadata
           path: attestations/
 
+      - name: Fetch dynamic SBOM ID
+        id: fetch_id
+        env:
+          SBOMIFY_TOKEN: ${{ secrets.SBOMIFY_TOKEN }}  # Note to self: will expire in 90 days.
+        run: |
+          set -euo pipefail
+
+          RESPONSE=$(curl -s -X 'GET' \
+            'https://app.sbomify.com/api/v2/components/$SBOMIFY_TOKEN/sboms?page=1&page_size=1&include_all_types=false' \
+            -H 'accept: application/json' \
+            -H "Authorization: Bearer $SBOMIFY_TOKEN" \
+
+          SBOM_ID=$(echo "$RESPONSE" | jq -r '.items[0].sbom.id')
+          echo "component_id=$SBOM_ID" >> "$GITHUB_OUTPUT"
+
       - name: Upload Provenance to sbomify
         env:
-          ARTIFACT_ID: ${{ steps.sbom_gen.outputs.release_id }}
+          ARTIFACT_ID: ${{ steps.fetch_id.outputs.component_id }}
           SBOMIFY_TOKEN: ${{ secrets.SBOMIFY_TOKEN }}  # Note to self: will expire in 90 days.
         run: |
           set -euo pipefail
