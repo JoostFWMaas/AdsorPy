@@ -377,7 +377,7 @@ jobs:
           RESPONSE=$(curl -s -X 'GET' \
             "https://app.sbomify.com/api/v2/components/$COMPONENT_ID/sboms?page=1&page_size=1&include_all_types=false" \
             -H 'accept: application/json' \
-            -H "Authorization: Bearer $SBOMIFY_TOKEN"
+            -H "Authorization: Bearer $SBOMIFY_TOKEN")
 
           SBOM_ID=$(echo "$RESPONSE" | jq -r '.items[0].sbom.id')
           echo "component_id=$SBOM_ID" >> "$GITHUB_OUTPUT"
