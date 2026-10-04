@@ -366,6 +366,17 @@ jobs:
           name: security-metadata
           path: attestations/
 
+      - name: Parse Sigstore Bundle Components
+        run: |
+          set -euo pipefail
+          
+          # Extract the standalone Cosign Bundle verification material
+          # (This keeps the outer signature block and verification timestamp data intact)
+          jq 'del(.dsseEnvelope)' attestations/sbom.cdx.json.intoto.jsonl > cosign_bundle.json
+          
+          # Extract the underlying raw DSSE Statement Envelope
+          jq '.dsseEnvelope' attestations/sbom.cdx.json.intoto.jsonl > raw_provenance.json
+
       - name: Fetch dynamic SBOM ID
         id: fetch_id
         env:
@@ -382,6 +393,20 @@ jobs:
           SBOM_ID=$(echo "$RESPONSE" | jq -r '.items[0].sbom.id')
           echo "component_id=$SBOM_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Upload Cosign Signature Bundle
+        env:
+          ARTIFACT_ID: ${{ steps.fetch_id.outputs.component_id }}
+          SBOMIFY_TOKEN: ${{ secrets.SBOMIFY_TOKEN }}
+        run: |
+          set -euo pipefail
+          
+          # Detached Signature Verification
+          curl -X POST "https://app.sbomify.com/api/v2/artifacts/$ARTIFACT_ID/signature" \
+              -H "Authorization: Bearer $SBOMIFY_TOKEN" \
+              -H "X-Signature-Type: cosign-bundle" \
+              -H "Content-Type: application/json" \
+              -d @cosign_bundle.json
+
       - name: Upload Provenance to sbomify
         env:
           ARTIFACT_ID: ${{ steps.fetch_id.outputs.component_id }}
@@ -392,7 +417,7 @@ jobs:
           curl -X POST "https://app.sbomify.com/api/v2/artifacts/$ARTIFACT_ID/provenance" \
               -H "Authorization: Bearer $SBOMIFY_TOKEN" \
               -H "Content-Type: application/json" \
-              --data-binary @attestations/adsorpy-artifacts.intoto.jsonl
+              -d @raw_provenance.json
 
       - name: BREAKPOINT FOR RETRACING LOGS
         run: exit 1
