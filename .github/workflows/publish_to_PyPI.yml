@@ -419,10 +419,6 @@ jobs:
               -H "Content-Type: application/json" \
               -d @raw_provenance.json
 
-      - name: BREAKPOINT FOR RETRACING LOGS
-        run: exit 1
-
-
   # =========================================================================
   # 3. STAGING DEPLOYMENT: Submits targets to TestPyPI
   # =========================================================================
