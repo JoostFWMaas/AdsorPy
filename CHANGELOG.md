@@ -9,17 +9,12 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ### Fixed
 ### Removed
 
-[//]: # (## 1.3.4 - 2026-10-04)
-
-[//]: # (### Added)
-
-[//]: # (- Sbomify attestation upload &#40;signing and provenance&#41;.)
-
-[//]: # (### Changed)
-
-[//]: # (### Fixed)
-
-[//]: # (### Removed)
+## 1.3.4 - 2026-10-04
+### Added
+- Sbomify attestation upload (signing and provenance).
+### Changed
+### Fixed
+### Removed
 
 ## 1.3.3 - 2026-09-29
 ### Added
