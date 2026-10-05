@@ -92,7 +92,7 @@ dependencies = [
 test = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.168.3",
+    "hypothesis>=6.168.4",
     "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
@@ -103,9 +103,9 @@ test = [
     "pytest-env>=1.7.1",
 ]
 lint = [
-    "mypy==2.3.1",
-    "ruff==0.16.9",
-    "basedpyright==1.40.1",
+    "mypy==2.4.0",
+    "ruff==0.16.10",
+    "basedpyright==1.40.2",
     "tach==0.35.2",
     "slotscheck==0.21.0",
     "pyside6-stubs==6.7.3.0",
@@ -120,17 +120,17 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox==4.64.6",
-    "tox-uv==1.36.0",
-    "uv==0.12.21",
+    "tox==4.64.9",
+    "tox-uv==1.36.1",
+    "uv==0.12.23",
 ]
 dev-misc = [
     "build>=1.6.1",
     "twine>=7.0.0",
-    "cryptography>=50.0.1",
+    "cryptography>=50.0.2",
     "check-wheel-contents>=0.6.3",
     "pre-commit>=4.6.2",
-    "nodeenv>=1.10.0",
+    "nodeenv>=1.11.0",
     "cibuildwheel>=2.23.4",
 ]
 gui-deps = [
