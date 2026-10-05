@@ -3,31 +3,11 @@ requires = ["hatchling", "hatch-cython"]
 build-backend = "hatchling.build"
 
 
-[tool.hatch.build.targets.wheel.hooks.cython]
-dependencies = ["hatch-cython", "numpy"]
-
-
-[tool.hatch.build.targets.wheel.hooks.cython.options]
-compile_py = false
-
-
-[tool.hatch.build.targets.wheel.hooks.cython.options.platform.windows]
-extra_compile_args = ["/openmp"]
-extra_link_args = ["/openmp"]
-
-[tool.hatch.build.targets.wheel.hooks.cython.options.platform.linux]
-extra_compile_args = ["-fopenmp"]
-extra_link_args = ["-fopenmp"]
-
-[tool.hatch.build.targets.wheel.hooks.cython.options.platform.darwin]
-extra_compile_args = ["-Xpreprocessor", "-fopenmp"]
-extra_link_args = ["-lomp"]
-
 
 [project]
 name = "adsorpy"
 #dynamic = ["version"]  # The Python guide says that this will use the Git tag to fill it in.
-version = "1.3.2"  # Edit manually.
+version = "1.3.4"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
@@ -80,7 +60,7 @@ keywords = [
 
 dependencies = [
     "numpy>=2.2.6",
-    "matplotlib>=3.10.9",
+    "matplotlib>=3.8.9",
     "shapely>=2.1.2",
     "pydantic>=2.13.4",
     "pydantic-extra-types>=2.11.1",
@@ -112,7 +92,7 @@ dependencies = [
 test = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.168.1",
+    "hypothesis>=6.168.3",
     "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
@@ -124,12 +104,12 @@ test = [
 ]
 lint = [
     "mypy==2.3.1",
-    "ruff==0.16.8",
+    "ruff==0.16.9",
     "basedpyright==1.40.1",
-    "tach==0.35.1",
+    "tach==0.35.2",
     "slotscheck==0.21.0",
     "pyside6-stubs==6.7.3.0",
-    "gitpython>=3.1.62",
+    "gitpython>=3.2.0",
     "types-shapely>=2.1.0.20260728",
 ]
 docs = [
@@ -140,9 +120,9 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox==4.63.0",
+    "tox==4.64.6",
     "tox-uv==1.36.0",
-    "uv==0.12.17",
+    "uv==0.12.21",
 ]
 dev-misc = [
     "build>=1.6.1",
@@ -184,6 +164,10 @@ deterministic = true
 [tool.hatch.build.targets.wheel]
 sbom-files = ["sbom.cdx.json"]
 packages = ["src/adsorpy"]
+exclude = [
+    "**/*.c",
+    "**/*.cpp",
+]
 
 
 [tool.hatch.build.targets.sdist]
@@ -404,5 +388,46 @@ exec_directory = "build"
 project_dir = "./src/adsorpy"
 
 
+
 [tool.cibuildwheel]
 build-frontend = "build[uv]"
+build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
+test-skip = "*-win_arm64 *-manylinux_aarch64 *-musllinux_aarch64"
+before-build = "python -c \"import shutil, glob, os; [shutil.rmtree(p, ignore_errors=True) for p in [\\\"build\\\", \\\"dist\\\"]]; [os.remove(f) for f in set(glob.glob(\\\"**/*.c\\\", recursive=True) + glob.glob(\\\"**/*.cpp\\\", recursive=True) + glob.glob(\\\"**/*.so\\\", recursive=True) + glob.glob(\\\"**/*.pyd\\\", recursive=True)) if os.path.exists(f)]\""
+test-command = "python -c \"import adsorpy; print('Successfully verified version:', adsorpy.__version__)\""
+manylinux-x86_64-image = "manylinux_2_34"
+#manylinux-aarch64-image = "manylinux_2_39"
+skip = "*-musllinux_* cp310-win_arm64 cp311-win_arm64"
+
+[tool.cibuildwheel.environment]
+SOURCE_DATE_EPOCH = "315532800"
+PYTHONHASHSEED = "0"
+
+[tool.cibuildwheel.windows]
+archs = "AMD64"
+repair-wheel-command = "delvewheel repair -w \"{dest_dir}\" -v \"{wheel}\""
+
+[tool.cibuildwheel.windows.environment]
+CC = "cl"
+CXX = "cl"
+
+
+[tool.hatch.build.targets.wheel.hooks.cython]
+dependencies = ["hatch-cython", "numpy"]
+
+
+[tool.hatch.build.targets.wheel.hooks.cython.options]
+compile_py = false
+include_numpy = true
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.windows]
+extra_compile_args = ["/openmp"]
+extra_link_args = ["/openmp"]
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.linux]
+extra_compile_args = ["-fopenmp"]
+extra_link_args = ["-fopenmp"]
+
+[tool.hatch.build.targets.wheel.hooks.cython.options.platform.darwin]
+extra_compile_args = ["-Xpreprocessor", "-fopenmp"]
+extra_link_args = ["-lomp"]
