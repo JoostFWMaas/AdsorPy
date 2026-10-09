@@ -1378,7 +1378,7 @@ class Surface:
         """Initialise the surface.
 
         :param rsa_config: The input parameters defined in the config.
-        :param lattice_type: The type of lattice to use. Can be triangular, square, or honeycomb.
+        :param lattice_type: The type of lattice to use. Can be 'triangular', 'square', 'honeycomb', or 'custom'.
         :param site_count: The number of sites, optional. If None, defaults to the default in config.json.
         :param lattice_a: The lattice spacing, optional. If None, defaults to the default in config.json.
         :param boundary_type: The boundary type, optional. If None, defaults to the default in config.json (periodic).
@@ -1435,6 +1435,10 @@ class Surface:
         :param rng: The random generator. Used when generating an amorphous surface with the Delone lib.
         :raises ValueError: If the lattice string is not supported.
         """
+        if self.lattice_type == "custom":
+            errmsg = "Please use the 'generate_custom_surface' method to generate custom surfaces."
+            raise ValueError(errmsg)
+
         sqrt3: float = np.sqrt(3.0)
 
         x1: DistArray = np.arange(self.sites, dtype=np.float64)
@@ -1467,7 +1471,7 @@ class Surface:
             y_all = np.tile(x1, self.sites)
 
         else:
-            errmsg: str = f"Unsupported lattice: {self.lattice_type}."
+            errmsg = f"Unsupported lattice: {self.lattice_type}."
             raise ValueError(errmsg)
 
         self.grid_coordinates = np.vstack((x_all, y_all))  # (2, 2N^2) Make a coordinate array.
@@ -1504,10 +1508,10 @@ class Surface:
 
     def generate_custom_surface(
         self,
-        site_x_coords: DistArray,
-        site_y_coords: DistArray,
-        bounding_x_coord: float,
-        bounding_y_coord: float,
+        site_x_coords: DistArray | list[float | np.float64],
+        site_y_coords: DistArray | list[float | np.float64],
+        bounding_x_coord: float | np.float64,
+        bounding_y_coord: float | np.float64,
     ) -> None:
         """Generate a custom surface from user input.
 

@@ -194,9 +194,8 @@ omit = [
     "*/Output/*",
     "*/__main__.py",
     "*/__init__.py",
-#    "*/molecule_lib*.py", # There is no point in testing the individual molecules.
     "*/sensitivity.py", # Demonstrator, not included.
-    "*/scripts/*",
+    "*/[sS]cripts/*",
 ]
 
 
@@ -241,7 +240,7 @@ mypy_path = ["."]
 ignore_missing_imports = true
 strict = true
 disallow_any_explicit = true
-exclude = ['/scripts']
+exclude = ['/[sS]cripts']
 plugins = ["pydantic.mypy"]
 allow_untyped_decorators = true
 native_parser = true
@@ -268,8 +267,7 @@ native-parser = true
 [tool.flake8]
 max-line-length = 120
 exclude = [
-    ".venv",
-    "venv",
+    "?venv",
     "tests",
     "Lib",
 ]
@@ -290,16 +288,12 @@ sections = [
 include_trailing_comma = true
 #remove_unused_imports = true
 skip = [".json", ".venv", ".tox"]
-known_first_party = ["RandomSequentialAdsorption"]
+known_first_party = ["adsorpy"]
 known_local_folder = ["molcule_lib", "RSA_Calculator", "rsa_config"]
 
 
 [tool.black]
 line-length = 88
-
-
-#[tool.uv]
-#required-version = "0.12.5"
 
 
 [tool.ruff]
@@ -340,7 +334,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D104"]  # Missing docstring in public package. Not needed, package is empty.
-"tests/*" = ["S101", "TC", "SLF001"]  # Assert should not be used in production code! But this is test code, so here it is expected.
+"tests/*" = ["S101", "TC", "SLF001"]  # Assert should never be used in production code! But this is test code, so here it is expected.
 
 
 [tool.ruff.lint.flake8-type-checking]
@@ -361,10 +355,8 @@ reportUnknownMemberType = "none"
 reportUnknownVariableType = "none"
 reportUnknownParameterType = "none"
 reportUnknownArgumentType = "none"
-#reportUnnecessaryCast = "none"  # These are needed for mypy.
-#reportUnnecessaryIsInstance = "none"  # These are needed for mypy.
 
-# Keep useful strict checks.
+# Useful strict checks.
 reportImplicitOverride = "error"
 reportPrivateUsage = "warning"
 reportUnnecessaryComparison = "warning"  # These are usually included to prevent the user from breaking things.

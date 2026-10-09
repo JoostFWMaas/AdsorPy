@@ -196,10 +196,10 @@ def run_simulation(  # noqa: PLR0913, PLR0917
 
     molecules: list[MoleculeGroup] = []  # Initially, there are none.
     mgc: count[int] = count()
-    stick_prob: DistArray = np.array([1.0])
+    stick_prob: DistArray
     if isinstance(sticking_probability, (float, int, np.integer)):
         stick_prob = np.array([sticking_probability] * len(mol_lst))
-    else:  # ignore
+    else:
         stick_prob = np.array(sticking_probability)
 
     pp: Polygon
