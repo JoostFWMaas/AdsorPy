@@ -189,7 +189,6 @@ def testvals() -> None:
     rand_spam = rand_spam[filtered_spam]
     original_points = MultiPoint(rand_spam)
 
-
     transformer = ParallelogramTransformer(parallelogram)
 
     rect_poly, rect_points = transformer.forward_points(original_points)
@@ -232,6 +231,7 @@ def testvals() -> None:
     # plot_polygon(shapely.box(*sf.bounds))
     # from matplotlib import pyplot as plt
     # plt.show()
+
 
 if __name__ == "__main__":
     testvals()

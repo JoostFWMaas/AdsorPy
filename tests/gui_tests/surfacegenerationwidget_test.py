@@ -3,6 +3,7 @@
 """Test the SurfaceGeneration class of the `gui.py` module."""
 
 import io
+from typing import get_args
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import QLineEdit, QMessageBox
 from pytestqt.qtbot import QtBot
 
 from adsorpy.gui import AppState, SurfaceGeneration, SurfaceParameters
+from adsorpy.types import SurfaceStrs
 
 
 @pytest.fixture
@@ -41,7 +43,7 @@ def test_initial_structural_layout_states(surface_tab: SurfaceGeneration) -> Non
     assert surface_tab.main_splitter.orientation() == Qt.Orientation.Horizontal
 
     # Check default combo box configuration entries
-    expected_items = sorted(["triangular", "square", "honeycomb"])
+    expected_items = sorted(get_args(SurfaceStrs))
     actual_items = [surface_tab.surface_dropdown.itemText(i) for i in range(surface_tab.surface_dropdown.count())]
     assert actual_items == expected_items
 
