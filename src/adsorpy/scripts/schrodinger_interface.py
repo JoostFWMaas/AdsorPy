@@ -124,11 +124,18 @@ class ParallelogramTransformer:
         )
         left_poly = surface_parallelogram.intersection(cutter_box)
         right_poly = surface_parallelogram.difference(cutter_box)
-        self.rectangle_poly = shapely.box(
-            *right_poly.union(
-                translate(left_poly, xoff=self.shift_vector[0], yoff=self.shift_vector[1]),
-            ).bounds,
+
+        unaligned_rect = shapely.box(
+                *right_poly.union(
+                    translate(left_poly, xoff=self.shift_vector[0], yoff=self.shift_vector[1]),
+                ).bounds,
         )
+
+        # Cache the offset required to shift the rectangle's bottom-left corner to (0, 0)
+        rect_min_x, rect_min_y, _, _ = unaligned_rect.bounds
+        self.origin_offset = np.array([rect_min_x, rect_min_y])
+
+        self.rectangle_poly = translate(unaligned_rect, xoff=-self.origin_offset[0], yoff=-self.origin_offset[1])
 
         # This state tracking mask ensures exact index mapping on reversal
         self._was_shifted_mask: np.ndarray | None = None
@@ -148,6 +155,7 @@ class ParallelogramTransformer:
 
         # Apply the forward shift vector to the selected coordinates.
         pt_coords[self._was_shifted_mask] += self.shift_vector
+        pt_coords -= self.origin_offset
 
         return self.rectangle_poly, MultiPoint(pt_coords)
 
@@ -158,6 +166,8 @@ class ParallelogramTransformer:
             raise ValueError(errmsg)
 
         pt_coords = np.array([pt.coords[0] for pt in transformed_multipoint.geoms])
+
+        pt_coords += self.origin_offset
 
         # Subtract the shift vector only from the indices that originally moved.
         pt_coords[self._was_shifted_mask] -= self.shift_vector
@@ -176,11 +186,15 @@ class SimulationOutputParser:
         self.simulator = simulator
 
 
-def testvals() -> None:
-    """Run a few tests."""
+def transformvals(rng_int: int, site_count: int = 10) -> None:
+    """Run a few tests.
+
+    :param rng_int: RNG seed.
+    :param site_count: Site count.
+    """
     parallelogram = Polygon([(0, 0), (5, 0), (7, 4), (2, 4)])
-    rng = np.random.default_rng()
-    rand_spam = rng.random((10, 2))
+    rng = np.random.default_rng(rng_int)
+    rand_spam = rng.random((site_count, 2))
     rand_spam[:, 0] *= parallelogram.bounds[2]
     rand_spam[:, 1] *= parallelogram.bounds[3]
 
@@ -200,12 +214,12 @@ def testvals() -> None:
         yval.append(point.y)
     box = rect_poly.bounds
 
-    print("--- FORWARD TRANSFORMATION ---")
-    print("Rectangle Points WKT:", rect_points.wkt)
-    plot_polygon(rect_poly, fc="none")
-    plot_points(rect_points)
-
-    plt.show()
+    # print("--- FORWARD TRANSFORMATION ---")
+    # print("Rectangle Points WKT:", rect_points.wkt)
+    # plot_polygon(rect_poly, fc="none")
+    # plot_points(rect_points)
+    #
+    # plt.show()
 
     output = run_simulation(
         lattice_type="custom",
@@ -213,25 +227,62 @@ def testvals() -> None:
         site_y_coords=np.asarray(yval),
         bounding_x_coord=box[2],
         bounding_y_coord=box[3],
+        boundary_condition="periodic",
     )[-1]
 
     print(output.coverage)
-
     restored_poly, restored_points = transformer.inverse_points(rect_points)
-    print("\n--- INVERSE (UNDO) TRANSFORMATION ---")
-    print("Restored Points WKT: ", restored_points.wkt)
-    print("Matches Original?    ", restored_points.equals_exact(original_points, tolerance=0.0005))
-    plot_polygon(restored_poly, fc="none")
-    plot_points(restored_points)
-    plt.show()
+    existing = output.mol_data.stored_data["exists"]
+    orig_coords = output.mol_data.coords[:, existing]
+    orig_idx = output.mol_data.stored_data["grid_idx"][existing]
+    displayable_molecules = output.mol_data.stored_data["polygon"][existing]
+    orig: int
+    for idx, (mol, orig) in enumerate(zip(displayable_molecules, orig_idx, strict=True)):
+        xvals = orig_coords[0, idx] - restored_points.geoms[orig].x
+        yvals = orig_coords[1, idx] - restored_points.geoms[orig].y
+        displayable_molecules[idx] = translate(mol, -xvals, -yvals)
 
-    # sf = SurfaceParser(affine_box)
-    # print(sf.bounds)
-    # plot_polygon(Polygon(affine_box))
-    # plot_polygon(shapely.box(*sf.bounds))
-    # from matplotlib import pyplot as plt
-    # plt.show()
+    overlap = False
+    mol: Polygon
+    mol2: Polygon
+    for idx, mol in enumerate(displayable_molecules):
+        for mol2 in displayable_molecules[:idx]:
+            overlap = mol.intersects(mol2)
+            if overlap:
+                break
+        if overlap:
+            break
+
+    if overlap:
+        print("faulty seed:", rng_int)
+        print("\n--- INVERSE (UNDO) TRANSFORMATION ---")
+        print("Restored Points WKT: ", restored_points.wkt)
+        print("Matches Original?    ", restored_points.equals_exact(original_points, tolerance=0.0005))
+        plot_polygon(restored_poly, fc="none")
+        plot_points(restored_points)
+        plt.show()
+
+        output.svgplot_covered_grid(filename="Yas")
+
+        # sf = SurfaceParser(affine_box)
+        # print(sf.bounds)
+        # plot_polygon(Polygon(affine_box))
+        # plot_polygon(shapely.box(*sf.bounds))
+        # from matplotlib import pyplot as plt
+        # plt.show()
+
+        for mol in displayable_molecules:
+            plot_polygon(mol, add_points=False)
+
+        plot_polygon(restored_poly, fc="none")
+        plot_points(restored_points)
+        plt.show()
+
+    if overlap:
+        errmsg = f"Faulty seed: {rng_int}"
+        raise ValueError(errmsg)
 
 
 if __name__ == "__main__":
-    testvals()
+    for ii in range(1000):
+        transformvals(ii)

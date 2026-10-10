@@ -1743,19 +1743,40 @@ class MoleculeData:
     :ivar _column_datatypes: Datatypes of the columns of the molecule struct array.
     :ivar _heads_dtypes: Data types + names for the molecule struct array.
     :ivar _fill_vals: Fill value for the new molecule. Defaults to strictly invalid values.
-    :ivar stored_data: Molecule struct array. Here, all data for the molecules is stored.
+    :ivar stored_data: Molecule struct array. Here, all data for the molecules is stored. Fields:
+        - "self_id"
+        - "exists"
+        - "mol_group"
+        - "grid_idx"
+        - "rot_idx"
+        - "has_periodic_images"
+        - "x_coord"
+        - "y_coord"
+        - "polygon"
     :ivar mol_tree: Molecules RTree.
     :ivar _mirr_names: Names of the columns in the mirror molecule struct array.
     :ivar _mirr_datatypes: Datatypes of the mirror molecule struct array.
     :ivar _mirr_heads_dtypes: Data types + names for the mirror molecules struct array.
     :ivar _mirr_fill_vals: Fill values for the new mirror molecule. Defaults to strictly invalid values.
-    :ivar stored_mirr_data: Mirror molecule struct array. Here, all data for the mirror molecules is stored.
+    :ivar stored_mirr_data: Mirror molecule struct array. Here, all data for the mirror molecules is stored. Fields:
+        - "orig_id"
+        - "exists"
+        - "self_id"
+        - "mol_group"
+        - "grid_idx"
+        - "rot_idx"
+        - "x_coord"
+        - "y_coord"
+        - "polygon"
     :ivar mirr_tree: Mirror molecules RTree.
     :ivar _otomir_names: Names for the origin to mirror array.
     :ivar _otomir_types: Types of the origin to mirror array.
     :ivar _otomir_heads_dtypes: Data types for the original molecule to mirror (otomir) struct array.
     :ivar _otomir_fill_vals: Fill values for the origin to mirror array. Defaults to strictly invalid values.
-    :ivar orig_to_mirrors: Origin to mirror struct array. Stores indices linking mirror molecules to original molecules.
+    :ivar orig_to_mirrors: Origin to mirror struct array.
+    Stores indices linking mirror molecules to original molecules. Fields:
+        - "exists"
+        - "mirr_ids"
     :ivar coords: Coordinates of the molecules.
     :ivar mirror_coords: Mirror coordinates of the molecules.
     """
