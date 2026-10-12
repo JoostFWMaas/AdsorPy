@@ -37,8 +37,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    # This does not run on mobile because of Shapely. It runs everywhere else, see matrix tests in CI.
-    "Operating System :: OS Independent",
+    # This does not run on mobile because of Shapely. It runs on most other platforms, see matrix tests in CI.
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
 ]
 keywords = [
     "RSA",
@@ -62,12 +64,12 @@ dependencies = [
     "numpy>=2.2.6",
     "matplotlib>=3.8.9",
     "shapely>=2.1.2",
-    "pydantic>=2.13.4",
+    "pydantic>=2.14.1",
     "pydantic-extra-types>=2.11.1",
     "rtree>=1.4.1",
     "svg-py>=1.10.0",
     "defusedxml>=0.7.1",
-    "PySide6>=6.11.1",
+    "PySide6>=6.12.0",
     "typing-extensions>=4.16.0",
     "frozendict>=2.4.7; python_version <= '3.14'",  # This exists in default Python starting 3.15.
     # Everything after this line is included so uv also runs with the lowest dependency resolution.

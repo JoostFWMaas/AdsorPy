@@ -6,11 +6,10 @@ from __future__ import annotations
 
 import json
 from sys import version_info
-from typing import TYPE_CHECKING, Annotated, cast
+from typing import Annotated, cast
 
 import numpy as np
-from shapely.affinity import translate
-from shapely.plotting import plot_points, plot_polygon
+from shapely.ops import split
 
 if version_info >= (3, 11):
     from typing import Self
@@ -18,7 +17,6 @@ else:
     from typing_extensions import Self  # NOQA: TC002
 
 import shapely
-from matplotlib import pyplot as plt
 from pydantic import (
     Field,
     FilePath,
@@ -28,12 +26,7 @@ from pydantic import (
     model_validator,
     validate_call,
 )
-from shapely import MultiPoint, Polygon, prepare
-
-from adsorpy.run_simulation import run_simulation
-
-if TYPE_CHECKING:
-    from adsorpy.randomsequentialadsorption import Simulator
+from shapely import MultiPoint, Polygon
 
 Point2D = Annotated[list[FiniteFloat], Field(min_length=2, max_length=2)]
 
@@ -95,7 +88,7 @@ class MoleculeParser(RootModel[dict[str, list[Point2D]]]):
         return self
 
 
-class ParallelogramTransformer:
+class ParallelogramSurfaceTransformer:
     """Transform a parallelogram surface into a rectangle surface while preserving relative coordinates of points."""
 
     def __init__(self, surface_parallelogram: Polygon) -> None:
@@ -105,37 +98,17 @@ class ParallelogramTransformer:
         """
         self.original_poly = surface_parallelogram
 
-        # Compute and cache transformation parameters.
-        coords = list(surface_parallelogram.exterior.coords)
-
-        bl, br, tl = map(np.array, [coords[0], coords[1], coords[3]])
-
-        v_base = br - bl
-        v_side = tl - bl
-        projection_factor = np.dot(v_side, v_base) / np.dot(v_base, v_base)
-
-        self.cut_x = float(bl[0] + projection_factor * v_base[0])
-        self.shift_vector = np.array([float(v_base[0]), float(v_base[1])])
-
-        # Build the final rectangle polygon geometry.
-        min_x, min_y, _, max_y = surface_parallelogram.bounds
-        cutter_box = Polygon(
-            [(min_x - 1, min_y - 1), (self.cut_x, min_y - 1), (self.cut_x, max_y + 1), (min_x - 1, max_y + 1)],
-        )
-        left_poly = surface_parallelogram.intersection(cutter_box)
-        right_poly = surface_parallelogram.difference(cutter_box)
-
-        unaligned_rect = shapely.box(
-                *right_poly.union(
-                    translate(left_poly, xoff=self.shift_vector[0], yoff=self.shift_vector[1]),
-                ).bounds,
-        )
-
-        # Cache the offset required to shift the rectangle's bottom-left corner to (0, 0)
-        rect_min_x, rect_min_y, _, _ = unaligned_rect.bounds
-        self.origin_offset = np.array([rect_min_x, rect_min_y])
-
-        self.rectangle_poly = translate(unaligned_rect, xoff=-self.origin_offset[0], yoff=-self.origin_offset[1])
+        original_box = shapely.box(*self.original_poly.bounds)
+        split_pieces = split(original_box, self.original_poly.boundary)
+        sorted_pieces = sorted(split_pieces.geoms, key=lambda geom: geom.centroid.x)
+        self.cut_x = sorted_pieces[-1].bounds[0] if len(sorted_pieces) > 1 else sorted_pieces[-1].bounds[2]
+        self.cut_width = sorted_pieces[-1].bounds[2] - self.cut_x
+        original_bounds = original_box.bounds
+        self.box_width = self.cut_x - original_bounds[0]
+        self.box_height = original_bounds[3] - original_bounds[1]
+        self.shift_vector = np.asarray([self.box_width, 0])
+        self.origin_offset = np.asarray([original_bounds[0], original_bounds[1]])
+        self.rectangle_poly = shapely.box(0.0, 0.0, self.box_width, self.box_height)
 
         # This state tracking mask ensures exact index mapping on reversal
         self._was_shifted_mask: np.ndarray | None = None
@@ -144,23 +117,29 @@ class ParallelogramTransformer:
         """Transform points into the rectangle and record which indices moved.
 
         :param multipoint_src: MultiPoint collection for which the coordinates have to be transformed.
-        :returns: tuple.
+        :returns: tuple:
             1) Surface rectangle polygon.
             2) Transformed MultiPoint object.
         """
         pt_coords = np.array([pt.coords[0] for pt in multipoint_src.geoms])
 
         # Track exactly which point coordinates were on the left side of the cut line.
-        self._was_shifted_mask = pt_coords[:, 0] < self.cut_x
+        self._was_shifted_mask = pt_coords[:, 0] > self.cut_x
 
         # Apply the forward shift vector to the selected coordinates.
-        pt_coords[self._was_shifted_mask] += self.shift_vector
+        pt_coords[self._was_shifted_mask] -= self.shift_vector
         pt_coords -= self.origin_offset
 
         return self.rectangle_poly, MultiPoint(pt_coords)
 
     def inverse_points(self, transformed_multipoint: MultiPoint) -> tuple[Polygon, MultiPoint]:
-        """Use the cached mask to snap the points back to their original position."""
+        """Use the cached mask to snap the points back to their original position.
+
+        :param transformed_multipoint: MultiPoint collection of transformed surface sites.
+        :returns: tuple:
+            1) Surface parallelogram polygon.
+            2) Restored MultiPoint object.
+        """
         if self._was_shifted_mask is None:
             errmsg = "Cannot invert: No forward transformation has been performed yet."
             raise ValueError(errmsg)
@@ -169,120 +148,7 @@ class ParallelogramTransformer:
 
         pt_coords += self.origin_offset
 
-        # Subtract the shift vector only from the indices that originally moved.
-        pt_coords[self._was_shifted_mask] -= self.shift_vector
+        # Add the shift vector to the indices that originally moved.
+        pt_coords[self._was_shifted_mask] += self.shift_vector
 
         return self.original_poly, MultiPoint(pt_coords)
-
-
-class SimulationOutputParser:
-    """Parser for the output of an adsorpy simulation."""
-
-    def __init__(self, simulator: Simulator) -> None:
-        """Initialise the result parser.
-
-        :param simulator: The Simulator class.
-        """
-        self.simulator = simulator
-
-
-def transformvals(rng_int: int, site_count: int = 10) -> None:
-    """Run a few tests.
-
-    :param rng_int: RNG seed.
-    :param site_count: Site count.
-    """
-    parallelogram = Polygon([(0, 0), (5, 0), (7, 4), (2, 4)])
-    rng = np.random.default_rng(rng_int)
-    rand_spam = rng.random((site_count, 2))
-    rand_spam[:, 0] *= parallelogram.bounds[2]
-    rand_spam[:, 1] *= parallelogram.bounds[3]
-
-    prepare(parallelogram)
-    filtered_spam = shapely.contains_xy(parallelogram, rand_spam)
-    rand_spam = rand_spam[filtered_spam]
-    original_points = MultiPoint(rand_spam)
-
-    transformer = ParallelogramTransformer(parallelogram)
-
-    rect_poly, rect_points = transformer.forward_points(original_points)
-    xval: list[float] = []
-    yval: list[float] = []
-    point: shapely.Point
-    for point in rect_points.geoms:
-        xval.append(point.x)
-        yval.append(point.y)
-    box = rect_poly.bounds
-
-    # print("--- FORWARD TRANSFORMATION ---")
-    # print("Rectangle Points WKT:", rect_points.wkt)
-    # plot_polygon(rect_poly, fc="none")
-    # plot_points(rect_points)
-    #
-    # plt.show()
-
-    output = run_simulation(
-        lattice_type="custom",
-        site_x_coords=np.asarray(xval),
-        site_y_coords=np.asarray(yval),
-        bounding_x_coord=box[2],
-        bounding_y_coord=box[3],
-        boundary_condition="periodic",
-    )[-1]
-
-    print(output.coverage)
-    restored_poly, restored_points = transformer.inverse_points(rect_points)
-    existing = output.mol_data.stored_data["exists"]
-    orig_coords = output.mol_data.coords[:, existing]
-    orig_idx = output.mol_data.stored_data["grid_idx"][existing]
-    displayable_molecules = output.mol_data.stored_data["polygon"][existing]
-    orig: int
-    for idx, (mol, orig) in enumerate(zip(displayable_molecules, orig_idx, strict=True)):
-        xvals = orig_coords[0, idx] - restored_points.geoms[orig].x
-        yvals = orig_coords[1, idx] - restored_points.geoms[orig].y
-        displayable_molecules[idx] = translate(mol, -xvals, -yvals)
-
-    overlap = False
-    mol: Polygon
-    mol2: Polygon
-    for idx, mol in enumerate(displayable_molecules):
-        for mol2 in displayable_molecules[:idx]:
-            overlap = mol.intersects(mol2)
-            if overlap:
-                break
-        if overlap:
-            break
-
-    if overlap:
-        print("faulty seed:", rng_int)
-        print("\n--- INVERSE (UNDO) TRANSFORMATION ---")
-        print("Restored Points WKT: ", restored_points.wkt)
-        print("Matches Original?    ", restored_points.equals_exact(original_points, tolerance=0.0005))
-        plot_polygon(restored_poly, fc="none")
-        plot_points(restored_points)
-        plt.show()
-
-        output.svgplot_covered_grid(filename="Yas")
-
-        # sf = SurfaceParser(affine_box)
-        # print(sf.bounds)
-        # plot_polygon(Polygon(affine_box))
-        # plot_polygon(shapely.box(*sf.bounds))
-        # from matplotlib import pyplot as plt
-        # plt.show()
-
-        for mol in displayable_molecules:
-            plot_polygon(mol, add_points=False)
-
-        plot_polygon(restored_poly, fc="none")
-        plot_points(restored_points)
-        plt.show()
-
-    if overlap:
-        errmsg = f"Faulty seed: {rng_int}"
-        raise ValueError(errmsg)
-
-
-if __name__ == "__main__":
-    for ii in range(1000):
-        transformvals(ii)
