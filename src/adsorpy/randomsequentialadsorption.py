@@ -1435,10 +1435,6 @@ class Surface:
         :param rng: The random generator. Used when generating an amorphous surface with the Delone lib.
         :raises ValueError: If the lattice string is not supported.
         """
-        if self.lattice_type == "custom":
-            errmsg = "Please use the 'generate_custom_surface' method to generate custom surfaces."
-            raise ValueError(errmsg)
-
         sqrt3: float = np.sqrt(3.0)
 
         x1: DistArray = np.arange(self.sites, dtype=np.float64)
