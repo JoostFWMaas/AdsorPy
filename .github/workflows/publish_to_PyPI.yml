@@ -180,7 +180,7 @@ jobs:
       - name: Install build and validation tools
         run: |
           set -euo pipefail
-          uv sync --frozen --extra dev-misc --no-default-groups
+          uv sync --frozen --group dev-misc --no-default-groups
 
       - name: Create working dist directory
         run: mkdir dist
@@ -369,11 +369,11 @@ jobs:
       - name: Parse Sigstore Bundle Components
         run: |
           set -euo pipefail
-          
+
           # Extract the standalone Cosign Bundle verification material
           # (This keeps the outer signature block and verification timestamp data intact)
           jq 'del(.dsseEnvelope)' attestations/sbom.cdx.json.intoto.jsonl > cosign_bundle.json
-          
+
           # Extract the underlying raw DSSE Statement Envelope
           jq '.dsseEnvelope' attestations/sbom.cdx.json.intoto.jsonl > raw_provenance.json
 
@@ -399,7 +399,7 @@ jobs:
           SBOMIFY_TOKEN: ${{ secrets.SBOMIFY_TOKEN }}
         run: |
           set -euo pipefail
-          
+
           # Detached Signature Verification
           curl -X POST "https://app.sbomify.com/api/v2/artifacts/$ARTIFACT_ID/signature" \
               -H "Authorization: Bearer $SBOMIFY_TOKEN" \
