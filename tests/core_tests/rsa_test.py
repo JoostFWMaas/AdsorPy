@@ -14,9 +14,9 @@ from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from hypothesis.strategies import SearchStrategy
 from numpy.random import PCG64DXSM, Generator  # New random generator.
-from scipy.spatial.distance import cdist
 from shapely import Polygon
 
+# from scipy.spatial.distance import cdist
 import adsorpy.molecule_lib as mol  # Homebrew lib of molecules.
 import adsorpy.randomsequentialadsorption as rsarun
 from adsorpy.rsa_calculator import squared_cdist
@@ -536,12 +536,17 @@ class TestMiscSettings:
         elements=st.floats(allow_infinity=False, allow_nan=False),
     ),
 )
-def test_numba_vs_cdist(arr1: CoordsArray, arr2: CoordsArray) -> None:
+def test_cython_vs_cdist(arr1: CoordsArray, arr2: CoordsArray) -> None:
     """Compute the squared Euclidean distances using the faster homemade method and the preprogrammed method."""
-    numba_result = squared_cdist(arr1, arr2)
-    cdist_result = cdist(arr1.T, arr2.T, metric="sqeuclidean")
+    cython_result = squared_cdist(arr1, arr2)
+    # cdist_result = cdist(arr1.T, arr2.T, metric="sqeuclidean")
 
-    np.testing.assert_allclose(numba_result, cdist_result)
+    prep_arr1 = arr1.T[:, np.newaxis, :]
+    prep_arr2 = arr2.T[np.newaxis, :, :]
+
+    cdist_result = np.sum((prep_arr1 - prep_arr2) ** 2, axis=-1)
+
+    np.testing.assert_allclose(cython_result, cdist_result)
 
 
 @pytest.fixture(scope="class")
@@ -633,10 +638,12 @@ def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[i
     simrad.sim.attempt_place_molecule(simrad.surf, simrad.molecules[0], grid_idx=index)
     gaps = simrad.sim.analyse_gap_size(simrad.surf, keepzero=True)
 
-    my_gaps = cdist(
-        simrad.sim.mol_data.mirror_coords[:, simrad.sim.mol_data.stored_mirr_data["exists"]].T,
-        simrad.surf.grid_coordinates.T,
-    )
+    array1 = simrad.sim.mol_data.mirror_coords[:, simrad.sim.mol_data.stored_mirr_data["exists"]].T
+    array2 = simrad.surf.grid_coordinates.T
+
+    # my_gaps = cdist(array1, array2)
+
+    my_gaps = np.sqrt(np.sum((array1[:, np.newaxis, :] - array2[np.newaxis, :, :]) ** 2, axis=-1))
     my_gaps = np.min(my_gaps, axis=0)
 
     in_gaps = my_gaps - simrad.sim.molgroups[0].min_radius
@@ -647,8 +654,8 @@ def test_gapsize_analysis(gapsim: AbstractExampleSimulation, idx_radius: tuple[i
 
     assert simrad.sim.total_molecule_counter == 1, "Only 1 molecule may be present."
 
-    assert np.all(out_gaps <= gaps + tolerance), "The outradius gaps do not fall within tolerance."
-    assert np.all(gaps <= in_gaps + tolerance), "The inradius gaps do not fall within tolerance."
+    np.testing.assert_array_less(out_gaps, gaps + tolerance, "The circumradius gaps do not fall within tolerance.")
+    np.testing.assert_array_less(gaps, in_gaps + tolerance, "The inradius gaps do not fall within tolerance.")
 
 
 @pytest.fixture

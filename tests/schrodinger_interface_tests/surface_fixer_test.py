@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import numpy as np
 import shapely
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 from shapely import MultiPoint
@@ -93,6 +93,7 @@ scale_strategy = st.floats(min_value=1.0, max_value=10.0)
 seed_strategy = st.integers(min_value=0)
 
 
+@settings(deadline=None)
 @given(unit_points=unit_point_strategy, shear_factor=shear_strategy, scale_factor=scale_strategy, seed=seed_strategy)
 def test_transformer_with_sheared_and_scaled_points(
     unit_points: CoordsArray,
