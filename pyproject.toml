@@ -142,7 +142,7 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.65.0",
+    "tox>=4.64.0",
     "tox-uv>=1.36.1",
 ]
 dev-misc = [

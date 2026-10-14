@@ -189,7 +189,7 @@ dev = [
     { name = "pytest-qt", specifier = ">=4.5.0" },
     { name = "pytest-xvfb", marker = "sys_platform == 'linux'", specifier = ">=3.1.1" },
     { name = "pyvirtualdisplay", marker = "sys_platform == 'linux'", specifier = ">=3.0" },
-    { name = "tox", specifier = ">=4.65.0" },
+    { name = "tox", specifier = ">=4.64.0" },
     { name = "tox-uv", specifier = ">=1.36.1" },
 ]
 dev-gui = [{ name = "adsorpy", extras = ["gui-deps"] }]
@@ -207,7 +207,7 @@ docs = [
     { name = "sphinx-pyproject", specifier = ">=0.3.0" },
 ]
 envs = [
-    { name = "tox", specifier = ">=4.65.0" },
+    { name = "tox", specifier = ">=4.64.0" },
     { name = "tox-uv", specifier = ">=1.36.1" },
 ]
 lint = [
