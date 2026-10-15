@@ -159,6 +159,7 @@ jobs:
         env:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
+          SPEC_VERSION: 1.7
           UPLOAD: true
           COMPONENT_ID: "fnTHXhhCGZKB"
           COMPONENT_NAME: ${{ env.PACKAGE_NAME }}
