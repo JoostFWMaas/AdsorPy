@@ -522,7 +522,7 @@ class TestMiscSettings:
         circumradius = simple_simulator.sim.molgroups[0].max_radius
         assert np.all(gaps <= circumradius)
 
-
+@pytest.mark.filterwarnings(r"ignore:.*overflow.*:RuntimeWarning")
 @settings(deadline=None)
 @given(
     arr1=arrays(

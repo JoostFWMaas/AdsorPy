@@ -206,6 +206,7 @@ qt_api = "pyside6"
 env = ["QT_QPA_PLATFORM=offscreen"]
 
 
+
 [tool.coverage.run]
 omit = [
     "*/tests/*",
