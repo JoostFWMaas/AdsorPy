@@ -80,9 +80,9 @@ jobs:
       - name: Install tox and plugins
         run: |
           if [ "${{ matrix.resolution-strategy }}" = "default" ]; then
-            uv sync --frozen --extra envs --no-default-groups
+            uv sync --frozen --group envs --no-default-groups
           else
-            uv sync --extra envs --no-default-groups
+            uv sync --group envs --no-default-groups
           fi
         shell: bash
 

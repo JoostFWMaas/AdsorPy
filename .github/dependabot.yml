@@ -8,7 +8,7 @@ updates:
     directory: "/" # Will look for the uv.lock file.
     schedule:
         interval: "cron"
-        cronjob: "0 4 * * 2" # Every Tuesday at 04:00 UTC
+        cronjob: "0 4 * * 3" # Every Wednesday at 04:00 UTC
 
     groups:
       python-dependencies:
@@ -16,7 +16,7 @@ updates:
           - "*"
 
     commit-message:
-      prefix: "deps"
+      prefix: "UV-deps"
 
     labels:
       - "dependencies"
@@ -39,7 +39,30 @@ updates:
           - "*"
 
     commit-message:
-      prefix: "deps"
+      prefix: "CI-deps"
+
+    labels:
+      - "dependencies"
+
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+
+  # --------- pre-commit hooks (.pre-commit) --------------
+  - package-ecosystem: "pre-commit"
+    directory: "/" # Resolves automatically to standard path: /.github/workflows
+    schedule:
+        interval: "cron"
+        cronjob: "0 4 * * 3" # Every Wednesday at 04:00 UTC
+
+    groups:
+      action-dependencies:
+        patterns:
+          - "*"
+
+    commit-message:
+      prefix: "Pre-commit-deps"
 
     labels:
       - "dependencies"

@@ -2,11 +2,11 @@
 
 [![pypi version](https://img.shields.io/pypi/v/adsorpy.svg)](https://pypi.python.org/pypi/adsorpy) <!-- [![Conda](https://img.shields.io/conda/vn/conda-forge/adsorpy)](https://anaconda.org/conda-forge/adsorpy) -->
 ![test results badge](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/tests-ci.yml/badge.svg)
-[![docs build results](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/docs-ci.yml/badge.svg)](https://joostfwmaas.github.io/AdsorPy/)
+[![image](https://img.shields.io/pypi/pyversions/adsorpy.svg)](https://pypi.python.org/pypi/adsorpy)
 [![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JoostFWMaas/AdsorPy/badge)](https://scorecard.dev/viewer/?uri=github.com/JoostFWMaas/AdsorPy)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12810/badge)](https://www.bestpractices.dev/projects/12810)
-[![OpenSSF Baseline](https://www.bestpractices.dev/projects/12810/baseline)](https://www.bestpractices.dev/projects/12810)
+[![sbomified](https://sbomify.com/assets/images/logo/badge.svg)](https://app.sbomify.com/public/product/jmtLHQbIeZLD/)
 
 
 Lattice-based random sequential adsorption (RSA) Python 3.10+ script.

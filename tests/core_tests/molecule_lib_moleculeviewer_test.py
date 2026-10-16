@@ -57,7 +57,6 @@ def test_init_moleculeviewer(moleculeviewer_factory: Callable[[], MoleculeViewer
     assert len(mol_vwr.atomkeys) == molecule_count
     assert isinstance(mol_vwr.atomkeys, np.ndarray)
 
-
     assert mol_vwr.roll == 0.0
     assert mol_vwr.pitch == 0.0
     assert mol_vwr.yaw == 0.0
