@@ -9,7 +9,6 @@ from sys import version_info
 from typing import Annotated, cast
 
 import numpy as np
-from shapely.ops import split
 
 if version_info >= (3, 11):
     from typing import Self
@@ -98,22 +97,13 @@ class ParallelogramSurfaceTransformer:
         """
         self.original_poly = shapely.normalize(surface_parallelogram)
 
-        original_box = self.original_poly.envelope
         coords_sequence = np.sort(self.original_poly.exterior.coords, axis=0)
 
-        # split_pieces = split(original_box, self.original_poly.boundary)
-        # sorted_pieces = sorted(split_pieces.geoms, key=lambda geom: geom.centroid.x)
-        # self.cut_x = sorted_pieces[-1].bounds[0] if len(sorted_pieces) > 1 else sorted_pieces[-1].bounds[2]
         self.cut_x = coords_sequence[-2, 0]
-        # self.cut_width = sorted_pieces[-1].bounds[2] - self.cut_x
         self.cut_width = coords_sequence[-1, 0] - self.cut_x
-        original_bounds = original_box.bounds
-        # self.box_width = self.cut_x - original_bounds[0]
         self.box_width = coords_sequence[-2, 0] - coords_sequence[0, 0]
-        # self.box_height = original_bounds[3] - original_bounds[1]
         self.box_height = coords_sequence[-1, 1] - coords_sequence[0, 1]
         self.shift_vector = np.asarray([self.box_width, 0])
-        # self.origin_offset = np.asarray([original_bounds[0], original_bounds[1]])
         self.origin_offset = coords_sequence[0]
         self.rectangle_poly = shapely.box(0.0, 0.0, self.box_width, self.box_height)
 
