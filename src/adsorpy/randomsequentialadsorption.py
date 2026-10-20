@@ -1749,6 +1749,7 @@ class MoleculeData:
         - "x_coord"
         - "y_coord"
         - "polygon"
+
     :ivar mol_tree: Molecules RTree.
     :ivar _mirr_names: Names of the columns in the mirror molecule struct array.
     :ivar _mirr_datatypes: Datatypes of the mirror molecule struct array.
@@ -1764,15 +1765,17 @@ class MoleculeData:
         - "x_coord"
         - "y_coord"
         - "polygon"
+
     :ivar mirr_tree: Mirror molecules RTree.
     :ivar _otomir_names: Names for the origin to mirror array.
     :ivar _otomir_types: Types of the origin to mirror array.
     :ivar _otomir_heads_dtypes: Data types for the original molecule to mirror (otomir) struct array.
     :ivar _otomir_fill_vals: Fill values for the origin to mirror array. Defaults to strictly invalid values.
     :ivar orig_to_mirrors: Origin to mirror struct array.
-    Stores indices linking mirror molecules to original molecules. Fields:
+        Stores indices linking mirror molecules to original molecules. Fields:
         - "exists"
         - "mirr_ids"
+
     :ivar coords: Coordinates of the molecules.
     :ivar mirror_coords: Mirror coordinates of the molecules.
     """

@@ -44,7 +44,7 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
     "pydantic": ("https://pydantic.dev/docs/validation/latest/", None),
     "shapely": ("https://shapely.readthedocs.io/en/stable/", None),
-    "numba": ("https://numba.readthedocs.io/en/stable/", None),
+    # "numba": ("https://numba.readthedocs.io/en/stable/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
     "rtree": ("https://rtree.readthedocs.io/en/latest/", None),
     "pyside6": ("https://doc.qt.io/qtforpython-6/", None),
