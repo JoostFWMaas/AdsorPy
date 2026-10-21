@@ -17,15 +17,8 @@ import textwrap
 import webbrowser
 import zipfile
 from collections import defaultdict
-from typing import get_args
-
-if sys.version_info >= (3, 11):
-    from datetime import UTC, datetime  # For datetime stamping and seed generation.
-    from typing import Unpack
-else:
-    from datetime import datetime
-
-    from typing_extensions import Unpack
+from datetime import UTC, datetime  # For datetime stamping and seed generation.
+from typing import Unpack, get_args
 
 if sys.version_info >= (3, 12):
     from typing import TypedDict, override

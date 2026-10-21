@@ -250,7 +250,7 @@ jobs:
       - name: Smoke test (sdist across all target Python versions)
         run: |
           set -euo pipefail
-          TARGET_VERSIONS=("3.10" "3.11" "3.12" "3.13" "3.14")
+          TARGET_VERSIONS=("3.11" "3.12" "3.13" "3.14")
           SDIST_FILE=$(find dist -maxdepth 1 -name "*.tar.gz" | head -n 1)
           if [ -z "$SDIST_FILE" ]; then
             echo "❌ Error: Source distribution (.tar.gz) not found in dist/"

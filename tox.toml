@@ -1,5 +1,5 @@
 min_version = "4.64.0"
-env_list = [{ prefix = "py3", start = 10, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
+env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
 labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
 # Quick reference:
