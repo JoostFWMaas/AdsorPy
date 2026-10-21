@@ -8,6 +8,7 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ### Changed
 ### Fixed
 ### Removed
+- Drop support for Python 3.10.
 
 ## 1.3.4 - 2026-10-04
 ### Added

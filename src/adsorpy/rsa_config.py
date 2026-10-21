@@ -10,12 +10,7 @@ from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
 from adsorpy.types import BoundaryConditionStrs  # noqa: TC001
 
 if TYPE_CHECKING:
-    from sys import version_info
-
-    if version_info >= (3, 11):
-        from typing import Self
-    else:
-        from typing_extensions import Self
+    from typing import Self
 
 from pydantic import BaseModel, FilePath, NonNegativeFloat, NonNegativeInt, PositiveInt, TypeAdapter, model_validator
 

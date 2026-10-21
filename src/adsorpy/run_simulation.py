@@ -10,14 +10,8 @@ The config.json can be found in the adsorpy folder as well.
 from __future__ import annotations
 
 import io
-from sys import version_info
-
-if version_info >= (3, 11):
-    from datetime import UTC, datetime  # For datetime stamping and seed generation.
-else:
-    from datetime import datetime
-
 import time  # For timing of the script.
+from datetime import UTC, datetime
 from itertools import count  # A simple counter, iterates with next(...).
 from pathlib import Path  # For path handling in Python.
 from typing import TYPE_CHECKING, Literal, ParamSpec, TypeAlias, TypeVar, cast, overload  # For type hinting.
@@ -163,7 +157,7 @@ def run_simulation(  # noqa: PLR0913, PLR0917
     )
 
     # The seed is defined as the datetime in microseconds. The seed is stored so simulations can be verified.
-    how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
+    how_late = datetime.now(UTC)  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
     seed = int(how_late.strftime("%Y%m%d%H%M%S%f")) if seed is None else seed
     # As long as the new safer PCG64DXSM generator is not the default, override the generator.
     rng = Generator(PCG64DXSM(seed)) if isinstance(seed, (int, np.integer)) else seed
@@ -677,7 +671,7 @@ def show_surface(
     rsa_config = RsaConfig(Path(__file__).parent / "config.json") if rsa_config is None else rsa_config
 
     # The seed is defined as the datetime in microseconds. The seed is stored so simulations can be verified.
-    how_late = datetime.now(UTC) if version_info >= (3, 11) else datetime.utcnow()  # pyright: ignore[reportPossiblyUnboundVariable, reportDeprecated]
+    how_late = datetime.now(UTC)
     seed = int(how_late.strftime("%Y%m%d%H%M%S%f")) if seed is None else seed
     # As long as the new safer PCG64DXSM generator is not the default, override the generator.
     rng = Generator(PCG64DXSM(seed)) if isinstance(seed, (int, np.integer)) else seed

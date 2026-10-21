@@ -6,11 +6,10 @@
 [![docs build results](https://github.com/JoostFWMaas/AdsorPy/actions/workflows/docs-ci.yml/badge.svg)](https://joostfwmaas.github.io/AdsorPy/)
 [![codecov](https://codecov.io/github/JoostFWMaas/AdsorPy/graph/badge.svg?token=XBYZU63D8Y)](https://codecov.io/github/JoostFWMaas/AdsorPy)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JoostFWMaas/AdsorPy/badge)](https://scorecard.dev/viewer/?uri=github.com/JoostFWMaas/AdsorPy)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12810/badge)](https://www.bestpractices.dev/projects/12810)
 [![sbomified](https://sbomify.com/assets/images/logo/badge.svg)](https://app.sbomify.com/public/product/jmtLHQbIeZLD/)
 
 
-Lattice-based random sequential adsorption (RSA) Python 3.10+ script.
+Lattice-based random sequential adsorption (RSA) Python 3.11+ script.
 
 In RSA, molecules arrive one by one at a surface. Adsorption takes place if the molecule does not overlap with molecules
 already on the surface.

@@ -3,7 +3,7 @@
 """Test the `run_simulation()` function."""
 
 from collections.abc import Callable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -193,7 +193,7 @@ def test_run_simulation_randomness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test the randomness based on datetime seed."""
-    fixed_datetime = datetime(2023, 1, 1, 0, 0, 0, 1, tzinfo=timezone.utc)
+    fixed_datetime = datetime(2023, 1, 1, 0, 0, 0, 1, tzinfo=UTC)
     monkeypatch.setattr("adsorpy.run_simulation.datetime", fixed_datetime)
 
     results_1 = run_simulation(rsa_config, include_rejected_flux=True, molecules_list=[default_polygon])
