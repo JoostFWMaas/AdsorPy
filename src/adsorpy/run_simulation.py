@@ -186,7 +186,7 @@ def run_simulation(  # noqa: PLR0913, PLR0917
 
         surf.generate_custom_surface(site_x_coords, site_y_coords, bounding_x_coord, bounding_y_coord)
     else:
-        surf.generate_grid(rng)
+        surf.generate_grid()
 
     molecules: list[MoleculeGroup] = []  # Initially, there are none.
     mgc: count[int] = count()
@@ -674,13 +674,12 @@ def show_surface(
     how_late = datetime.now(UTC)
     seed = int(how_late.strftime("%Y%m%d%H%M%S%f")) if seed is None else seed
     # As long as the new safer PCG64DXSM generator is not the default, override the generator.
-    rng = Generator(PCG64DXSM(seed)) if isinstance(seed, (int, np.integer)) else seed
     # Output files of the script are datetime stamped.
     # timestr = how_late.strftime("%Y%m%dT%H%M%S")
     # results_folder = Path.cwd() / "Output" / f"{timestr}_RSA"
 
     surf = Surface(rsa_config, lattice_type=lattice_type, lattice_a=lattice_a, site_count=site_count)
-    surf.generate_grid(rng)
+    surf.generate_grid()
 
     if svg_flag:
         surf.svgplot_surface_sites(filename=filepath, dark_mode_bool=dark_mode_bool)
