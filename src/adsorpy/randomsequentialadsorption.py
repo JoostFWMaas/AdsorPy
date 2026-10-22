@@ -1407,14 +1407,14 @@ class Surface:
         stickprob = sticking_probability
         self.sticking_probability: Final[float] = self.config.sticking_probability if stickprob is None else stickprob
 
-        self.x_max = 0.0
-        self.y_max = 0.0
-        self.area = 0.0
+        self.x_max: float = 0.0
+        self.y_max: float = 0.0
+        self.area: float = 0.0
 
         self.grid_index: IdxArray = np.arange(self.all_site_count, dtype=np.int64)
         self.grid_coordinates: CoordsArray = np.empty((2, self.all_site_count), dtype=np.float64)
 
-        self.bp = BoundaryParameters(self.config.boundary_type if boundary_type is None else boundary_type)
+        self.bp: BoundaryParameters = BoundaryParameters(boundary_type or self.config.boundary_type)
         self.tree: STRtree = STRtree([Point([0, 0])])
 
     def _estimate_site_count(self) -> int:
@@ -1429,13 +1429,12 @@ class Surface:
             temp_all_sites *= 4
         return temp_all_sites
 
-    def generate_grid(self, rng: np.random.Generator | None = None) -> None:
+    def generate_grid(self) -> None:
         """Create a hexagonal grid as a 2D numpy array with x the first index and y on the second.
 
-        :param rng: The random generator. Used when generating an amorphous surface with the Delone lib.
         :raises ValueError: If the lattice string is not supported.
         """
-        sqrt3: float = np.sqrt(3.0)
+        sqrt3: float = np.sqrt(3.0, dtype=float)
 
         x1: DistArray = np.arange(self.sites, dtype=np.float64)
         x1 *= self.lattice_a  # Scale the range by the lattice constant.

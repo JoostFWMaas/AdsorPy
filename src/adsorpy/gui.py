@@ -1403,7 +1403,7 @@ class GeneralSettings(QWidget):
         if seed_text:
             seed_val = int(seed_text)
         else:
-            how_late = datetime.now(UTC) if sys.version_info >= (3, 11) else datetime.utcnow()
+            how_late = datetime.now(UTC)
             seed_val = int(how_late.strftime("%Y%m%d%H%M%S%f"))
 
         misc_params = MiscParameters(seed=seed_val, timestep_limit=step_limit_val)

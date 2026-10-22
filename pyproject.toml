@@ -335,7 +335,7 @@ ignore = [
     "TD",
     "T201",
     "FIX", # This is for me to fix over several versions. These functions are never used unless they are fixed.
-    "DTZ003", # The datetime warning or  utcnow()
+#    "DTZ003", # The datetime warning or  utcnow()
     "FBT001", # Disallows booleans in functions. (I can see its use case, but no.)
     "FBT002", # Disallows booleans default arguments in functions.
     "ARG002", # Unused method argument.

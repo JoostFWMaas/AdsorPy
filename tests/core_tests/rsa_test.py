@@ -121,7 +121,7 @@ class TestWithParameters:
         simulator.rng = Generator(PCG64DXSM(simulator.seed))
 
         simulator.surf = rsarun.Surface(simulator.rsa_config, lattice_type=surf_type)
-        simulator.surf.generate_grid(simulator.rng)
+        simulator.surf.generate_grid()
         assert simulator.surf is not None
         assert simulator.surf.x_max > 0.0
         assert simulator.surf.y_max > 0.0  # 0. by default, larger if successful.
@@ -404,7 +404,7 @@ def simple_simulator() -> ExampleSimulation:
     sim.rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / sim.configname)
     sim.rng = Generator(PCG64DXSM(sim.seed))
     sim.surf = rsarun.Surface(sim.rsa_config)
-    sim.surf.generate_grid(sim.rng)
+    sim.surf.generate_grid()
     sim.molecules = []
     rot_syms = [2]
     rot_cnts = [360]
@@ -561,7 +561,7 @@ def gapsim() -> ExampleSimulation:
     sim.rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / sim.configname)
     sim.rng = Generator(PCG64DXSM(sim.seed))
     sim.surf = rsarun.Surface(sim.rsa_config)
-    sim.surf.generate_grid(sim.rng)
+    sim.surf.generate_grid()
 
     return sim
 
