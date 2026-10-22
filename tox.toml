@@ -1,4 +1,4 @@
-min_version = "4.64.0"
+min_version = "4.67.1"
 env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
 labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
@@ -6,7 +6,7 @@ labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 # Run tox: ``tox run``
 # For clean environments, ``-r``
 # For linting (or another tox group) only: ``-m static``
-# For a single env, such as py310: ``-e py310``
+# For a single env, such as py314: ``-e py314``
 # To run in parallel: ``-p``
 # To run just 1 file or folder: ``-e py311 -- PATH_GOES_HERE``
 [env_run_base]
