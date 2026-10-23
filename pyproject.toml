@@ -403,7 +403,6 @@ test-command = "python -c \"import adsorpy; print('Successfully verified version
 manylinux-x86_64-image = "manylinux_2_34"
 #manylinux-aarch64-image = "manylinux_2_39"
 skip = "*-musllinux_* cp310-win_arm64 cp311-win_arm64"
-before-all = "uv self update"
 
 [tool.cibuildwheel.environment]
 SOURCE_DATE_EPOCH = "315532800"
