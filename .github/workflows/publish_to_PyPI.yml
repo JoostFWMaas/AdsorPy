@@ -377,6 +377,7 @@ jobs:
 
           # Extract the standalone Cosign Bundle verification material
           # (This keeps the outer signature block and verification timestamp data intact)
+          RAW_SIG=$(jq -r '.dsseEnvelope.signatures[0].sig' attestations/sbom.cdx.json.intoto.jsonl)
           jq --arg sig "$RAW_SIG" '
             .messageSignature = { "signature": $sig } |
             del(.dsseEnvelope)
