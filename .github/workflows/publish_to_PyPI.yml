@@ -377,14 +377,14 @@ jobs:
 
           # Extract the standalone Cosign Bundle verification material
           # (This keeps the outer signature block and verification timestamp data intact)
-          RAW_SIG=$(jq -r '.dsseEnvelope.signatures[0].sig' attestations/sbom.cdx.json.intoto.jsonl)
-          jq --arg sig "$RAW_SIG" '
-            .messageSignature = { "signature": $sig } |
-            del(.dsseEnvelope)
-          ' attestations/sbom.cdx.json.intoto.jsonl > cosign_bundle.json
+          jq '{
+            mediaType: "application/vnd.dev.sigstore.bundle.v0.3+json",
+            verificationMaterial: (.verificationMaterial + {tlogEntries: .tlogEntries}),
+            dsseEnvelope: .dsseEnvelope
+          }' attestations/sbom.cdx.json.intoto.jsonl > cosign_bundle.json
 
-          # Extract the underlying raw DSSE Statement Envelope
-          jq '.dsseEnvelope' attestations/sbom.cdx.json.intoto.jsonl > raw_provenance.json
+            # Extract the underlying raw DSSE Statement Envelope
+            jq '.dsseEnvelope' attestations/sbom.cdx.json.intoto.jsonl > raw_provenance.json
 
       - name: Fetch dynamic SBOM ID
         id: fetch_id
@@ -427,6 +427,11 @@ jobs:
               -H "Authorization: Bearer $SBOMIFY_TOKEN" \
               -H "Content-Type: application/json" \
               -d @raw_provenance.json
+
+      - name: Instant exit to check results
+        run: |
+          set -euo pipefail
+          exit 1
 
   # =========================================================================
   # 3. STAGING DEPLOYMENT: Submits targets to TestPyPI
