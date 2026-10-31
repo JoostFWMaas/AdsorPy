@@ -70,6 +70,8 @@ dependencies = [
     "PySide6>=6.12.0",
     "typing-extensions>=4.16.0",
     "frozendict>=2.4.7; python_version <= '3.14'",  # This exists in default Python starting 3.15.
+    "tox==4.67.4",
+    "pip==26.2.2",
 ]
 
 
@@ -84,8 +86,8 @@ gui-deps = [
 
 
 [tool.uv]
-required-version = ">=0.13.4"
-exclude-newer = "3 days"
+required-version = ">=0.13.6"
+#exclude-newer = "3 days"
 
 constraint-dependencies = [
     "html5lib>=1.1",
@@ -119,25 +121,25 @@ constraint-dependencies = [
 
 [dependency-groups]
 test = [
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.170.8",
+    "hypothesis>=6.170.12",
 #    "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
     "pyvirtualdisplay>=3.0; sys_platform == 'linux'",
     "easyprocess>=1.1; sys_platform == 'linux'",
-    "pytest-env>=1.8.1",
+    "pytest-env>=1.8.3",
 ]
 lint = [
-    "mypy==2.4.0",
-    "ruff==0.17.2",
+    "mypy==2.4.1",
+    "ruff==0.17.3",
     "basedpyright==1.40.2",
     "tach==0.35.3",
     "slotscheck==0.21.0",
     "pyside6-stubs==6.7.3.0",
-    "types-shapely>=2.1.0.20260728",
+    "types-shapely>=2.1.0.20261030",
 ]
 docs = [
     "sphinx>=8.3.0",
@@ -147,8 +149,8 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.67.1",
-    "tox-uv>=1.37.0",
+    "tox>=4.67.2",
+    "tox-uv>=1.37.2",
 ]
 dev-misc = [
     "build>=1.6.1",
@@ -221,6 +223,7 @@ omit = [
     "*/sensitivity.py", # Demonstrator, not included.
     "*/[sS]cripts/*",
 ]
+parallel = true
 
 
 [tool.coverage.report]
@@ -238,7 +241,7 @@ exclude_also = [
     "if self.flux_flag:", # Experimental feature, not yet usable.
     "_run_flux_", # See above.
     "if not self.simple_shape_flag", # Idem ditto.
-    "if (sys\\.)?version_info", # Is tested with Tox (between instances of Pytest). False negative.
+#    "if (sys\\.)?version_info", # Is tested with Tox (between instances of Pytest). False negative.
     "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
     "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
     "svg",

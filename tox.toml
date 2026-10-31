@@ -1,5 +1,5 @@
-min_version = "4.67.1"
-env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
+min_version = "4.67.2"
+env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck", "coverage"]
 labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
 
 # Quick reference:
@@ -19,7 +19,7 @@ pass_env = [
     "QT_XCB_GL_INTEGRATION",
 ]
 dependency_groups = ["test", "dev-gui"]
-commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }, "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
+commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }, "--cov=adsorpy", "--cov-append", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
     [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
 ]
 
@@ -29,7 +29,6 @@ dependency_groups = ["lint"]
 commands = [["ruff", "check", "src", "tests"]]
 
 [env.mypy]
-#skip_install = true
 dependency_groups = ["lint", "test", "dev-gui"]
 commands = [["mypy", "src", "tests"],
 ]
@@ -45,3 +44,13 @@ commands = [["slotscheck", "-m", "adsorpy", "-v"]]
 [env.tach]
 dependency_groups = ["lint"]
 commands = [["tach", "check"]]
+
+[env.coverage]
+dependency_groups = ["test"]
+# Runs 'coverage combine' to merge all .coverage.* files into one '.coverage' file,
+# then outputs the final terminal summary and generates a combined HTML report.
+commands = [
+    ["coverage", "combine"],
+    ["coverage", "report", "-m"],
+    ["coverage", "html"]
+]
