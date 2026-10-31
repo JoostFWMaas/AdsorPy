@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 
 
 # @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
-def run_simulation(  # noqa: PLR0913
+def run_simulation(  # noqa: PLR0913, PLR0917
     rsa_config: RsaConfig | None = None,
     molecules_list: Polygon | list[Polygon] | GeoArray | None = None,
     rotation_symmetries: NonNegativeInt | list[NonNegativeInt] | IdxArray | None = None,
