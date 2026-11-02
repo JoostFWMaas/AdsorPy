@@ -62,16 +62,14 @@ dependencies = [
     "numpy>=2.4.6",
     "matplotlib>=3.11.2",
     "shapely>=2.2.0",
-    "pydantic>=2.14.1",
+    "pydantic>=2.14.2",
     "pydantic-extra-types>=2.11.1",
     "rtree>=1.4.1",
     "svg-py>=1.10.0",
     "defusedxml>=0.7.1",
     "PySide6>=6.12.0",
     "typing-extensions>=4.16.0",
-    "frozendict>=2.4.7; python_version <= '3.14'",  # This exists in default Python starting 3.15.
-    "tox==4.67.4",
-    "pip==26.2.2",
+    "frozendict>=2.5.1; python_version <= '3.14'",  # This exists in default Python starting 3.15.
 ]
 
 
@@ -123,14 +121,14 @@ constraint-dependencies = [
 test = [
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.170.12",
+    "hypothesis>=6.170.14",
 #    "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
     "pyvirtualdisplay>=3.0; sys_platform == 'linux'",
     "easyprocess>=1.1; sys_platform == 'linux'",
-    "pytest-env>=1.8.3",
+    "pytest-env>=1.8.4",
 ]
 lint = [
     "mypy==2.4.1",
@@ -149,8 +147,8 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.67.2",
-    "tox-uv>=1.37.2",
+    "tox>=4.67.6",
+    "tox-uv>=1.37.3",
 ]
 dev-misc = [
     "build>=1.6.1",
@@ -208,7 +206,7 @@ include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
+#addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
 qt_api = "pyside6"
 env = ["QT_QPA_PLATFORM=offscreen"]
 
@@ -224,6 +222,7 @@ omit = [
     "*/[sS]cripts/*",
 ]
 parallel = true
+source = ["src", "adsorpy"]
 
 
 [tool.coverage.report]
@@ -239,11 +238,8 @@ exclude_also = [
     "if plot_",
     "while temp_results_folder.is_dir()", # Checks for collision in saving folders. Nothing is saved for tests.
     "if self.flux_flag:", # Experimental feature, not yet usable.
-    "_run_flux_", # See above.
+    "_run_flux", # See above.
     "if not self.simple_shape_flag", # Idem ditto.
-#    "if (sys\\.)?version_info", # Is tested with Tox (between instances of Pytest). False negative.
-    "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
-    "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
     "svg",
     "css",
     "def show_",

@@ -1,11 +1,11 @@
 min_version = "4.67.2"
 env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck", "coverage"]
-labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
+labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"], test=[{ prefix = "py3", start = 11, stop = 14 }, "coverage"] }
 
 # Quick reference:
 # Run tox: ``tox run``
 # For clean environments, ``-r``
-# For linting (or another tox group) only: ``-m static``
+# For linting (or another tox label group) only: ``-m static``
 # For a single env, such as py314: ``-e py314``
 # To run in parallel: ``-p``
 # To run just 1 file or folder: ``-e py311 -- PATH_GOES_HERE``
@@ -19,8 +19,9 @@ pass_env = [
     "QT_XCB_GL_INTEGRATION",
 ]
 dependency_groups = ["test", "dev-gui"]
-commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }, "--cov=adsorpy", "--cov-append", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
-    [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
+commands = [["coverage", "run", "--branch", "-p", "-m", "pytest", "tests"],
+#commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }, "--cov=adsorpy", "--cov-append", "--cov-context=test", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
+#    [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
 ]
 
 [env.ruff]
@@ -46,9 +47,11 @@ dependency_groups = ["lint"]
 commands = [["tach", "check"]]
 
 [env.coverage]
+skip_install = true
+depends = ["py3*"]
 dependency_groups = ["test"]
 # Runs 'coverage combine' to merge all .coverage.* files into one '.coverage' file,
-# then outputs the final terminal summary and generates a combined HTML report.
+# then outputs the final terminal summary and generates a combined xml report.
 commands = [
     ["coverage", "combine"],
     ["coverage", "report", "-m"],

@@ -342,6 +342,7 @@ class TestCustomGrid:
         *_, sim = run_simulation(
             rsa_config=rsa_config,
             seed=SEED,
+            lattice_type="custom",
             site_x_coords=0.9 * np.repeat(np.arange(10, dtype=np.float64), 10),
             site_y_coords=0.9 * np.tile(np.arange(10, dtype=np.float64), 10),
             bounding_x_coord=10,
@@ -351,6 +352,20 @@ class TestCustomGrid:
         overlap_tester(sim)
         gapsize_tester(sim)
 
+
+    def test_good_custom_grid_bad_type(self) -> None:
+        """Custom grid fails when not set as custom while coordinates are custom."""
+        sim: Simulator
+        rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
+        with pytest.raises(ValueError, match="Please set lattice type to 'custom' when providing custom coordinates."):
+            run_simulation(
+                rsa_config=rsa_config,
+                seed=SEED,
+                site_x_coords=0.9 * np.repeat(np.arange(10, dtype=np.float64), 10),
+                site_y_coords=0.9 * np.tile(np.arange(10, dtype=np.float64), 10),
+                bounding_x_coord=10,
+                bounding_y_coord=10,
+            )
 
 def test_sequential_fluxreject() -> None:
     """Handle flux-based simulation correctly."""
