@@ -84,7 +84,10 @@ gui-deps = [
 
 
 [tool.uv]
-required-version = ">=0.13.6"
+required-version = ">=0.13.7"
+environments = [
+    "platform_system != 'Emscripten'"
+]
 #exclude-newer = "3 days"
 
 constraint-dependencies = [
@@ -110,8 +113,8 @@ constraint-dependencies = [
     "id>=1.6.1",
     "pyyaml>=6.0.3",
     "pillow>=13.0.0",
-    "pip>=26.2.2",
-    "certifi>=2026.10.19",
+    "pip>=26.3.0",
+    "certifi>=2026.10.23",
     "sigstore>=4.5.1",
     "conda>=26.9.4",
     "pixi>=0.82.1",
@@ -128,11 +131,11 @@ test = [
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
     "pyvirtualdisplay>=3.0; sys_platform == 'linux'",
     "easyprocess>=1.1; sys_platform == 'linux'",
-    "pytest-env>=1.8.4",
+    "pytest-env>=1.8.5",
 ]
 lint = [
     "mypy==2.4.1",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "basedpyright==1.40.2",
     "tach==0.35.3",
     "slotscheck==0.21.0",
@@ -147,8 +150,8 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.67.6",
-    "tox-uv>=1.37.3",
+    "tox>=4.67.12",
+    "tox-uv>=1.37.5",
 ]
 dev-misc = [
     "build>=1.6.1",
