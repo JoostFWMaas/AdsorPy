@@ -11,7 +11,7 @@ version = "1.3.5-alpha.4"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 license = "MIT"
 license-files = ["LICEN[CS]E.md"]
 classifiers = [
@@ -124,7 +124,7 @@ constraint-dependencies = [
 test = [
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.170.14",
+    "hypothesis>=6.170.15",
 #    "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
@@ -143,20 +143,20 @@ lint = [
     "types-shapely>=2.1.0.20261030",
 ]
 docs = [
-    "sphinx>=8.3.0",
+    "sphinx>=9.0.0",
     "furo>=2025.12.19",
-    "sphinx_design>=0.6.1",
+    "sphinx_design>=0.7.0",
     "sphinx-autodoc-typehints>=3.6.1",
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.67.12",
-    "tox-uv>=1.37.5",
+    "tox>=4.67.13",
+    "tox-uv>=1.37.6",
 ]
 dev-misc = [
     "build>=1.6.1",
     "twine>=7.0.0",
-    "cibuildwheel>=4.3.4",
+    "cibuildwheel>=4.3.5",
 ]
 
 dev-gui = [

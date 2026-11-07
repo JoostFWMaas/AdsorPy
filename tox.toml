@@ -1,4 +1,4 @@
-min_version = "4.67.2"
+min_version = "4.67.13"
 env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
 labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"], test=[{ prefix = "py3", start = 11, stop = 14 }] }
 
@@ -27,7 +27,8 @@ commands = [["coverage", "run", "--branch", "-p", "-m", "pytest", { replace = "p
 [env.ruff]
 no_default_groups = true
 dependency_groups = ["lint"]
-commands = [["ruff", "check", "src", "tests"]]
+commands = [["ruff", "check", "src", "tests"],
+]
 
 [env.mypy]
 dependency_groups = ["lint", "test", "dev-gui"]
@@ -46,14 +47,14 @@ commands = [["slotscheck", "-m", "adsorpy", "-v"]]
 dependency_groups = ["lint"]
 commands = [["tach", "check"]]
 
-#[env.coverage]
-#skip_install = true
-#depends = ["py3*"]
-#dependency_groups = ["test"]
-## Runs 'coverage combine' to merge all .coverage.* files into one '.coverage' file,
-## then outputs the final terminal summary and generates a combined xml report.
-#commands = [
-#    ["coverage", "combine"],
-#    ["coverage", "report", "-m"],
-#    ["coverage", "html"]
-#]
+[env.coverage]
+skip_install = true
+depends = ["py3*"]
+dependency_groups = ["test"]
+# Runs 'coverage combine' to merge all .coverage.* files into one '.coverage' file,
+# then outputs the final terminal summary and generates a combined report.
+commands = [
+    ["coverage", "combine"],
+    ["coverage", "report", "-m"],
+    ["coverage", "html"]
+]

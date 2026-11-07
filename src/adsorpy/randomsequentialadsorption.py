@@ -1403,9 +1403,9 @@ class Surface:
             errmsg = "When setting custom sizes, set both x and y."
             raise ValueError(errmsg)
 
-        if not self.simple_shape_flag and self.lattice_type == "custom":
-            errmsg = "Please set lattice type to 'custom' when providing custom coordinates."
-            raise ValueError(errmsg)
+        # if not self.simple_shape_flag and self.lattice_type == "custom":
+        #     errmsg = "Please set lattice type to 'custom' when providing custom coordinates."
+        #     raise ValueError(errmsg)
 
         self.all_site_count: int = self._estimate_site_count()
         self.lattice_a: Final[float] = self.config.lattice_a if lattice_a is None else lattice_a
@@ -1536,9 +1536,9 @@ class Surface:
                 errmsg = "When providing 'x_bbox' and 'y_bbox', lattice_type must be 'custom'."
                 raise ValueError(errmsg)
 
-            # Error Case: Neither or all coordinate sets provided
+            # Error Case: bbox XNOR coordinates provided.
             case (False, False, False, False, _) | (True, True, True, True, _):
-                errmsg = "You must provide either both 'all' coordinates OR both 'bbox' coordinates."
+                errmsg = "You must provide 'all' coordinates XOR both 'bbox' coordinates."
                 raise ValueError(errmsg)
 
             # Catch-all: Any other incomplete pairs or mixed argument combinations
@@ -1558,6 +1558,8 @@ class Surface:
                     self.x_max += self.lattice_a  # This is done to make periodic matching easier.
                 case _:  # Only 'custom' is left. No need to check.
                     pass
+
+        self.area = self.x_max * self.y_max
 
     def generate_custom_surface(
         self,
