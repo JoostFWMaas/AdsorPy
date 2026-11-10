@@ -62,7 +62,7 @@ dependencies = [
     "numpy>=2.4.6",
     "matplotlib>=3.11.2",
     "shapely>=2.2.0",
-    "pydantic>=2.14.2",
+    "pydantic>=2.14.3",
     "pydantic-extra-types>=2.11.1",
     "rtree>=1.4.1",
     "svg-py>=1.10.0",
@@ -151,7 +151,7 @@ docs = [
 ]
 envs = [
     "tox>=4.67.13",
-    "tox-uv>=1.37.6",
+    "tox-uv>=1.37.7",
 ]
 dev-misc = [
     "build>=1.6.1",
@@ -226,6 +226,7 @@ omit = [
 ]
 parallel = true
 source = ["src", "adsorpy"]
+branch = true
 
 
 [tool.coverage.report]
@@ -255,9 +256,10 @@ exclude_also = [
 
 [tool.coverage.paths]
 source = [
-    "src/",  # Local path
-    ".tox/*/lib/python*/site-packages/",  # Linux / MacOS / CI path
-    ".tox\\*\\Lib\\site-packages\\",  # Windows path
+    "adsorpy/",  # Local path
+    "src/adsorpy/",
+    ".tox/*/lib/python*/site-packages/adsorpy",  # Linux / MacOS / CI path
+    ".tox\\*\\Lib\\site-packages\\adsorpy",  # Windows path
 ]
 
 

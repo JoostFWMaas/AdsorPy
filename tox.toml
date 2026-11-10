@@ -1,6 +1,6 @@
 min_version = "4.67.13"
-env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
-labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"], test=[{ prefix = "py3", start = 11, stop = 14 }] }
+env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck", "coverage"]
+labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"], test=[{ prefix = "py3", start = 11, stop = 14 }, "coverage"] }
 
 # Quick reference:
 # Run tox: ``tox run``
@@ -19,8 +19,9 @@ pass_env = [
     "QT_XCB_GL_INTEGRATION",
 ]
 dependency_groups = ["test", "dev-gui"]
-commands = [["coverage", "run", "--branch", "-p", "-m", "pytest", { replace = "posargs", default = ["tests"], extend = true }],
-#commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }, "--cov=adsorpy", "--cov-append", "--cov-context=test", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
+commands = [["coverage", "run", "--branch", "-p", "-m", "pytest", "--basetemp={env_tmp_dir}", { replace = "posargs", default = ["tests"], extend = true }],
+#commands = [
+#    ["pytest", "--cov=adsorpy", "--cov-report=", "--cov-config=pyproject.toml", { replace = "posargs", default = ["tests"], extend = true }],
     [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
 ]
 
