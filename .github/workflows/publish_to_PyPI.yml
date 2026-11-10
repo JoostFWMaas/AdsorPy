@@ -74,7 +74,7 @@ jobs:
 
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -132,7 +132,7 @@ jobs:
 
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -159,7 +159,7 @@ jobs:
           key: sbomify-${{ runner.os }}
 
       - name: Generate SBOM
-        uses: sbomify/sbomify-action@68fbe3a79823d7ce738efb2c60c961a663ed4eb9 # v26.10.3
+        uses: sbomify/sbomify-action@c299cf552cb5744bad81e2a3caa55757d78d5ddd # v26.11.0
         env:
           LOCK_FILE: uv.lock
           OUTPUT_FILE: sbom.cdx.json
@@ -446,7 +446,7 @@ jobs:
 
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -481,7 +481,7 @@ jobs:
 
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -535,7 +535,7 @@ jobs:
 
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -574,7 +574,7 @@ jobs:
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
 
@@ -594,7 +594,7 @@ jobs:
           path: release-assets/attestations
 
       - name: Create GitHub Release (immutable)
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           files: |
             release-assets/SHA256SUMS
