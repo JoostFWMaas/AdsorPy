@@ -132,7 +132,7 @@ test = [
 ]
 lint = [
     "mypy==2.4.1",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "basedpyright==1.40.2",
     "tach==0.35.3",
     "slotscheck==0.21.0",
