@@ -4,9 +4,10 @@
 
 import uuid
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import pytest
+from PySide6.QtSvgWidgets import QSvgWidget
 from _pytest.monkeypatch import MonkeyPatch
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QResizeEvent, QWheelEvent
@@ -505,3 +506,69 @@ def test_wheel_event_unhandled_scroll_without_parent_raises_error(qtbot: QtBot) 
 
     with pytest.raises(ValueError, match=r"Widget has no valid QScrollArea parent/grandparent/ancestor."):
         widget.wheelEvent(wheel_event)
+
+
+def test_zoomable_svg_widget_with_parent(qtbot: QtBot) -> None:
+    """Test ZoomableSvgWidget does not enforce minimum size when a parent is provided."""
+    parent_widget = QSvgWidget()
+    qtbot.addWidget(parent_widget)
+
+    widget = ZoomableSvgWidget(parent=parent_widget)
+    qtbot.addWidget(widget)
+
+    assert widget.parent() is parent_widget
+    assert widget.minimumSize() != QSize(600, 600)
+
+
+def test_export_graphics_large_viewbox_skips_upscaling(
+    qtbot: QtBot,
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Test that a large viewbox skips the upscaling."""
+    widget = ZoomableSvgWidget()
+    qtbot.addWidget(widget)
+
+    # Load an SVG with viewBox width >= 900 so upscaling is skipped
+    large_svg = b'<svg xmlns="https://w3.org" viewBox="0 0 1000 1000"></svg>'
+    widget.load(large_svg)
+
+    out_file = tmp_path / "large.png"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        MagicMock(return_value=(str(out_file), "PNG Image (*.png)")),
+    )
+    mock_info = MagicMock()
+    monkeypatch.setattr(QMessageBox, "information", mock_info)
+
+    widget.export_graphics()
+
+    assert out_file.exists()
+    mock_info.assert_called_once()
+
+
+def test_export_graphics_unhandled_extension_falls_through(
+    qtbot: QtBot,
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Test that an unsupported extension does not get saved."""
+    widget = ZoomableSvgWidget()
+    qtbot.addWidget(widget)
+
+    svg_bytes = b'<svg xmlns="https://w3.org" viewBox="0 0 100 100"></svg>'
+    widget.load(svg_bytes)
+
+    out_file = tmp_path / "output.unsupported_extension"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        MagicMock(return_value=(str(out_file), "Scalable Vector Graphics (*.svg)")),
+    )
+    mock_info = MagicMock()
+    monkeypatch.setattr(QMessageBox, "information", mock_info)
+
+    widget.export_graphics()
+
+    mock_info.assert_called_once()

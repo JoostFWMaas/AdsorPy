@@ -438,7 +438,7 @@ def test_select_and_run() -> None:
     flux = True
     with pytest.raises(
         ValueError,
-        match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported.",
+        match=f"Simulation type {bad_simulation_type!r}, rejected_flux = {flux!r} are unsupported.",
     ):
         _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # pyright: ignore[reportArgumentType]
 

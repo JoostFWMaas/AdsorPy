@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import cast
-from unittest.mock import Mock
+from unittest.mock import Mock, MagicMock
 
 import numpy as np
 import pytest
@@ -210,3 +210,46 @@ def test_molecule_viewer_sync_statefully(moleculeviewer_factory: Callable[[], Mo
         {"viewer": viewer},
     )
     run_state_machine_as_test(bound_machine)
+
+
+def test_draw_skips_non_bonded_atom_pairs(qtbot: QtBot) -> None:
+    """Test draw() skips bond lines when atom distance is outside [0.4, 1.9] Å."""
+    # 3 atoms along the x-axis at 0.0, 1.0, and 3.0 Å:
+    # - Pair (0, 1): dist = 1.0 Å -> True (drawn)
+    # - Pair (0, 2): dist = 3.0 Å -> False (hits 852 -> 849, skipped)
+    # - Pair (1, 2): dist = 2.0 Å -> False (hits 852 -> 849, skipped)
+    atomkeys = np.array(["H", "H", "H"])
+    atompos = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+        ],
+        dtype=float,
+    )
+    colours = np.array(["#FFFFFF", "#FFFFFF", "#FFFFFF"])
+
+    viewer = MoleculeViewer(
+        atomkeys=atomkeys,
+        atompos=atompos,
+        colours=colours,
+        init_roll=0.0,
+        init_pitch=0.0,
+        init_yaw=0.0,
+        init_x_offset=0.0,
+        init_y_offset=0.0,
+    )
+
+    qtbot.addWidget(viewer)
+
+    viewer.show_bonds = True
+    viewer.svg_widget.load = MagicMock()
+
+    viewer.draw()
+
+    viewer.svg_widget.load.assert_called_once()
+    svg_bytes: bytes = viewer.svg_widget.load.call_args[0][0]
+    svg_text = svg_bytes.decode("utf-8")
+
+    # Only 1 bond pair (0, 1) qualifies, rendered once in each of the 3 scatter panels = 3 dashed bond lines
+    assert svg_text.count('stroke="#aaaaaa"') == 3, "Only 1 bond pair qualifies, it is rendered 3x, so a count of 3."

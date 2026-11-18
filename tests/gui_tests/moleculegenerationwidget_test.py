@@ -524,7 +524,7 @@ def test_launch_first_time_loader_fully(
     """Test that launch_first_time_loader runs completely when a valid file is provided."""
     molecule_tab = molecule_tab_factory()
     temp_file = tmp_path / "molecule.xyz"
-    temp_file.write_text("dummy data")
+    temp_file.write_text("temp data")
 
     mock_picker = MagicMock()
     mock_picker.text.return_value = str(temp_file)
@@ -743,3 +743,53 @@ def test_error(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: M
     molecule_tab.error(input_message)
 
     mock_error.assert_called_once_with(molecule_tab, "Input Error", input_message)
+
+
+@pytest.mark.parametrize("has_existing_app", [True, False])
+def test_first_time_loader_qapp_branches(
+    monkeypatch: MonkeyPatch,
+    has_existing_app: bool,
+) -> None:
+    """Test first_time_loader when QApplication already exists vs when it is None."""
+    # Create a valid minimal .xyz file to pass FilePath validation and _initialise_reader
+    temp_file = Path(__file__).parents[1] / "test_data" / "fluorochloromethanol.xyz"
+
+    # Mock QApplication so we don't instantiate a second real QApplication in the same process
+    mock_app_instance = MagicMock()
+    mock_qapp_cls = MagicMock(return_value=mock_app_instance)
+    mock_qapp_cls.instance.return_value = mock_app_instance if has_existing_app else None
+    monkeypatch.setattr(molecule_lib, "QApplication", mock_qapp_cls)
+
+    # Mock MoleculeViewer so viewer.exec() does not block
+    mock_viewer = MagicMock()
+    mock_viewer.roll = 10.0
+    mock_viewer.pitch = 20.0
+    mock_viewer.yaw = 30.0
+    mock_viewer.x_offset = 1.0
+    mock_viewer.y_offset = 2.0
+    mock_viewer.disabled_molecules = ["H"]
+    mock_viewer.z_filter_enable.isChecked.return_value = True
+    mock_viewer.z_cutoff = 0.5
+    monkeypatch.setattr(molecule_lib, "MoleculeViewer", MagicMock(return_value=mock_viewer))
+
+    result = molecule_lib.first_time_loader(file_name=temp_file, roll=10.0)
+
+    if has_existing_app:
+        mock_qapp_cls.assert_not_called()
+        mock_app_instance.setOrganizationName.assert_not_called()
+    else:
+        mock_qapp_cls.assert_called_once()
+        mock_app_instance.setOrganizationName.assert_called_once_with("adsorpy")
+        mock_app_instance.setApplicationName.assert_called_once_with("adsorpy-molecule_lib")
+
+    mock_viewer.exec.assert_called_once()
+    assert result == {
+        "file_name": str(temp_file),
+        "roll": 10.0,
+        "pitch": 20.0,
+        "yaw": 30.0,
+        "x_offset": 1.0,
+        "y_offset": 2.0,
+        "ignore_atoms": ["H"],
+        "z_trim": 0.5,
+    }

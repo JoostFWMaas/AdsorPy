@@ -788,22 +788,20 @@ class ZoomableSvgWidget(QSvgWidget):
                 mouse_pos_widget = event.position()
                 self.setFixedSize(new_size)
 
-                if scroll_area:
-                    h_bar = scroll_area.horizontalScrollBar()
-                    v_bar = scroll_area.verticalScrollBar()
+                h_bar = scroll_area.horizontalScrollBar()
+                v_bar = scroll_area.verticalScrollBar()
 
-                    delta_x = mouse_pos_widget.x() * scale - mouse_pos_widget.x()
-                    delta_y = mouse_pos_widget.y() * scale - mouse_pos_widget.y()
+                delta_x = mouse_pos_widget.x() * scale - mouse_pos_widget.x()
+                delta_y = mouse_pos_widget.y() * scale - mouse_pos_widget.y()
 
-                    h_bar.setValue(int(h_bar.value() + delta_x))
-                    v_bar.setValue(int(v_bar.value() + delta_y))
+                h_bar.setValue(int(h_bar.value() + delta_x))
+                v_bar.setValue(int(v_bar.value() + delta_y))
             event.accept()
 
         elif modifiers == Qt.KeyboardModifier.ShiftModifier:
-            if scroll_area:
-                h_bar = scroll_area.horizontalScrollBar()
-                steps = event.angleDelta().y()
-                h_bar.setValue(h_bar.value() - steps)
+            h_bar = scroll_area.horizontalScrollBar()
+            steps = event.angleDelta().y()
+            h_bar.setValue(h_bar.value() - steps)
             event.accept()
 
         else:
@@ -874,8 +872,8 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
 
             attrs[field_name] = property(getter, setter)
 
+        attrs["fields"] = fields
         new_class = cast("AutoStateMeta[P_mol, T_qobj]", super().__new__(cls, name, bases, attrs))
-        type(new_class).fields = fields
 
         return new_class
 
