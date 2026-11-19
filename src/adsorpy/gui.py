@@ -874,6 +874,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
 
         attrs["fields"] = fields
         new_class = cast("AutoStateMeta[P_mol, T_qobj]", super().__new__(cls, name, bases, attrs))
+        # type(new_class).fields = fields
 
         return new_class
 
@@ -1778,7 +1779,8 @@ class GeneralSettings(QWidget):
             # -------------------------------------------------------------
             # OPTION 4: ZIPPED CSV (.csv.gz) -> Tabular with NaN padding
             # -------------------------------------------------------------
-            elif ".zip" in suffix_lower:
+            else:  # Always has to be .zip.
+            # elif ".zip" in suffix_lower:
                 # Open a compressed zip file archive stream wrapper directly
                 with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
                     meta_io = io.StringIO()
@@ -2198,9 +2200,9 @@ class MoleculeGeneration(QWidget):
         taken_item = self.mol_params_list.pop(old_index)
 
         # Insert it into the exact same new position
-        if taken_item:
-            self.mol_params_list.insert(new_index, taken_item)
-            self.state.molecule_param_list = self.mol_params_list
+        # if taken_item:
+        self.mol_params_list.insert(new_index, taken_item)
+        self.state.molecule_param_list = self.mol_params_list
 
     def _build_symmetry_controls(self) -> None:
         """Assemble the geometric shape matrix transformation property grid layouts."""

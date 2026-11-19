@@ -133,7 +133,6 @@ test = [
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "hypothesis>=6.170.15",
-#    "scipy>=1.15.3",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",

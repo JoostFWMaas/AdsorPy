@@ -48,11 +48,12 @@ def test_get_run_sim_default_missing_param_raises_key_error() -> None:
     with pytest.raises(KeyError):
         GeneralSettings.get_run_sim_default("non_existent_parameter_name")
 
-
-def test_prepare_simulation_inputs_success(qtbot: QtBot) -> None:
+@pytest.mark.parametrize("default_polygon_flag", (True, False))
+def test_prepare_simulation_inputs_success(qtbot: QtBot, default_polygon_flag: bool) -> None:
     """Verify AdsorpyGUI builds simulation dictionaries and extracts Polygon classes.
 
     :param qtbot: Simulates user input.
+    :param default_polygon_flag: Is a default polygon used, or is it the custom molecule of the test?
     """
     # Bind validation functions to the target file execution namespace
     gui = AdsorpyGUI()
@@ -67,18 +68,20 @@ def test_prepare_simulation_inputs_success(qtbot: QtBot) -> None:
     lattice_type = "square"
     gui.state.surface_params = SurfaceParameters({"seed": 12, "lattice_type": lattice_type})
     coords = [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]
-    gui.state.molecule_param_list = [
-        {
-            "polygon": PydanticPolygon(Polygon(coords)),
-            "refl_sym": False,
-            "rot_sym": 0,
-            "rot_cnt": 6,
-            "index": 0,
-            "function_name": "",
-            "label": "",
-            "settings": {},
-        },
-    ]
+    subdict = {"polygon": PydanticPolygon(Polygon(coords))}
+    if not default_polygon_flag:
+        gui.state.molecule_param_list = [
+            {
+                "polygon": PydanticPolygon(Polygon(coords)),
+                "refl_sym": False,
+                "rot_sym": 0,
+                "rot_cnt": 6,
+                "index": 0,
+                "function_name": "",
+                "label": "",
+                "settings": {},
+            },
+        ]
 
     result = general_settings._prepare_simulation_inputs()
 
@@ -87,14 +90,19 @@ def test_prepare_simulation_inputs_success(qtbot: QtBot) -> None:
     assert result["lattice_type"] == lattice_type  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
     # Verify key mapping transitions and polygon resolution loops
-    assert len(result["molecules_list"]) == 1  # pyright: ignore[reportTypedDictNotRequiredAccess, reportArgumentType]
-    extracted_shape = result["molecules_list"][0]  # pyright: ignore[reportTypedDictNotRequiredAccess, reportIndexIssue, reportOptionalSubscript]
-    assert isinstance(extracted_shape, Polygon)
-    assert np.array_equal(extracted_shape.exterior.xy, np.array(coords).T)
+    if default_polygon_flag:
+        assert not hasattr(result, "molecules_list")  # pyright: ignore[reportTypedDictNotRequiredAccess, reportArgumentType]
+    else:
+        assert len(result["molecules_list"]) == 1  # pyright: ignore[reportTypedDictNotRequiredAccess, reportArgumentType]
+    if not default_polygon_flag:
+        extracted_shape = result["molecules_list"][
+            0]  # pyright: ignore[reportTypedDictNotRequiredAccess, reportIndexIssue, reportOptionalSubscript]
+        assert isinstance(extracted_shape, Polygon)
+        assert np.array_equal(extracted_shape.exterior.xy, np.array(coords).T)
 
-    assert result["reflection_symmetries"] == [False]  # pyright: ignore[reportTypedDictNotRequiredAccess]
-    assert result["rotation_symmetries"] == [0]  # pyright: ignore[reportTypedDictNotRequiredAccess]
-    assert result["rotation_counts"] == [6]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert result["reflection_symmetries"] == [False]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert result["rotation_symmetries"] == [0]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert result["rotation_counts"] == [6]  # pyright: ignore[reportTypedDictNotRequiredAccess]
 
 
 @pytest.mark.parametrize("iterate", range(3))  # Left in because this test was flakey.

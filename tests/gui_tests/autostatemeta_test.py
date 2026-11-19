@@ -8,7 +8,7 @@ from pytestqt.qtbot import QtBot
 
 from adsorpy.gui import AutoStateMeta
 
-def test_autostate_meta_builtin_type_and_preinitialized_field() -> None:
+def test_autostate_meta_builtin_type_and_preinitialized_field(qtbot: QtBot) -> None:
     """Test whether autostate initialises correctly."""
     class TempState(QObject, metaclass=AutoStateMeta):
         count: int
@@ -31,7 +31,7 @@ def test_autostate_meta_builtin_type_and_preinitialized_field() -> None:
     assert received == [99]
 
 
-def test_autostate_meta_ignores_private_and_fields_annotations() -> None:
+def test_autostate_meta_ignores_private_and_fields_annotations(qtbot: QtBot) -> None:
     """Verify 'fields' and '_*' annotations do not generate properties or signals."""
     class TempState(QObject, metaclass=AutoStateMeta):
         _private_helper: int
@@ -64,7 +64,7 @@ def test_autostate_meta_non_builtin_and_union_types(qtbot: QtBot) -> None:
     assert state.file_path == test_path
 
 
-def test_autostate_meta_multiple_fields_closure_binding() -> None:
+def test_autostate_meta_multiple_fields_closure_binding(qtbot: QtBot) -> None:
     """Verify multiple fields keep independent getters, setters, and signals."""
     class TempState(QObject, metaclass=AutoStateMeta):
         first: int
@@ -86,7 +86,7 @@ def test_autostate_meta_multiple_fields_closure_binding() -> None:
     assert second_events == [20]
 
 
-def test_autostate_meta_instance_isolation() -> None:
+def test_autostate_meta_instance_isolation(qtbot: QtBot) -> None:
     """Verify separate instances do not share state or cross-emit signals."""
     class TempState(QObject, metaclass=AutoStateMeta):
         label: str
