@@ -625,10 +625,16 @@ def test_sync_list_order_with_hypothesis(
     molecule_tab.sync_list_order(old_index, new_index)
 
     # Assert invariant properties
-    assert molecule_tab.mol_params_list[new_index] == target_item, "The item must now exist at the exact new destination index"
+    assert molecule_tab.mol_params_list[new_index] == target_item, (
+        "The item must now exist at the exact new destination index"
+    )
     assert len(molecule_tab.mol_params_list) == len(initial_list), "The length of the list must remain identical"
-    assert set(molecule_tab.mol_params_list) == set(initial_list), "The set of items must not have changed (order changed, contents did not)"
-    assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list, "State must sync correctly with the list tracking"
+    assert set(molecule_tab.mol_params_list) == set(initial_list), (
+        "The set of items must not have changed (order changed, contents did not)"
+    )
+    assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list, (
+        "State must sync correctly with the list tracking"
+    )
 
 
 def test_build_left_panel_with_target_index_0(
@@ -683,6 +689,7 @@ def test_create_param_widget(
             assert isinstance(molecule_tab._create_param_widget(param_input, param_default), param_type)
     with subtests.test(param_name="PositiveFloat without default"):
         assert isinstance(molecule_tab._create_param_widget("PositiveFloat", inspect.Parameter.empty), QDoubleSpinBox)
+
 
 def test_create_param_widget_error(
     molecule_tab_factory: partial[MoleculeGeneration],

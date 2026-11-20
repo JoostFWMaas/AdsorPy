@@ -48,7 +48,8 @@ def test_get_run_sim_default_missing_param_raises_key_error() -> None:
     with pytest.raises(KeyError):
         GeneralSettings.get_run_sim_default("non_existent_parameter_name")
 
-@pytest.mark.parametrize("default_polygon_flag", (True, False))
+
+@pytest.mark.parametrize("default_polygon_flag", [True, False])
 def test_prepare_simulation_inputs_success(qtbot: QtBot, default_polygon_flag: bool) -> None:
     """Verify AdsorpyGUI builds simulation dictionaries and extracts Polygon classes.
 
@@ -68,7 +69,6 @@ def test_prepare_simulation_inputs_success(qtbot: QtBot, default_polygon_flag: b
     lattice_type = "square"
     gui.state.surface_params = SurfaceParameters({"seed": 12, "lattice_type": lattice_type})
     coords = [[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]
-    subdict = {"polygon": PydanticPolygon(Polygon(coords))}
     if not default_polygon_flag:
         gui.state.molecule_param_list = [
             {
@@ -95,8 +95,7 @@ def test_prepare_simulation_inputs_success(qtbot: QtBot, default_polygon_flag: b
     else:
         assert len(result["molecules_list"]) == 1  # pyright: ignore[reportTypedDictNotRequiredAccess, reportArgumentType]
     if not default_polygon_flag:
-        extracted_shape = result["molecules_list"][
-            0]  # pyright: ignore[reportTypedDictNotRequiredAccess, reportIndexIssue, reportOptionalSubscript]
+        extracted_shape = result["molecules_list"][0]  # pyright: ignore[reportTypedDictNotRequiredAccess, reportIndexIssue, reportOptionalSubscript]
         assert isinstance(extracted_shape, Polygon)
         assert np.array_equal(extracted_shape.exterior.xy, np.array(coords).T)
 

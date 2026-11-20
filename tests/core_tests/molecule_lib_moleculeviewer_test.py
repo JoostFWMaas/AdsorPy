@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import cast
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import numpy as np
 import pytest
@@ -252,4 +252,5 @@ def test_draw_skips_non_bonded_atom_pairs(qtbot: QtBot) -> None:
     svg_text = svg_bytes.decode("utf-8")
 
     # Only 1 bond pair (0, 1) qualifies, rendered once in each of the 3 scatter panels = 3 dashed bond lines
-    assert svg_text.count('stroke="#aaaaaa"') == 3, "Only 1 bond pair qualifies, it is rendered 3x, so a count of 3."
+    bonds: int = 3
+    assert svg_text.count('stroke="#aaaaaa"') == bonds, "Only 1 bond pair qualifies, it is rendered 3x -> 3."

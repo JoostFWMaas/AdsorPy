@@ -28,7 +28,11 @@ commands = [["coverage", "run", "--branch", "-p", "-m", "pytest", "--basetemp={e
 [env.ruff]
 no_default_groups = true
 dependency_groups = ["lint"]
-commands = [["ruff", "check", "src", "tests"],
+commands = [
+#    ["ruff", "format", "."],
+    ["ruff", "check", "src", "tests",
+#        "--fix"
+    ],
 ]
 
 [env.mypy]

@@ -156,6 +156,8 @@ if TYPE_CHECKING:
 
     InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QLineEdit | "FilePickerWidget"
     RunResult: TypeAlias = tuple[DistArray, DistArray, DistArray]
+else:
+    _QObjectMeta = type(QObject)
 
 T_qobj = TypeVar("T_qobj", bound=QObject)
 T_inv = TypeVar("T_inv", bool, int, str, float)
@@ -808,7 +810,7 @@ class ZoomableSvgWidget(QSvgWidget):
             QApplication.sendEvent(scroll_area.viewport(), event)
 
 
-class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc]
+class AutoStateMeta(type(QObject)):  # type: ignore[misc]
     """Metaclass for AppState to automatically communicate between tabs.
 
     This metaclass scans the ``fields`` class variable and dynamically
@@ -818,14 +820,14 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
     :cvar fields: A dictionary mapping state field names to their expected types.
     """
 
-    fields: ClassVar[dict[str, type]]
+    fields: ClassVar[dict[str, object]]
 
     def __new__(
         cls,
         name: str,
         bases: tuple[type, ...],
         attrs: dict[str, object],
-    ) -> AutoStateMeta[P_mol, T_qobj]:
+    ) -> AutoStateMeta:
         """Create an AutoState class instance.
 
         :param name: The name of the class.
@@ -833,7 +835,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
         :param attrs: The class attributes.
         :return: The AutoState class instance.
         """
-        annotations = cast("dict[str, type]", attrs.get("__annotations__", {}))
+        annotations = cast("dict[str, object]", attrs.get("__annotations__", {}))
 
         fields = {k: v for k, v in annotations.items() if k != "fields" and not k.startswith("_")}
 
@@ -849,6 +851,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
             def getter(self: object, private_name: str = private_name) -> object:
                 """Get the value.
 
+                :param self: the class.
                 :param private_name: private name.
                 :returns: the getattr() object.
                 """
@@ -873,28 +876,48 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
             attrs[field_name] = property(getter, setter)
 
         attrs["fields"] = fields
-        new_class = cast("AutoStateMeta[P_mol, T_qobj]", super().__new__(cls, name, bases, attrs))
-        # type(new_class).fields = fields
 
-        return new_class
+        orig_init = attrs.get("__init__")
+        base_init: object = QObject.__dict__["__init__"]
 
-    @override
-    def __call__(cls, *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
-        """Instantiate the class and auto-initialise its fields.
+        def _init(self: QObject, *args: object, **kwargs: object) -> None:
+            """Instantiate the class and auto-initialise its fields.
 
-        :param args: Positional arguments.
-        :param kwargs: Keyword arguments.
-        :returns: The initialised class instance.
-        """
-        obj: T_qobj = super().__call__(*args, **kwargs)
+            :returns: The initialised class instance.
+            """
+            if callable(orig_init):
+                orig_init(self, *args, **kwargs)
+            elif callable(base_init):
+                base_init(self, *args, **kwargs)
 
-        # Auto-initialise private fields
-        for field_name in cls.fields:
-            private_name = f"_{field_name}"
-            if not hasattr(obj, private_name):
-                setattr(obj, private_name, None)
+            for field_name in fields:
+                private_name = f"_{field_name}"
+                if not hasattr(self, private_name):
+                    setattr(self, private_name, None)
 
-        return obj
+        _init.__name__ = "__init__"
+        attrs["__init__"] = _init
+
+        return cast("AutoStateMeta", super().__new__(cls, name, bases, attrs))
+
+    # @override
+    # def __call__(cls, *args: object, **kwargs: object) -> QObject:
+    #     """Instantiate the class and auto-initialise its fields.
+    #
+    #     :param args: Positional arguments.
+    #     :param kwargs: Keyword arguments.
+    #     :returns: The initialised class instance.
+    #     """
+    #     obj: QObject = super().__call__(*args, **kwargs)
+    #
+    #     # Auto-initialise private fields
+    #     fields = cast("dict[str, object]", getattr(cls, "fields", {}))
+    #     for field_name in fields:
+    #         private_name = f"_{field_name}"
+    #         if not hasattr(obj, private_name):
+    #             setattr(obj, private_name, None)
+    #
+    #     return obj
 
 
 class AppState(QObject, metaclass=AutoStateMeta):  # pyright: ignore[reportMissingTypeArgument]
@@ -1780,7 +1803,7 @@ class GeneralSettings(QWidget):
             # OPTION 4: ZIPPED CSV (.csv.gz) -> Tabular with NaN padding
             # -------------------------------------------------------------
             else:  # Always has to be .zip.
-            # elif ".zip" in suffix_lower:
+                # elif ".zip" in suffix_lower:
                 # Open a compressed zip file archive stream wrapper directly
                 with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
                     meta_io = io.StringIO()

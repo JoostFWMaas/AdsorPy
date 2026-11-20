@@ -4,14 +4,14 @@
 
 import uuid
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
-from PySide6.QtSvgWidgets import QSvgWidget
 from _pytest.monkeypatch import MonkeyPatch
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt
 from PySide6.QtGui import QResizeEvent, QWheelEvent
 from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox, QScrollArea
 from pytestqt.qtbot import QtBot
 
