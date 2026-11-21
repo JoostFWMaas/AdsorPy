@@ -835,7 +835,14 @@ class AutoStateMeta(type(QObject)):  # type: ignore[misc]
         :param attrs: The class attributes.
         :return: The AutoState class instance.
         """
-        annotations = cast("dict[str, object]", attrs.get("__annotations__", {}))
+        raw_annotations = attrs.get("__annotations__")
+        if raw_annotations is None:  # If running Python 3.14+ without `from __future__ import annotations`, this hits.
+            annotate = cast("Callable[[int], dict[str, object]]", attrs.get("__annotate_func__"))
+            raw_annotations = annotate(1)
+
+        annotations = cast("dict[str, object]", raw_annotations or {})
+
+
 
         fields = {k: v for k, v in annotations.items() if k != "fields" and not k.startswith("_")}
 
@@ -877,18 +884,23 @@ class AutoStateMeta(type(QObject)):  # type: ignore[misc]
 
         attrs["fields"] = fields
 
-        orig_init = attrs.get("__init__")
-        base_init: object = QObject.__dict__["__init__"]
+        orig_init = cast("Callable[[QObject], None] | None", attrs.get("__init__"))
+        base_init: Callable[[QObject, QObject | None], None] = QObject.__init__
 
-        def _init(self: QObject, *args: object, **kwargs: object) -> None:
+        def _init(
+            self: QObject,
+            /,
+            parent: QObject | None = None,
+        ) -> None:
             """Instantiate the class and auto-initialise its fields.
 
-            :returns: The initialised class instance.
+            :param self: the class.
+            :param parent: Parent object to inherit from.
             """
             if callable(orig_init):
-                orig_init(self, *args, **kwargs)
-            elif callable(base_init):
-                base_init(self, *args, **kwargs)
+                orig_init(self)
+            else:
+                base_init(self, parent)
 
             for field_name in fields:
                 private_name = f"_{field_name}"
@@ -2169,7 +2181,7 @@ class MoleculeGeneration(QWidget):
     @staticmethod
     def _create_param_widget(
         annotation: str,
-        default: str | float | inspect.Parameter,
+        default: str | float | type[inspect._empty],
     ) -> InputWidget:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
@@ -2186,7 +2198,7 @@ class MoleculeGeneration(QWidget):
                 min_float_val: float = -999.0
                 if annotation == "PositiveFloat":
                     min_float_val = 0.0001
-                    if not isinstance(default, inspect.Parameter.empty):
+                    if default is inspect.Parameter.empty:
                         float_widget.setValue(1.0)
                 elif annotation == "NonNegativeFloat":
                     min_float_val = 0.0
