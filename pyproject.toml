@@ -79,12 +79,12 @@ gui-deps = [
     "pandas>=3.1.0",
     "h5py>=3.16.0",
     "seaborn>=0.13.2",
-    "dask[distributed]>=2026.8.0",
+    "dask[distributed]>=2026.11.0",
 ]
 
 
 [tool.uv]
-required-version = ">=0.13.7"
+required-version = ">=0.13.9"
 environments = [
     "platform_system != 'Emscripten'"
 ]
@@ -132,7 +132,7 @@ constraint-dependencies = [
 test = [
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.170.15",
+    "hypothesis>=6.170.17",
     "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
@@ -142,7 +142,7 @@ test = [
 ]
 lint = [
     "mypy==2.4.1",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "basedpyright==1.40.2",
     "tach==0.35.3",
     "slotscheck==0.21.0",
@@ -157,8 +157,8 @@ docs = [
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.67.13",
-    "tox-uv>=1.37.7",
+    "tox>=4.67.15",
+    "tox-uv>=1.37.9",
 ]
 dev-misc = [
     "build>=1.6.1",
