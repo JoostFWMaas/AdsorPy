@@ -199,3 +199,28 @@ def test_missing_gui_imports(monkeypatch: pytest.MonkeyPatch, missing_dep: str) 
 
     with pytest.raises(ImportError, match=missing_dep):
         importlib.import_module("adsorpy.gui")
+
+
+def test_extract_param_docs_no_params_or_return() -> None:
+    """Test param extraction of a function with no params nor return."""
+
+    def sample_func() -> None:
+        """Return None and have a docstring with only a summary and no :param: or :return: tags."""
+
+    assert extract_param_docs(sample_func) == {}
+
+
+def test_extract_param_docs_without_return_tag() -> None:
+    """Test param extraction of a function with no return."""
+
+    def sample_func(x: int, y: str) -> None:
+        """Return None, so :return: is omitted.
+
+        :param x: First parameter.
+        :param y: Second parameter.
+        """
+
+    assert extract_param_docs(sample_func) == {
+        "x": "First parameter.",
+        "y": "Second parameter.",
+    }

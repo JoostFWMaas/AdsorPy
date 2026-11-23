@@ -20,7 +20,7 @@ def test_app_state_metaclass_scans_annotations() -> None:
     assert "fields" not in AppState.fields
 
 
-def test_app_state_initializes_private_fields_to_none() -> None:
+def test_app_state_initialises_private_fields_to_none() -> None:
     """Verify the __call__ method populates missing private backend targets to None."""
     state = AppState()
 
@@ -85,7 +85,7 @@ def test_general_settings_listens_to_real_app_state(qtbot: QtBot) -> None:
     assert tab.initiated_molecules_textbox.text() == "Default."
 
     # Mutate AppState directly from an external context (simulating another tab)
-    temp_surf = SurfaceParameters(lattice_type="hexagonal", site_count=50)
+    temp_surf = SurfaceParameters(lattice_type="square", site_count=50)
 
     with qtbot.waitSignal(state.surface_paramsChanged, timeout=1000):  # pyright: ignore[reportAttributeAccessIssue]
         state.surface_params = temp_surf

@@ -1357,6 +1357,7 @@ class Surface:
         "lattice_type",
         "simple_shape_flag",
         "sites",
+        "sqrt3",
         "sticking_probability",
         "tree",
         "x_max",
@@ -1383,10 +1384,11 @@ class Surface:
         :param lattice_a: The lattice spacing, optional. If None, defaults to the default in config.json.
         :param boundary_type: The boundary type, optional. If None, defaults to the default in config.json (periodic).
         :param sticking_probability: Sticking probability. Default is 1.0 from config.
-        :raise ValueError: If only x or y is provided for a custom surface. Currently unusable.
+        :raise ValueError: If only x or y is provided for a custom surface, or if custom surface is not set as custom.
         """
         self.config: Final[Config] = _config_loader(rsa_config)
         self.lattice_type: Final[SurfaceStrs] = lattice_type if lattice_type != "hexagonal" else "triangular"
+        self.sqrt3: Final[float] = np.sqrt(3.0, dtype=float)
 
         self.sites: int = site_count if site_count is not None else 0
         if not self.sites:
@@ -1400,6 +1402,10 @@ class Surface:
         if not self.simple_shape_flag and (self.xsize is None or self.ysize is None):
             errmsg = "When setting custom sizes, set both x and y."
             raise ValueError(errmsg)
+
+        # if not self.simple_shape_flag and self.lattice_type == "custom":
+        #     errmsg = "Please set lattice type to 'custom' when providing custom coordinates."
+        #     raise ValueError(errmsg)
 
         self.all_site_count: int = self._estimate_site_count()
         self.lattice_a: Final[float] = self.config.lattice_a if lattice_a is None else lattice_a
@@ -1434,15 +1440,13 @@ class Surface:
 
         :raises ValueError: If the lattice string is not supported.
         """
-        sqrt3: float = np.sqrt(3.0, dtype=float)
-
         x1: DistArray = np.arange(self.sites, dtype=np.float64)
         x1 *= self.lattice_a  # Scale the range by the lattice constant.
-        y1: DistArray = x1 * sqrt3  # Scale the y grid.
+        y1: DistArray = x1 * self.sqrt3  # Scale the y grid.
 
         if self.lattice_type in {"triangular", "honeycomb"}:
             x2: DistArray = x1 + 0.5 * self.lattice_a  # Create an off-set grid.
-            y2: DistArray = x2 * sqrt3
+            y2: DistArray = x2 * self.sqrt3
 
             x_all: DistArray = np.hstack(
                 (np.repeat(x1, self.sites), np.repeat(x2, self.sites)),
@@ -1455,11 +1459,11 @@ class Surface:
                 x_shift: DistArray = x_all + 0.5 * self.lattice_a
                 x_all = np.hstack((x_all, x_shift))
 
-                y_shift0: DistArray = y_all + 0.5 * self.lattice_a / sqrt3
+                y_shift0: DistArray = y_all + 0.5 * self.lattice_a / self.sqrt3
                 y_all = np.hstack((y_shift0, y_all))
 
-                x_all *= sqrt3
-                y_all *= sqrt3
+                x_all *= self.sqrt3
+                y_all *= self.sqrt3
 
         elif self.lattice_type == "square":
             x_all = np.repeat(x1, self.sites)
@@ -1471,7 +1475,7 @@ class Surface:
 
         self.grid_coordinates = np.vstack((x_all, y_all))  # (2, 2N^2) Make a coordinate array.
 
-        self._set_xy_max(x_all, y_all, sqrt3)
+        self._set_xy_max(x_all=x_all, y_all=y_all)
 
         self.area = self.x_max * self.y_max
 
@@ -1483,23 +1487,79 @@ class Surface:
             [Point(coord) for coord in self.grid_coordinates.T],
         )  # Never used?
 
-    def _set_xy_max(self, x_all: DistArray, y_all: DistArray, sqrt3: float) -> None:
+    def _set_xy_max(
+        self,
+        *,
+        x_all: DistArray | None = None,
+        y_all: DistArray | None = None,
+        x_bbox: float | np.float64 | None = None,
+        y_bbox: float | np.float64 | None = None,
+    ) -> None:
         """Set the x_max and y_max based on boundary condition and surface type.
+
+        Either provide both x_all and y_all or both x_bbox and y_bbox.
+        When providing x_all and y_all, the surface type cannot be 'custom'.
+        When providing x_bbox and y_bbox, the surface type must be 'custom'.
 
         :param x_all: All x coordinates.
         :param y_all: All y coordinates.
+        :param x_bbox: Bounding box x coordinate.
+        :param y_bbox: Bounding box y coordinate.
+        :raises ValueError: If the lattice string is not supported.
         """
-        self.x_max += cast("float", np.max(x_all)) if self.x_max == 0 else 0.0
-        self.y_max += cast("float", np.max(y_all)) if self.y_max == 0 else 0.0
+        arg_pattern: tuple[bool, bool, bool, bool, SurfaceStrs] = (
+            x_all is not None,
+            y_all is not None,
+            x_bbox is not None,
+            y_bbox is not None,
+            self.lattice_type,
+        )
+
+        match arg_pattern:
+            # Valid Case 1: x_all/y_all provided, and surface type is NOT 'custom'
+            case (True, True, False, False, lattice_type) if lattice_type != "custom":
+                self.x_max = np.max(cast("DistArray", x_all))
+                self.y_max = np.max(cast("DistArray", y_all))
+
+            # Valid Case 2: x_bbox/y_bbox provided, and surface type IS 'custom'
+            case (False, False, True, True, "custom"):
+                self.x_max = cast("float", x_bbox)
+                self.y_max = cast("float", y_bbox)
+
+            # Error Case: x_all/y_all provided, but type is 'custom'
+            case (True, True, False, False, "custom"):
+                errmsg = "When providing 'x_all' and 'y_all', lattice_type cannot be 'custom'."
+                raise ValueError(errmsg)
+
+            # Error Case: x_bbox/y_bbox provided, but type is NOT 'custom'
+            case (False, False, True, True, _):
+                errmsg = "When providing 'x_bbox' and 'y_bbox', lattice_type must be 'custom'."
+                raise ValueError(errmsg)
+
+            # Error Case: bbox XNOR coordinates provided.
+            case (False, False, False, False, _) | (True, True, True, True, _):
+                errmsg = "You must provide 'all' coordinates XOR both 'bbox' coordinates."
+                raise ValueError(errmsg)
+
+            # Catch-all: Any other incomplete pairs or mixed argument combinations
+            case _:
+                errmsg = "Invalid argument combination. Coordinates must be provided in complete (x, y) pairs."
+                raise ValueError(errmsg)
+
         if self.bp.periodic_flag:  # A periodic grid needs to be extended a little bit.
-            if self.lattice_type == "triangular":
-                self.y_max += 0.5 * self.lattice_a * sqrt3  # Half a unit is added in the max x and y size.
-                self.x_max += 0.5 * self.lattice_a  # This is done to make periodic matching easier.
-            elif self.lattice_type == "honeycomb":
-                self.y_max += self.lattice_a
-            elif self.lattice_type == "square":
-                self.y_max += self.lattice_a
-                self.x_max += self.lattice_a  # This is done to make periodic matching easier.
+            match self.lattice_type:
+                case "triangular":
+                    self.y_max += 0.5 * self.lattice_a * self.sqrt3  # Half a unit is added in the max x and y size.
+                    self.x_max += 0.5 * self.lattice_a  # This is done to make periodic matching easier.
+                case "honeycomb":
+                    self.y_max += self.lattice_a
+                case "square":
+                    self.y_max += self.lattice_a
+                    self.x_max += self.lattice_a  # This is done to make periodic matching easier.
+                case _:  # Only 'custom' is left. No need to check.
+                    pass
+
+        self.area = self.x_max * self.y_max
 
     def generate_custom_surface(
         self,
@@ -1533,8 +1593,8 @@ class Surface:
         if errval:  # If there are errors, raise.
             raise ValueError(errval)
 
-        self.x_max = bounding_x_coord
-        self.y_max = bounding_y_coord
+        self._set_xy_max(x_bbox=bounding_x_coord, y_bbox=bounding_y_coord)
+
         self.area = self.x_max * self.y_max
         self.grid_coordinates = np.vstack((site_x_coords, site_y_coords))
         self.all_site_count = self.grid_coordinates.shape[1]

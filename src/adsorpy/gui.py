@@ -156,6 +156,8 @@ if TYPE_CHECKING:
 
     InputWidget: TypeAlias = QSpinBox | QDoubleSpinBox | QLineEdit | "FilePickerWidget"
     RunResult: TypeAlias = tuple[DistArray, DistArray, DistArray]
+else:
+    _QObjectMeta = type(QObject)
 
 T_qobj = TypeVar("T_qobj", bound=QObject)
 T_inv = TypeVar("T_inv", bool, int, str, float)
@@ -788,29 +790,27 @@ class ZoomableSvgWidget(QSvgWidget):
                 mouse_pos_widget = event.position()
                 self.setFixedSize(new_size)
 
-                if scroll_area:
-                    h_bar = scroll_area.horizontalScrollBar()
-                    v_bar = scroll_area.verticalScrollBar()
+                h_bar = scroll_area.horizontalScrollBar()
+                v_bar = scroll_area.verticalScrollBar()
 
-                    delta_x = mouse_pos_widget.x() * scale - mouse_pos_widget.x()
-                    delta_y = mouse_pos_widget.y() * scale - mouse_pos_widget.y()
+                delta_x = mouse_pos_widget.x() * scale - mouse_pos_widget.x()
+                delta_y = mouse_pos_widget.y() * scale - mouse_pos_widget.y()
 
-                    h_bar.setValue(int(h_bar.value() + delta_x))
-                    v_bar.setValue(int(v_bar.value() + delta_y))
+                h_bar.setValue(int(h_bar.value() + delta_x))
+                v_bar.setValue(int(v_bar.value() + delta_y))
             event.accept()
 
         elif modifiers == Qt.KeyboardModifier.ShiftModifier:
-            if scroll_area:
-                h_bar = scroll_area.horizontalScrollBar()
-                steps = event.angleDelta().y()
-                h_bar.setValue(h_bar.value() - steps)
+            h_bar = scroll_area.horizontalScrollBar()
+            steps = event.angleDelta().y()
+            h_bar.setValue(h_bar.value() - steps)
             event.accept()
 
         else:
             QApplication.sendEvent(scroll_area.viewport(), event)
 
 
-class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc]
+class AutoStateMeta(type(QObject)):  # type: ignore[misc]
     """Metaclass for AppState to automatically communicate between tabs.
 
     This metaclass scans the ``fields`` class variable and dynamically
@@ -820,14 +820,14 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
     :cvar fields: A dictionary mapping state field names to their expected types.
     """
 
-    fields: ClassVar[dict[str, type]]
+    fields: ClassVar[dict[str, object]]
 
     def __new__(
         cls,
         name: str,
         bases: tuple[type, ...],
         attrs: dict[str, object],
-    ) -> AutoStateMeta[P_mol, T_qobj]:
+    ) -> AutoStateMeta:
         """Create an AutoState class instance.
 
         :param name: The name of the class.
@@ -835,7 +835,14 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
         :param attrs: The class attributes.
         :return: The AutoState class instance.
         """
-        annotations = cast("dict[str, type]", attrs.get("__annotations__", {}))
+        raw_annotations = attrs.get("__annotations__")
+        if raw_annotations is None:  # If running Python 3.14+ without `from __future__ import annotations`, this hits.
+            annotate = cast("Callable[[int], dict[str, object]]", attrs.get("__annotate_func__"))
+            raw_annotations = annotate(1)
+
+        annotations = cast("dict[str, object]", raw_annotations or {})
+
+
 
         fields = {k: v for k, v in annotations.items() if k != "fields" and not k.startswith("_")}
 
@@ -851,6 +858,7 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
             def getter(self: object, private_name: str = private_name) -> object:
                 """Get the value.
 
+                :param self: the class.
                 :param private_name: private name.
                 :returns: the getattr() object.
                 """
@@ -874,28 +882,54 @@ class AutoStateMeta(type(QObject), Generic[P_mol, T_qobj]):  # type: ignore[misc
 
             attrs[field_name] = property(getter, setter)
 
-        new_class = cast("AutoStateMeta[P_mol, T_qobj]", super().__new__(cls, name, bases, attrs))
-        type(new_class).fields = fields
+        attrs["fields"] = fields
 
-        return new_class
+        orig_init = cast("Callable[[QObject], None] | None", attrs.get("__init__"))
+        base_init: Callable[[QObject, QObject | None], None] = QObject.__init__
 
-    @override
-    def __call__(cls, *args: P_mol.args, **kwargs: P_mol.kwargs) -> T_qobj:
-        """Instantiate the class and auto-initialise its fields.
+        def _init(
+            self: QObject,
+            /,
+            parent: QObject | None = None,
+        ) -> None:
+            """Instantiate the class and auto-initialise its fields.
 
-        :param args: Positional arguments.
-        :param kwargs: Keyword arguments.
-        :returns: The initialised class instance.
-        """
-        obj: T_qobj = super().__call__(*args, **kwargs)
+            :param self: the class.
+            :param parent: Parent object to inherit from.
+            """
+            if callable(orig_init):
+                orig_init(self)
+            else:
+                base_init(self, parent)
 
-        # Auto-initialise private fields
-        for field_name in cls.fields:
-            private_name = f"_{field_name}"
-            if not hasattr(obj, private_name):
-                setattr(obj, private_name, None)
+            for field_name in fields:
+                private_name = f"_{field_name}"
+                if not hasattr(self, private_name):
+                    setattr(self, private_name, None)
 
-        return obj
+        _init.__name__ = "__init__"
+        attrs["__init__"] = _init
+
+        return cast("AutoStateMeta", super().__new__(cls, name, bases, attrs))
+
+    # @override
+    # def __call__(cls, *args: object, **kwargs: object) -> QObject:
+    #     """Instantiate the class and auto-initialise its fields.
+    #
+    #     :param args: Positional arguments.
+    #     :param kwargs: Keyword arguments.
+    #     :returns: The initialised class instance.
+    #     """
+    #     obj: QObject = super().__call__(*args, **kwargs)
+    #
+    #     # Auto-initialise private fields
+    #     fields = cast("dict[str, object]", getattr(cls, "fields", {}))
+    #     for field_name in fields:
+    #         private_name = f"_{field_name}"
+    #         if not hasattr(obj, private_name):
+    #             setattr(obj, private_name, None)
+    #
+    #     return obj
 
 
 class AppState(QObject, metaclass=AutoStateMeta):  # pyright: ignore[reportMissingTypeArgument]
@@ -1780,7 +1814,8 @@ class GeneralSettings(QWidget):
             # -------------------------------------------------------------
             # OPTION 4: ZIPPED CSV (.csv.gz) -> Tabular with NaN padding
             # -------------------------------------------------------------
-            elif ".zip" in suffix_lower:
+            else:  # Always has to be .zip.
+                # elif ".zip" in suffix_lower:
                 # Open a compressed zip file archive stream wrapper directly
                 with zipfile.ZipFile(file_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
                     meta_io = io.StringIO()
@@ -2146,7 +2181,7 @@ class MoleculeGeneration(QWidget):
     @staticmethod
     def _create_param_widget(
         annotation: str,
-        default: str | float | inspect.Parameter,
+        default: str | float | type,
     ) -> InputWidget:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
@@ -2156,14 +2191,13 @@ class MoleculeGeneration(QWidget):
         :raises TypeError: If an unmapped or exotic data structure type is processed.
         """
         default_max: int = 999
-        # widget: InputWidget
         match annotation:
             case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
                 float_widget = QDoubleSpinBox()
                 min_float_val: float = -999.0
                 if annotation == "PositiveFloat":
                     min_float_val = 0.0001
-                    if not isinstance(default, inspect.Parameter.empty):
+                    if default is inspect.Parameter.empty:
                         float_widget.setValue(1.0)
                 elif annotation == "NonNegativeFloat":
                     min_float_val = 0.0
@@ -2200,9 +2234,9 @@ class MoleculeGeneration(QWidget):
         taken_item = self.mol_params_list.pop(old_index)
 
         # Insert it into the exact same new position
-        if taken_item:
-            self.mol_params_list.insert(new_index, taken_item)
-            self.state.molecule_param_list = self.mol_params_list
+        # if taken_item:
+        self.mol_params_list.insert(new_index, taken_item)
+        self.state.molecule_param_list = self.mol_params_list
 
     def _build_symmetry_controls(self) -> None:
         """Assemble the geometric shape matrix transformation property grid layouts."""
@@ -2338,7 +2372,7 @@ class MoleculeGeneration(QWidget):
                 case QSpinBox() | QDoubleSpinBox():
                     values[name] = widget.value()
 
-                case QLineEdit() | FilePickerWidget():
+                case QLineEdit() | FilePickerWidget():  # pragma: no branch
                     values[name] = widget.text()
 
         return values

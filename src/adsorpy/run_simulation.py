@@ -633,8 +633,8 @@ def _select_and_run(
             all_flux, phis = _run_flux(sim, surf, molecules, timestep_limit)
         case ("codosing", True):
             all_flux, phis = _run_flux_fixedrotation(sim, surf, molecules, timestep_limit)
-        case (_, _):
-            errmsg = f"Simulation type {simulation_type} with rejected_flux = {include_rejected_flux} is not supported."
+        case _:
+            errmsg = f"Simulation type {simulation_type!r}, rejected_flux = {include_rejected_flux!r} are unsupported."
             raise ValueError(errmsg)
     return all_flux, phis
 

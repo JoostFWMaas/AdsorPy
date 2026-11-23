@@ -20,6 +20,7 @@ from shapely.ops import orient
 from adsorpy.randomsequentialadsorption import Simulator
 from adsorpy.rsa_config import RsaConfig
 from adsorpy.run_simulation import _select_and_run, _turn_into_list, run_simulation
+from adsorpy.types import BoundaryConditionStrs, DistArray, SurfaceStrs
 
 SEED = 123654789
 
@@ -342,6 +343,7 @@ class TestCustomGrid:
         *_, sim = run_simulation(
             rsa_config=rsa_config,
             seed=SEED,
+            lattice_type="custom",
             site_x_coords=0.9 * np.repeat(np.arange(10, dtype=np.float64), 10),
             site_y_coords=0.9 * np.tile(np.arange(10, dtype=np.float64), 10),
             bounding_x_coord=10,
@@ -350,6 +352,74 @@ class TestCustomGrid:
 
         overlap_tester(sim)
         gapsize_tester(sim)
+
+    @pytest.mark.parametrize(
+        ("x_all", "y_all", "x_bbox", "y_bbox", "lattice_type"),
+        [
+            ((np.linspace(0, 1)), np.linspace(0, 2), None, None, "square"),
+            (None, None, 1.0, 2.0, "custom"),
+        ],
+        ids=["coords", "bbox"],
+    )
+    @pytest.mark.parametrize("boundary_condition", ["periodic", "soft"])
+    def test_grid_set_xy_max(
+        self,
+        x_all: DistArray | None,
+        y_all: DistArray | None,
+        x_bbox: float | None,
+        y_bbox: float | None,
+        lattice_type: SurfaceStrs,
+        boundary_condition: BoundaryConditionStrs,
+    ) -> None:
+        """Grid sets max x and y without errors."""
+        sim: Simulator
+        rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
+        *_, sim = run_simulation(
+            rsa_config=rsa_config,
+            seed=SEED,
+            boundary_condition=boundary_condition,
+        )
+
+        initial_area = sim.surf.area
+
+        sim.surf.lattice_type = lattice_type  # pyright: ignore[reportAttributeAccessIssue]
+        sim.surf._set_xy_max(x_all=x_all, y_all=y_all, x_bbox=x_bbox, y_bbox=y_bbox)
+
+        output_area = sim.surf.area
+
+        assert initial_area != output_area, "The area must have changed with the new settings."
+
+    @pytest.mark.parametrize(
+        ("x_all", "y_all", "x_bbox", "y_bbox", "lattice_type", "errmsg"),
+        [
+            ((np.linspace(0, 1)), np.linspace(0, 2), None, None, "custom", "lattice_type cannot be 'custom'"),
+            (None, None, 1.0, 2.0, "square", "lattice_type must be 'custom'."),
+            (None, None, None, None, "square", "XOR"),
+            (np.linspace(0, 1), np.linspace(0, 2), 1.0, 2.0, "square", "XOR"),
+            (np.linspace(0, 1), None, None, None, "square", "Invalid argument combination"),
+        ],
+        ids=["Cannot be custom", "Must be custom", "XOR (neither)", "XOR (all)", "Invalid combination"],
+    )
+    def test_grid_set_xy_max_bad(
+        self,
+        x_all: DistArray | None,
+        y_all: DistArray | None,
+        x_bbox: float | None,
+        y_bbox: float | None,
+        lattice_type: SurfaceStrs,
+        errmsg: str,
+    ) -> None:
+        """Grid fails to set max x and y with errors."""
+        sim: Simulator
+        rsa_config = RsaConfig(Path(__file__).parents[1] / "test_data" / "config_test_periodic.json")
+        *_, sim = run_simulation(
+            rsa_config=rsa_config,
+            seed=SEED,
+        )
+
+        sim.surf.lattice_type = lattice_type  # pyright: ignore[reportAttributeAccessIssue]
+        with pytest.raises(ValueError, match=errmsg):
+            sim.surf._set_xy_max(x_all=x_all, y_all=y_all, x_bbox=x_bbox, y_bbox=y_bbox)
 
 
 def test_sequential_fluxreject() -> None:
@@ -368,7 +438,7 @@ def test_select_and_run() -> None:
     flux = True
     with pytest.raises(
         ValueError,
-        match=f"Simulation type {bad_simulation_type} with rejected_flux = {flux} is not supported.",
+        match=f"Simulation type {bad_simulation_type!r}, rejected_flux = {flux!r} are unsupported.",
     ):
         _select_and_run(None, None, None, bad_simulation_type, flux, None, None)  # pyright: ignore[reportArgumentType]
 

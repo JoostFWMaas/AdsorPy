@@ -68,7 +68,7 @@ def molecule_tab_factory(qtbot: QtBot, monkeypatch: MonkeyPatch) -> partial[Mole
 def test_initial_structural_layout_states(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify that layout panels, dropdown configurations, and splitters load correctly.
 
-    :param molecule_tab: MoleculeGeneration widget.
+    :param molecule_tab_factory: MoleculeGeneration widget.
     """
     molecule_tab = molecule_tab_factory()
 
@@ -524,13 +524,14 @@ def test_launch_first_time_loader_fully(
     """Test that launch_first_time_loader runs completely when a valid file is provided."""
     molecule_tab = molecule_tab_factory()
     temp_file = tmp_path / "molecule.xyz"
-    temp_file.write_text("dummy data")
+    temp_file.write_text("temp data")
 
     mock_picker = MagicMock()
     mock_picker.text.return_value = str(temp_file)
     monkeypatch.setitem(molecule_tab.param_widgets, "file_name", mock_picker)
 
-    mock_output = {"x_offset": 1.5, "roll": 45.0}
+    mock_output_filled = {"x_offset": 1.5, "roll": 45.0, "z_trim": 0.0}
+    mock_output = mock_output_filled | {"yaw": None}
     mock_loader = Mock(return_value=mock_output)
     monkeypatch.setattr(molecule_lib, "first_time_loader", mock_loader)
 
@@ -538,7 +539,8 @@ def test_launch_first_time_loader_fully(
     mock_set_content = Mock()
     monkeypatch.setattr("adsorpy.gui.set_content", mock_set_content)
 
-    molecule_tab.opt_checkboxes = {"x_offset": MagicMock(), "roll": MagicMock()}
+    checkboxes_dict = {"x_offset": MagicMock(), "z_trim": MagicMock()}
+    molecule_tab.opt_checkboxes = checkboxes_dict  # pyright: ignore[reportAttributeAccessIssue]
 
     molecule_tab.show_molecule_flag = False
 
@@ -546,10 +548,11 @@ def test_launch_first_time_loader_fully(
 
     mock_loader.assert_called_once_with(temp_file)
 
-    assert mock_set_content.call_count == len(mock_output)
+    assert mock_set_content.call_count == len(mock_output_filled)
     input_flag = True
-    molecule_tab.opt_checkboxes["x_offset"].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
-    molecule_tab.opt_checkboxes["roll"].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
+    for key in checkboxes_dict:
+        assert key in molecule_tab.opt_checkboxes, "Checkbox key not found in opt_checkboxes."
+        molecule_tab.opt_checkboxes[key].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
 
     assert molecule_tab.show_molecule_flag is True
 
@@ -604,38 +607,38 @@ def test_sync_list_order_with_hypothesis(
     data: st.DataObject,
 ) -> None:
     """Property-based test ensuring list sync properties hold true across arbitrary sequences."""
-    # 1. Generate an arbitrary list of unique strings (at least 1 item long)
-    # We filter out empty/falsy strings to ensure the 'if taken_item:' condition passes
+    # Generate an arbitrary list of unique strings (at least 1 item long)
+    # Filter out empty/falsy strings to ensure the 'if taken_item:' condition passes
     molecule_tab = molecule_tab_factory()
     initial_list = data.draw(st.lists(st.text(min_size=1), min_size=1, unique=True))
 
-    # 2. Dynamically draw old and new indices that are guaranteed to be within bounds
+    # Dynamically draw old and new indices that are guaranteed to be within bounds
     max_idx = len(initial_list) - 1
     old_index = data.draw(st.integers(min_value=0, max_value=max_idx))
     new_index = data.draw(st.integers(min_value=0, max_value=max_idx))
 
-    # Track the element we expect to move
+    # Track the element expected to move
     target_item = initial_list[old_index]
 
-    # 3. Setup mock environment
+    # Setup mock environment
+    assert hasattr(molecule_tab, "mol_params_list")
     molecule_tab.mol_params_list = initial_list.copy()  # pyright: ignore[reportAttributeAccessIssue]
     molecule_tab.state = MagicMock()
 
-    # 4. Execute the function
+    # Execute function
     molecule_tab.sync_list_order(old_index, new_index)
 
-    # 5. Assert the invariant properties
-    # Property A: The item must now exist at the exact new destination index
-    assert molecule_tab.mol_params_list[new_index] == target_item
-
-    # Property B: The length of the list must remain identical
-    assert len(molecule_tab.mol_params_list) == len(initial_list)
-
-    # Property C: The set of items must not have changed (order changed, contents didn't)
-    assert set(molecule_tab.mol_params_list) == set(initial_list)
-
-    # Property D: State must sync correctly with the list tracking
-    assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list
+    # Assert invariant properties
+    assert molecule_tab.mol_params_list[new_index] == target_item, (
+        "The item must now exist at the exact new destination index"
+    )
+    assert len(molecule_tab.mol_params_list) == len(initial_list), "The length of the list must remain identical"
+    assert set(molecule_tab.mol_params_list) == set(initial_list), (
+        "The set of items must not have changed (order changed, contents did not)"
+    )
+    assert molecule_tab.state.molecule_param_list == molecule_tab.mol_params_list, (
+        "State must sync correctly with the list tracking"
+    )
 
 
 def test_build_left_panel_with_target_index_0(
@@ -688,6 +691,8 @@ def test_create_param_widget(
     for param_input, (param_default, param_type) in all_param_types.items():
         with subtests.test(param_name=param_input):
             assert isinstance(molecule_tab._create_param_widget(param_input, param_default), param_type)
+    with subtests.test(param_name="PositiveFloat without default"):
+        assert isinstance(molecule_tab._create_param_widget("PositiveFloat", inspect.Parameter.empty), QDoubleSpinBox)
 
 
 def test_create_param_widget_error(
@@ -743,3 +748,52 @@ def test_error(molecule_tab_factory: partial[MoleculeGeneration], monkeypatch: M
     molecule_tab.error(input_message)
 
     mock_error.assert_called_once_with(molecule_tab, "Input Error", input_message)
+
+
+@pytest.mark.parametrize("has_existing_app", [True, False])
+def test_first_time_loader_qapp_branches(
+    monkeypatch: MonkeyPatch,
+    has_existing_app: bool,
+) -> None:
+    """Test first_time_loader when QApplication already exists vs when it is None."""
+    temp_file = Path(__file__).parents[1] / "test_data" / "fluorochloromethanol.xyz"
+
+    # Mock QApplication so a second real QApplication is not instantiated in the same process
+    mock_app_instance = MagicMock()
+    mock_qapp_cls = MagicMock(return_value=mock_app_instance)
+    mock_qapp_cls.instance.return_value = mock_app_instance if has_existing_app else None
+    monkeypatch.setattr(molecule_lib, "QApplication", mock_qapp_cls)
+
+    # Mock MoleculeViewer so viewer.exec() does not block
+    mock_viewer = MagicMock()
+    mock_viewer.roll = 10.0
+    mock_viewer.pitch = 20.0
+    mock_viewer.yaw = 30.0
+    mock_viewer.x_offset = 1.0
+    mock_viewer.y_offset = 2.0
+    mock_viewer.disabled_molecules = ["H"]
+    mock_viewer.z_filter_enable.isChecked.return_value = True
+    mock_viewer.z_cutoff = 0.5
+    monkeypatch.setattr(molecule_lib, "MoleculeViewer", MagicMock(return_value=mock_viewer))
+
+    result = molecule_lib.first_time_loader(file_name=temp_file, roll=10.0)
+
+    if has_existing_app:
+        mock_qapp_cls.assert_not_called()
+        mock_app_instance.setOrganizationName.assert_not_called()
+    else:
+        mock_qapp_cls.assert_called_once()
+        mock_app_instance.setOrganizationName.assert_called_once_with("adsorpy")
+        mock_app_instance.setApplicationName.assert_called_once_with("adsorpy-molecule_lib")
+
+    mock_viewer.exec.assert_called_once()
+    assert result == {
+        "file_name": str(temp_file),
+        "roll": 10.0,
+        "pitch": 20.0,
+        "yaw": 30.0,
+        "x_offset": 1.0,
+        "y_offset": 2.0,
+        "ignore_atoms": ["H"],
+        "z_trim": 0.5,
+    }

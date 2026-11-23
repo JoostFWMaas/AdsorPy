@@ -56,7 +56,7 @@ In a future update, the code will be expanded with diffusion, desorption, and sp
 Because AdsorPy has been made with scientific rigour in mind, the package is tested in multiple ways:
 - Unit tests (`pytest`) of the code ensure correct behaviour for expected input.
 - Property tests (`hypothesis`) of the most critical code components ensure correct behaviour for unexpected input as well.
-- `mypy` (in `--strict` mode) and `pyright` (`strict`) ensure that the package is correctly-typed, as if it were static. The `py.typed` file, a promise that the code is type-hinted properly, is added because the code passes this test.
+- `mypy` (in `--strict` mode) and `basedpyright` (`strict`) ensure that the package is correctly-typed, as if it were static. The `py.typed` file, a promise that the code is type-hinted properly, is added because the code passes this test.
 - `ruff` is used as a linter with almost all rules enabled (see the `pyproject.toml` for the list of exclusions and reasons).
 - `slotscheck` ensures that all dataclass slots are set up correctly.
 - `tach` ensures that internal dependencies are handled correctly (from low level to high), preventing circular dependencies.

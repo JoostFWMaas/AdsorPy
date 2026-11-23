@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-cython"]
+requires = ["hatchling>=1.18.2", "hatch-cython"]
 build-backend = "hatchling.build"
 
 
@@ -11,7 +11,7 @@ version = "1.3.5-alpha.4"  # Edit manually.
 description = "Random sequential adsorption (RSA) simulation, 2D lattice-based."
 authors = [{ name = "J.F.W. Maas", email = "j.f.w.maas@tue.nl" }]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 license = "MIT"
 license-files = ["LICEN[CS]E.md"]
 classifiers = [
@@ -62,14 +62,14 @@ dependencies = [
     "numpy>=2.4.6",
     "matplotlib>=3.11.2",
     "shapely>=2.2.0",
-    "pydantic>=2.14.1",
+    "pydantic>=2.14.3",
     "pydantic-extra-types>=2.11.1",
     "rtree>=1.4.1",
     "svg-py>=1.10.0",
     "defusedxml>=0.7.1",
     "PySide6>=6.12.0",
     "typing-extensions>=4.16.0",
-    "frozendict>=2.4.7; python_version <= '3.14'",  # This exists in default Python starting 3.15.
+    "frozendict>=2.5.1; python_version <= '3.14'",  # This exists in default Python starting 3.15.
 ]
 
 
@@ -79,13 +79,16 @@ gui-deps = [
     "pandas>=3.1.0",
     "h5py>=3.16.0",
     "seaborn>=0.13.2",
-    "dask[distributed]>=2026.8.0",
+    "dask[distributed]>=2026.11.0",
 ]
 
 
 [tool.uv]
-required-version = ">=0.13.4"
-exclude-newer = "3 days"
+required-version = ">=0.13.9"
+environments = [
+    "platform_system != 'Emscripten'"
+]
+#exclude-newer = "3 days"
 
 constraint-dependencies = [
     "html5lib>=1.1",
@@ -110,50 +113,56 @@ constraint-dependencies = [
     "id>=1.6.1",
     "pyyaml>=6.0.3",
     "pillow>=13.0.0",
-    "pip>=26.2.2",
-    "certifi>=2026.10.19",
+    "pip>=26.3.0",
+    "certifi>=2026.10.23",
     "sigstore>=4.5.1",
     "conda>=26.9.4",
     "pixi>=0.82.1",
+    "soupsieve>=4.0.0",
+    "virtualenv>=21.14.12",
+    "pipx>=1.18.7",
+    "pixi>=0.82.1",
+    "pipenv>=2026.10.2",
+    "PDM>=2.29.4",
+    "Pex>=2.105.1",
+    "pyenv>=2.8.14"
 ]
 
 [dependency-groups]
 test = [
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
-    "hypothesis>=6.170.8",
-#    "scipy>=1.15.3",
-    "codecov>=2.1.13",
+    "hypothesis>=6.170.17",
     "pytest-qt>=4.5.0",
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
     "pyvirtualdisplay>=3.0; sys_platform == 'linux'",
     "easyprocess>=1.1; sys_platform == 'linux'",
-    "pytest-env>=1.8.1",
+    "pytest-env>=1.8.5",
 ]
 lint = [
     "mypy==2.4.1",
-    "ruff==0.17.5",
+    "ruff==0.17.6",
     "basedpyright==1.40.2",
     "tach==0.35.3",
     "slotscheck==0.21.0",
     "pyside6-stubs==6.7.3.0",
-    "types-shapely>=2.1.0.20260728",
+    "types-shapely>=2.2.0.20261117",
 ]
 docs = [
-    "sphinx>=8.3.0",
+    "sphinx>=9.0.0",
     "furo>=2025.12.19",
-    "sphinx_design>=0.6.1",
+    "sphinx_design>=0.7.0",
     "sphinx-autodoc-typehints>=3.6.1",
     "sphinx-pyproject>=0.3.0",
 ]
 envs = [
-    "tox>=4.67.1",
-    "tox-uv>=1.37.0",
+    "tox>=4.67.15",
+    "tox-uv>=1.37.9",
 ]
 dev-misc = [
     "build>=1.6.1",
     "twine>=7.0.0",
-    "cibuildwheel>=4.3.4",
+    "cibuildwheel>=4.3.5",
 ]
 
 dev-gui = [
@@ -166,6 +175,8 @@ dev = [
     {include-group = "envs"},
 ]
 
+[tool.uv.dependency-groups]
+docs = { requires-python = "==3.14.*" }
 
 [project.urls]
 github = "https://github.com/JoostFWMaas/AdsorPy"
@@ -206,7 +217,7 @@ include = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
+#addopts = ["--cov=adsorpy", "--cov-report=term", "--cov-report=html", "--strict-markers", "--import-mode=importlib"]
 qt_api = "pyside6"
 env = ["QT_QPA_PLATFORM=offscreen"]
 
@@ -221,6 +232,9 @@ omit = [
     "*/sensitivity.py", # Demonstrator, not included.
     "*/[sS]cripts/*",
 ]
+parallel = true
+source = ["src", "adsorpy"]
+branch = true
 
 
 [tool.coverage.report]
@@ -236,11 +250,8 @@ exclude_also = [
     "if plot_",
     "while temp_results_folder.is_dir()", # Checks for collision in saving folders. Nothing is saved for tests.
     "if self.flux_flag:", # Experimental feature, not yet usable.
-    "_run_flux_", # See above.
+    "_run_flux", # See above.
     "if not self.simple_shape_flag", # Idem ditto.
-    "if (sys\\.)?version_info", # Is tested with Tox (between instances of Pytest). False negative.
-    "from datetime import", # Used for compatibility between versions. Only tests for one version at a time.
-    "@njit", # Compiled code is not seen by coverage. This code is tested with Hypothesis though. False negative.
     "svg",
     "css",
     "def show_",
@@ -253,9 +264,11 @@ exclude_also = [
 
 [tool.coverage.paths]
 source = [
-    "src/",  # Local path
-    ".tox/*/lib/python*/site-packages/",  # Linux / MacOS / CI path
-    ".tox\\*\\Lib\\site-packages\\",  # Windows path
+    "adsorpy/",  # Local path
+    "*/src/adsorpy/",
+    "*\\src\\adsorpy/",
+    "*/site-packages/adsorpy",  # Linux / MacOS / CI path
+    "*\\site-packages\\adsorpy",  # Windows path
 ]
 
 

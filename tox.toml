@@ -1,11 +1,11 @@
-min_version = "4.67.1"
-env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck"]
-labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"] }
+min_version = "4.67.16"
+env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck", "coverage"]
+labels = { static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"], test = [{ prefix = "py3", start = 11, stop = 14 }, "coverage"] }
 
 # Quick reference:
 # Run tox: ``tox run``
 # For clean environments, ``-r``
-# For linting (or another tox group) only: ``-m static``
+# For linting (or another tox label group) only: ``-m static``
 # For a single env, such as py314: ``-e py314``
 # To run in parallel: ``-p``
 # To run just 1 file or folder: ``-e py311 -- PATH_GOES_HERE``
@@ -19,17 +19,23 @@ pass_env = [
     "QT_XCB_GL_INTEGRATION",
 ]
 dependency_groups = ["test", "dev-gui"]
-commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }, "--cov=adsorpy", "--basetemp={envtmpdir}", "--cov-report=term", "--junitxml=results.xml"],
-    [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
+commands = [["coverage", "run", "--branch", "-p", "-m", "pytest", "--basetemp={env_tmp_dir}", { replace = "posargs", default = ["tests"], extend = true }],
+#commands = [
+#    ["pytest", "--cov=adsorpy", "--cov-report=", "--cov-config=pyproject.toml", { replace = "posargs", default = ["tests"], extend = true }],
+#    [{ replace = "if", condition = "factor.py314", then = ["codecov"], extend = true }],
 ]
 
 [env.ruff]
 no_default_groups = true
 dependency_groups = ["lint"]
-commands = [["ruff", "check", "src", "tests"]]
+commands = [
+#    ["ruff", "format", "."],
+    ["ruff", "check", "src", "tests",
+#        "--fix"
+    ],
+]
 
 [env.mypy]
-#skip_install = true
 dependency_groups = ["lint", "test", "dev-gui"]
 commands = [["mypy", "src", "tests"],
 ]
@@ -45,3 +51,15 @@ commands = [["slotscheck", "-m", "adsorpy", "-v"]]
 [env.tach]
 dependency_groups = ["lint"]
 commands = [["tach", "check"]]
+
+[env.coverage]
+skip_install = true
+depends = ["py3*"]
+dependency_groups = ["test"]
+# Runs 'coverage combine' to merge all .coverage.* files into one '.coverage' file,
+# then outputs the final terminal summary and generates a combined report.
+commands = [
+    ["coverage", "combine"],
+    ["coverage", "report", "-m"],
+    ["coverage", "xml"]
+]
