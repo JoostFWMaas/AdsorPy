@@ -153,7 +153,8 @@ jobs:
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.GIST_SECRET }}
-          files: .coverage
+          files: coverage.xml
+          fail_ci_if_error: true
 
   ci-success:
     permissions: {}
