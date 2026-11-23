@@ -61,5 +61,5 @@ dependency_groups = ["test"]
 commands = [
     ["coverage", "combine"],
     ["coverage", "report", "-m"],
-    ["coverage", "html"]
+    ["coverage", "xml"]
 ]

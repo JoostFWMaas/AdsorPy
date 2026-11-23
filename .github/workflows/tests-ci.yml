@@ -109,12 +109,12 @@ jobs:
           path: .coverage.*
           include-hidden-files: true
 
-      - name: Upload test results
-        if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: junit-results
-          path: results.xml
+#      - name: Upload test results
+#        if: always() && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
+#        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+#        with:
+#          name: junit-results
+#          path: results.xml
 
 #      - name: Upload coverage reports to Codecov
 #        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14' && matrix.resolution-strategy == 'default'
