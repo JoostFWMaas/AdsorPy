@@ -1,6 +1,6 @@
-min_version = "4.67.13"
+min_version = "4.67.16"
 env_list = [{ prefix = "py3", start = 11, stop = 14 }, "ruff", "mypy", "basedpyright", "tach", "slotscheck", "coverage"]
-labels = {static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"], test=[{ prefix = "py3", start = 11, stop = 14 }, "coverage"] }
+labels = { static = ["ruff", "mypy", "basedpyright", "tach", "slotscheck"], test = [{ prefix = "py3", start = 11, stop = 14 }, "coverage"] }
 
 # Quick reference:
 # Run tox: ``tox run``

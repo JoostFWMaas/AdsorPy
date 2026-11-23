@@ -133,7 +133,6 @@ test = [
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "hypothesis>=6.170.17",
-    "codecov>=2.1.13",
     "pytest-qt>=4.5.0",
     "pytest-xvfb>=3.1.1; sys_platform == 'linux'",
     "pyvirtualdisplay>=3.0; sys_platform == 'linux'",
@@ -266,9 +265,10 @@ exclude_also = [
 [tool.coverage.paths]
 source = [
     "adsorpy/",  # Local path
-    "src/adsorpy/",
-    ".tox/*/lib/python*/site-packages/adsorpy",  # Linux / MacOS / CI path
-    ".tox\\*\\Lib\\site-packages\\adsorpy",  # Windows path
+    "*/src/adsorpy/",
+    "*\\src\\adsorpy/",
+    "*/site-packages/adsorpy",  # Linux / MacOS / CI path
+    "*\\site-packages\\adsorpy",  # Windows path
 ]
 
 
