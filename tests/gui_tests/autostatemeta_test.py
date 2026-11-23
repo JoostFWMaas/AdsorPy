@@ -22,7 +22,6 @@ def test_autostate_meta_builtin_type_and_preinitialized_field() -> None:
 
         def __init__(self) -> None:
             super().__init__()
-            # Pre-initialise _count so __call__ skips setting it to None.
             self._count = count
 
     state = TempState()

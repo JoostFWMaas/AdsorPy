@@ -68,7 +68,7 @@ def molecule_tab_factory(qtbot: QtBot, monkeypatch: MonkeyPatch) -> partial[Mole
 def test_initial_structural_layout_states(molecule_tab_factory: partial[MoleculeGeneration]) -> None:
     """Verify that layout panels, dropdown configurations, and splitters load correctly.
 
-    :param molecule_tab: MoleculeGeneration widget.
+    :param molecule_tab_factory: MoleculeGeneration widget.
     """
     molecule_tab = molecule_tab_factory()
 
@@ -530,7 +530,8 @@ def test_launch_first_time_loader_fully(
     mock_picker.text.return_value = str(temp_file)
     monkeypatch.setitem(molecule_tab.param_widgets, "file_name", mock_picker)
 
-    mock_output = {"x_offset": 1.5, "roll": 45.0}
+    mock_output_filled = {"x_offset": 1.5, "roll": 45.0, "z_trim": 0.0}
+    mock_output = mock_output_filled | {"yaw": None}
     mock_loader = Mock(return_value=mock_output)
     monkeypatch.setattr(molecule_lib, "first_time_loader", mock_loader)
 
@@ -538,7 +539,8 @@ def test_launch_first_time_loader_fully(
     mock_set_content = Mock()
     monkeypatch.setattr("adsorpy.gui.set_content", mock_set_content)
 
-    molecule_tab.opt_checkboxes = {"x_offset": MagicMock(), "roll": MagicMock()}
+    checkboxes_dict = {"x_offset": MagicMock(), "z_trim": MagicMock()}
+    molecule_tab.opt_checkboxes = checkboxes_dict  # pyright: ignore[reportAttributeAccessIssue]
 
     molecule_tab.show_molecule_flag = False
 
@@ -546,10 +548,11 @@ def test_launch_first_time_loader_fully(
 
     mock_loader.assert_called_once_with(temp_file)
 
-    assert mock_set_content.call_count == len(mock_output)
+    assert mock_set_content.call_count == len(mock_output_filled)
     input_flag = True
-    molecule_tab.opt_checkboxes["x_offset"].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
-    molecule_tab.opt_checkboxes["roll"].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
+    for key in checkboxes_dict:
+        assert key in molecule_tab.opt_checkboxes, "Checkbox key not found in opt_checkboxes."
+        molecule_tab.opt_checkboxes[key].setChecked.assert_called_once_with(input_flag)  # pyright: ignore[reportAttributeAccessIssue]
 
     assert molecule_tab.show_molecule_flag is True
 
@@ -618,6 +621,7 @@ def test_sync_list_order_with_hypothesis(
     target_item = initial_list[old_index]
 
     # Setup mock environment
+    assert hasattr(molecule_tab, "mol_params_list")
     molecule_tab.mol_params_list = initial_list.copy()  # pyright: ignore[reportAttributeAccessIssue]
     molecule_tab.state = MagicMock()
 
@@ -752,10 +756,9 @@ def test_first_time_loader_qapp_branches(
     has_existing_app: bool,
 ) -> None:
     """Test first_time_loader when QApplication already exists vs when it is None."""
-    # Create a valid minimal .xyz file to pass FilePath validation and _initialise_reader
     temp_file = Path(__file__).parents[1] / "test_data" / "fluorochloromethanol.xyz"
 
-    # Mock QApplication so we don't instantiate a second real QApplication in the same process
+    # Mock QApplication so a second real QApplication is not instantiated in the same process
     mock_app_instance = MagicMock()
     mock_qapp_cls = MagicMock(return_value=mock_app_instance)
     mock_qapp_cls.instance.return_value = mock_app_instance if has_existing_app else None

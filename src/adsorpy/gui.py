@@ -2181,7 +2181,7 @@ class MoleculeGeneration(QWidget):
     @staticmethod
     def _create_param_widget(
         annotation: str,
-        default: str | float | type[inspect._empty],
+        default: str | float | type,
     ) -> InputWidget:
         """Create param widget using factory strategy translating library type hints to matching user input views.
 
@@ -2191,7 +2191,6 @@ class MoleculeGeneration(QWidget):
         :raises TypeError: If an unmapped or exotic data structure type is processed.
         """
         default_max: int = 999
-        # widget: InputWidget
         match annotation:
             case "float" | "PositiveFloat" | "NonNegativeFloat" | "float | None":
                 float_widget = QDoubleSpinBox()
@@ -2373,7 +2372,7 @@ class MoleculeGeneration(QWidget):
                 case QSpinBox() | QDoubleSpinBox():
                     values[name] = widget.value()
 
-                case QLineEdit() | FilePickerWidget():
+                case QLineEdit() | FilePickerWidget():  # pragma: no branch
                     values[name] = widget.text()
 
         return values

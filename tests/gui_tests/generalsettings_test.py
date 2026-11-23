@@ -85,23 +85,31 @@ def test_prepare_simulation_inputs_success(qtbot: QtBot, default_polygon_flag: b
 
     result = general_settings._prepare_simulation_inputs()
 
-    assert result["seed"] == correct_seed  # pyright: ignore[reportTypedDictNotRequiredAccess]
-    assert result["timestep_limit"] == timestep_limit  # pyright: ignore[reportTypedDictNotRequiredAccess]
-    assert result["lattice_type"] == lattice_type  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert "seed" in result
+    assert "timestep_limit" in result
+    assert "lattice_type" in result
+    assert result["seed"] == correct_seed
+    assert result["timestep_limit"] == timestep_limit
+    assert result["lattice_type"] == lattice_type
 
     # Verify key mapping transitions and polygon resolution loops
     if default_polygon_flag:
-        assert not hasattr(result, "molecules_list")  # pyright: ignore[reportTypedDictNotRequiredAccess, reportArgumentType]
+        assert "molecules_list" not in result
     else:
-        assert len(result["molecules_list"]) == 1  # pyright: ignore[reportTypedDictNotRequiredAccess, reportArgumentType]
-    if not default_polygon_flag:
-        extracted_shape = result["molecules_list"][0]  # pyright: ignore[reportTypedDictNotRequiredAccess, reportIndexIssue, reportOptionalSubscript]
+        assert "molecules_list" in result
+        assert result["molecules_list"] is not None
+        assert len(result["molecules_list"]) == 1
+
+        extracted_shape = result["molecules_list"][0]
         assert isinstance(extracted_shape, Polygon)
         assert np.array_equal(extracted_shape.exterior.xy, np.array(coords).T)
 
-        assert result["reflection_symmetries"] == [False]  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        assert result["rotation_symmetries"] == [0]  # pyright: ignore[reportTypedDictNotRequiredAccess]
-        assert result["rotation_counts"] == [6]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert "reflection_symmetries" in result
+        assert "rotation_symmetries" in result
+        assert "rotation_counts" in result
+        assert result["reflection_symmetries"] == [False]
+        assert result["rotation_symmetries"] == [0]
+        assert result["rotation_counts"] == [6]
 
 
 @pytest.mark.parametrize("iterate", range(3))  # Left in because this test was flakey.
@@ -201,11 +209,10 @@ def test_on_simulation_complete(qtbot: QtBot, subtests: pytest.Subtests) -> None
         assert general_settings.progress_bar.value() == complete, "Value should be 100 when complete."
 
 
-def test_on_simulation_complete_error(qtbot: QtBot, subtests: pytest.Subtests, monkeypatch: MonkeyPatch) -> None:
+def test_on_simulation_complete_error(qtbot: QtBot, monkeypatch: MonkeyPatch) -> None:
     """Test the on_simulation_complete function of the GUI.
 
     :param qtbot: Simulates user input.
-    :param subtests: Subtest method to treat assertions as separate tests.
     :param monkeypatch: MonkeyPatch object to mock attributes.
     """
     gui = AdsorpyGUI()
@@ -300,8 +307,8 @@ def mock_widget(qtbot: QtBot) -> GeneralSettings:
     qtbot.addWidget(gui)
     general_settings = GeneralSettings(gui.state)
     general_settings.state.gap_size_distribution = np.linspace(0, 1)
-    general_settings.state.coverages = (np.arange(2), np.linspace(3, 7, num=2))  # pyright: ignore[reportAttributeAccessIssue]
-    general_settings.state.fraction_of_covered_area = (np.arange(2), np.linspace(0, 3, num=2))  # pyright: ignore[reportAttributeAccessIssue]
+    general_settings.state.coverages = (np.linspace(0, 2, 2), np.linspace(3, 7, num=2))
+    general_settings.state.fraction_of_covered_area = (np.linspace(0, 2, 2), np.linspace(0, 3, num=2))
     general_settings.input_metadata = BatchSimulationInput(repeats=10)
     return general_settings
 
@@ -352,7 +359,8 @@ def test_export_json_format(mock_widget: GeneralSettings, tmp_path: Path, monkey
     with target_path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     assert "repeats" in data["metadata"]
-    assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert "repeats" in mock_widget.input_metadata
+    assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]
     assert "Gap_size_distribution" in data
     assert "molecules_list" in data["metadata"]
     assert data["metadata"]["molecules_list"] == [str(Point((0, 0)).buffer(1.0))]
@@ -383,7 +391,8 @@ def test_export_hdf5_format(mock_widget: GeneralSettings, tmp_path: Path, monkey
 
     with h5py.File(str(target_path), "r") as f:
         assert "repeats" in f.attrs
-        assert f.attrs["repeats"] == str(mock_widget.input_metadata["repeats"])  # pyright: ignore[reportTypedDictNotRequiredAccess]
+        assert "repeats" in mock_widget.input_metadata
+        assert f.attrs["repeats"] == str(mock_widget.input_metadata["repeats"])
         assert "Gap_size_distribution" in f
         np.testing.assert_array_equal(f["Gap_size_distribution"][:], mock_widget.state.gap_size_distribution)
 
@@ -435,7 +444,8 @@ def test_export_pickle_format(mock_widget: GeneralSettings, tmp_path: Path, monk
 
     assert "metadata" in data
     assert "repeats" in data["metadata"]
-    assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]  # pyright: ignore[reportTypedDictNotRequiredAccess]
+    assert "repeats" in mock_widget.input_metadata
+    assert data["metadata"]["repeats"] == mock_widget.input_metadata["repeats"]
     assert "Gap_size_distribution" in data
     np.testing.assert_array_equal(data["Gap_size_distribution"][:], mock_widget.state.gap_size_distribution)
 

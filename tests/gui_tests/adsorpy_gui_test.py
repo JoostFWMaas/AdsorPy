@@ -68,59 +68,6 @@ def test_help_menu_web_links(gui_app: AdsorpyGUI, action_attr: str, expected_url
         mock_open.assert_called_once_with(expected_url)
 
 
-# def test_save_settings_json_success(gui_app, tmp_path):
-#     """Verify state components are bundled, dumped, and serialized properly."""
-#     test_file = tmp_path / "test_settings.json"
-#
-#     # Pre-populate state dependencies with temporary objects/mocks
-#     gui_app.state.seed_input = MagicMock()
-#     gui_app.state.seed_input.text.return_value = " 42 "  # Checks whitespace stripping
-#     gui_app.state.step_limit = MagicMock()
-#     gui_app.state.step_limit.value.return_value = 5000
-#
-#     gui_app.state.surface_params = SurfaceParameters()
-#     gui_app.state.molecule_param_list = [MoleculeParameters()]
-#
-#     # Mock OS File dialog to return our temp file path, and bypass the final info pop-up
-#     with (
-#         patch.object(QFileDialog, "getSaveFileName", return_value=(str(test_file), "JSON Files (*.json)")),
-#         patch.object(QMessageBox, "information") as mock_info,
-#     ):
-#         gui_app._save_settings_json()
-#
-#         # Verify the success dialog pop-up registered
-#         mock_info.assert_called_once()
-#
-#     # Read the serialized JSON back to verify schemas match
-#     assert test_file.exists()
-#     with test_file.open("r", encoding="utf-8") as f:
-#         saved_data = json.load(f)
-#
-#     assert "adsorpy_version" in saved_data
-#     assert saved_data["miscellaneous_parameters"]["seed"] == 42
-#     assert saved_data["miscellaneous_parameters"]["timestep_limit"] == 5000
-#
-# def test_load_settings_json_success(gui_app, tmp_path):
-#     """Test loading valid configurations updates runtime cache state arrays."""
-#     # Build fake source target payload
-#     payload = {
-#         "miscellaneous_parameters": {"seed": 999, "timestep_limit": 10},
-#         "surface_parameters": {},  # Populate matching parameters schemas if needed
-#         "molecule_parameters": []
-#     }
-#     test_file = tmp_path / "valid_profile.json"
-#     test_file.write_text(json.dumps(payload), encoding="utf-8")
-#
-#     # Mock target input element
-#     gui_app.state.seed_input = MagicMock()
-#
-#     with patch.object(QFileDialog, "getOpenFileName", return_value=(str(test_file), "JSON Files (*.json)")):
-#         gui_app._load_settings_json()
-#
-#     # Confirm text targets synchronized matching profile rules
-#     gui_app.state.seed_input.setText.assert_called_once_with(999)
-
-
 def test_load_settings_validation_failure(gui_app: AdsorpyGUI, tmp_path: Path) -> None:
     """Ensure malformed schemas show a critical QMessageBox warning dialog instead of crashing."""
     corrupted_file = tmp_path / "broken.json"
@@ -138,13 +85,10 @@ def test_load_settings_validation_failure(gui_app: AdsorpyGUI, tmp_path: Path) -
 
 def test_fetch_setting_returns_stored_value(gui_app: AdsorpyGUI) -> None:
     """Verify that settings are fetched correctly from QSettings when they exist."""
-    # Mock the internal QSettings object's value method
     gui_app._settings.value = MagicMock(return_value="/home/user/simulations")
 
-    # Run the method with a default fallback
     result = gui_app._fetch_setting("last_visited_directory", default="/default/path")
 
-    # Assertions
     assert result == "/home/user/simulations"
     gui_app._settings.value.assert_called_once_with("last_visited_directory", defaultValue="/default/path", type=str)
 
@@ -264,7 +208,6 @@ def test_save_settings_json_validation_error(
 
         with pytest.raises(ValueError, match=re.escape("invalid literal for int() with base 10: 'invalid_seed'")):
             app._save_settings_json()
-        # mock_msg_box.assert_called_once()
 
 
 @patch("PySide6.QtWidgets.QFileDialog.getOpenFileName")
@@ -315,7 +258,7 @@ def test_load_settings_json_validation_error(
     app: AdsorpyGUI,
     tmp_path: Path,
 ) -> None:
-    """Verify malformed JSON input files throw explicit schema constraints dialog alerts."""
+    """Verify malformed JSON input files throw explicit schema constraints dialogue alerts."""
     load_file = tmp_path / "corrupt.json"
     load_file.write_bytes(b"{}")
     mock_file_dialog.return_value = (str(load_file), "JSON Files (*.json)")
