@@ -84,7 +84,7 @@ gui-deps = [
 
 
 [tool.uv]
-required-version = ">=0.13.10"
+required-version = ">=0.13.5"
 environments = [
     "platform_system != 'Emscripten'"
 ]
