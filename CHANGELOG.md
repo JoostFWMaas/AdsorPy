@@ -8,6 +8,13 @@ This format is based on [Keep a Changelog](http://keepachangelog.com/). This pro
 ### Changed
 ### Fixed
 ### Removed
+
+## 1.3.5 - 2026-11-25
+### Added
+### Changed
+- Change dependencies of `test`, `lint`, `docs`, to be handled as dependency groups instead of optional dependencies.
+### Fixed
+### Removed
 - Drop support for Python 3.10 because of vulnerabilities in outdated matplotlib versions.
 
 ## 1.3.4 - 2026-10-04
