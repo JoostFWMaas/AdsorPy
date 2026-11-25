@@ -188,8 +188,8 @@ dev-misc = [
 docs = [
     { name = "furo", marker = "python_full_version == '3.14.*'", specifier = ">=2025.12.19" },
     { name = "sphinx", marker = "python_full_version == '3.14.*'", specifier = ">=9.0.0" },
-    { name = "sphinx-autodoc-typehints", marker = "python_full_version == '3.14.*'", specifier = ">=3.6.1" },
-    { name = "sphinx-design", marker = "python_full_version == '3.14.*'", specifier = ">=0.7.0" },
+    { name = "sphinx-autodoc-typehints", marker = "python_full_version == '3.14.*'", specifier = ">=3.17.7" },
+    { name = "sphinx-design", marker = "python_full_version == '3.14.*'", specifier = ">=0.8.0" },
     { name = "sphinx-pyproject", marker = "python_full_version == '3.14.*'", specifier = ">=0.3.0" },
 ]
 envs = [
@@ -203,7 +203,7 @@ lint = [
     { name = "ruff", specifier = "==0.17.6" },
     { name = "slotscheck", specifier = "==0.21.0" },
     { name = "tach", specifier = "==0.35.3" },
-    { name = "types-shapely", specifier = ">=2.2.0.20261117" },
+    { name = "types-shapely", specifier = ">=2.2.0.20261122" },
 ]
 test = [
     { name = "easyprocess", marker = "sys_platform == 'linux'", specifier = ">=1.1" },
