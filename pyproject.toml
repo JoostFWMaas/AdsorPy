@@ -84,7 +84,7 @@ gui-deps = [
 
 
 [tool.uv]
-required-version = ">=0.13.9"
+required-version = ">=0.13.10"
 environments = [
     "platform_system != 'Emscripten'"
 ]
@@ -434,6 +434,9 @@ repair-wheel-command = "delvewheel repair -w \"{dest_dir}\" -v \"{wheel}\""
 [tool.cibuildwheel.windows.environment]
 CC = "cl"
 CXX = "cl"
+
+[tool.cibuildwheel.linux]
+before-all = "uv self update || pip install --upgrade uv"
 
 
 [tool.hatch.build.targets.wheel.hooks.cython]
